@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Merida Job Capture</title>
+    <link rel="icon" href="icons/bownarrow-32.png" type="image/png">
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="popup">
+      <header class="header">
+        <div>
+          <h1>Job Capture</h1>
+          <p id="statusText" class="status">Checking backend...</p>
+        </div>
+        <button id="optionsButton" class="iconButton" type="button" title="Options" aria-label="Options">...</button>
+      </header>
+
+      <button id="fillFormButton" class="primaryButton" type="button">Fill Form</button>
+
+      <!-- <section id="resultPanel" class="resultPanel" hidden></section> -->
+
+      <form id="reviewForm" class="reviewForm" hidden>
+        <label>
+          Job Posting
+          <input id="reviewTitle" name="jobPostingTitle" autocomplete="off">
+        </label>
+        <label>
+          Company Name
+          <input id="reviewCompany" name="companyName" autocomplete="off">
+        </label>
+        <label>
+          Job Title
+          <input id="reviewJobTitle" name="jobTitle" autocomplete="off">
+        </label>
+        <label>
+          Location
+          <input id="reviewLocation" name="location" autocomplete="off">
+        </label>
+        <label>
+          Job URL
+          <input id="reviewJobUrl" name="jobUrl" autocomplete="off">
+        </label>
+        <label>
+          Job Content
+          <textarea id="reviewContent" name="jobContent" rows="8"></textarea>
+        </label>
+        <button class="primaryButton" type="submit">Create In Notion</button>
+      </form>
+    </main>
+    <script src="local-config.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

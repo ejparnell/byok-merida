@@ -1,0 +1,3 @@
+# Keep semantic similarity local to the fit runtime
+
+Resume generation and structured extraction continue to use the existing DeepSeek configuration for continuity with Job Posting Analysis, while semantic similarity is computed by the local Python Resume Fit Analysis runtime. The workflow should require only `DEEPSEEK_API_KEY` and a supported v4 `DEEPSEEK_MODEL` value for model calls and must not require a paid embedding provider for v1. Resume generation shares the Job Posting Analysis DeepSeek model validation, so deprecated aliases such as `deepseek-chat` and `deepseek-reasoner` are not accepted.

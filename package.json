@@ -1,0 +1,23 @@
+{
+  "name": "merida",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/backend/start.js",
+    "start:node": "node src/backend/server.js",
+    "start:fit-runtime": "python3 src/features/resumes/ml/server.py",
+    "prototype:frontend": "vite apps/web-prototype --host 127.0.0.1 --port 4173",
+    "prototype:extension": "vite apps/extension-prototype --host 127.0.0.1 --port 4174",
+    "setup:ml": "python3 -m venv .venv && .venv/bin/python -m pip install -r src/features/resumes/ml/requirements.txt",
+    "test": "node --test test/parity/*.test.js src/backend/test/*.test.js src/features/jobPostings/test/*.test.js src/features/notes/test/*.test.js src/features/resumes/test/*.test.js && python3 -m unittest discover -s src/features/resumes/ml/test"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "6.0.3",
+    "vite": "8.1.4"
+  },
+  "dependencies": {
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
+  }
+}

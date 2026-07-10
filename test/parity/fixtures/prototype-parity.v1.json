@@ -1,0 +1,1652 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "prototype-parity-v1",
+  "fixtures": [
+    {
+      "id": "CAPTURE-EVIDENCE-001",
+      "title": "Normalize readable evidence from the active Source Page",
+      "classification": "parity_required",
+      "coverage": ["capture_evidence", "capture"],
+      "authority": "working prototype",
+      "evidenceSources": [
+        "src/features/jobPostings/test/captureEvidence.test.js",
+        "src/features/jobPostings/CONTEXT.md"
+      ],
+      "prototypeExecutable": true,
+      "expectedTargetDisposition": "preserve",
+      "versions": {
+        "fixtureSchema": 1,
+        "scoringPolicy": null,
+        "normalizationDictionary": null
+      },
+      "observation": {
+        "runner": "capture_evidence",
+        "action": "normalize active-tab and frame evidence",
+        "initialState": {
+          "tabUrl": "https://example.com/jobs/123?utm_source=mail",
+          "frames": [
+            {
+              "frameId": 0,
+              "url": "https://jobs.example.com/embed",
+              "pageTitle": "Senior Backend Engineer at Example Labs",
+              "visibleText": "Navigation and Apply now",
+              "metadata": {
+                "jsonLd": [
+                  {
+                    "@type": "JobPosting",
+                    "title": "Senior Backend Engineer",
+                    "hiringOrganization": { "name": "Example Labs" },
+                    "jobLocationType": "TELECOMMUTE",
+                    "applicantLocationRequirements": { "name": "United States" }
+                  }
+                ]
+              }
+            },
+            {
+              "frameId": 1,
+              "url": "https://example.com/jobs/123?utm_campaign=share",
+              "selectedText": "Senior Backend Engineer at Example Labs",
+              "visibleText": "Responsibilities: Build reliable APIs.",
+              "semanticHtml": "<main><h1>Senior Backend Engineer</h1><p>Build reliable APIs.</p></main>"
+            }
+          ]
+        },
+        "dependencyOutputs": { "oversizedVisibleTextLength": 300005 },
+        "expectedOutcome": {
+          "jobUrl": "https://example.com/jobs/123",
+          "capturedUrl": "https://example.com/jobs/123?utm_source=mail",
+          "companyName": "Example Labs",
+          "role": "Senior Backend Engineer",
+          "location": "Remote - United States",
+          "preferredTextSource": "selectedText",
+          "frameCount": 2,
+          "oversizedVisibleTextLength": 300000,
+          "oversizedWarnings": ["visibleText exceeded 300000 characters and was truncated."]
+        },
+        "expectedEffects": [],
+        "expectedState": {
+          "normalizedEvidence": {
+            "jobUrl": "https://example.com/jobs/123",
+            "capturedUrl": "https://example.com/jobs/123?utm_source=mail",
+            "hasSelectedText": true,
+            "hasVisibleText": true,
+            "frameCount": 2,
+            "oversizedVisibleTextLength": 300000
+          }
+        },
+        "expectedCallCounts": {},
+        "forbiddenEffects": ["workspace_write", "persistent_browser_storage"],
+        "cleanupResidue": {}
+      }
+    },
+    {
+      "id": "CAPTURE-001",
+      "title": "Treat a canonical Job URL duplicate as idempotent success",
+      "classification": "parity_required",
+      "coverage": ["capture", "notion_persistence", "idempotency"],
+      "authority": "working prototype",
+      "evidenceSources": [
+        "src/features/jobPostings/test/captureService.test.js",
+        "docs/architecture.md#Idempotency-And-Safety"
+      ],
+      "prototypeExecutable": true,
+      "expectedTargetDisposition": "preserve",
+      "versions": {
+        "fixtureSchema": 1,
+        "scoringPolicy": null,
+        "normalizationDictionary": null
+      },
+      "observation": {
+        "runner": "capture_duplicate",
+        "action": "capture strong evidence whose canonical Job URL already exists",
+        "initialState": {
+          "existingApplicationId": "application-existing",
+          "evidence": {
+            "url": "https://example.com/jobs/123?utm_source=mail",
+            "pageTitle": "Senior Backend Engineer at Example Labs",
+            "selectedText": "Senior Backend Engineer\nCompany: Example Labs\nLocation: Remote - United States\nResponsibilities\nBuild reliable APIs and accessible user workflows. Partner with product, design, and platform engineering. Own tested TypeScript and React delivery. Improve performance, observability, and release quality. Requirements\nExperience with TypeScript, React, REST APIs, automated testing, accessibility, and cross-functional delivery. Build reliable APIs and accessible user workflows. Partner with product, design, and platform engineering."
+          }
+        },
+        "dependencyOutputs": {
+          "schema": "valid",
+          "duplicate": "application-existing"
+        },
+        "expectedOutcome": {
+          "type": "already_captured",
+          "applicationId": "application-existing"
+        },
+        "expectedEffects": ["validate_schema", "find_by_canonical_job_url"],
+        "expectedState": {
+          "applications": [
+            { "id": "application-existing", "jobUrl": "https://example.com/jobs/123" }
+          ]
+        },
+        "expectedCallCounts": {
+          "validateDatabaseSchema": 1,
+          "findExistingJobPosting": 1,
+          "createJobPostingPage": 0
+        },
+        "forbiddenEffects": ["create_application"],
+        "cleanupResidue": {
+          "createdApplications": 0
+        }
+      }
+    },
+    {
+      "id": "ANALYSIS-001",
+      "title": "Isolate a failed analysis item and continue the sequential batch",
+      "classification": "parity_required",
+      "coverage": ["application_analysis", "evidence_validation"],
+      "authority": "working prototype",
+      "evidenceSources": [
+        "src/features/jobPostings/test/analysisService.test.js",
+        "src/features/jobPostings/docs/adr/0009-isolate-analysis-failures-within-batch-runs.md",
+        "src/features/jobPostings/docs/adr/0010-process-analysis-batches-sequentially.md"
+      ],
+      "prototypeExecutable": true,
+      "expectedTargetDisposition": "preserve",
+      "versions": {
+        "fixtureSchema": 1,
+        "scoringPolicy": null,
+        "normalizationDictionary": null
+      },
+      "observation": {
+        "runner": "analysis_failure_isolation",
+        "action": "run a two-item analysis batch with the first model result failing",
+        "initialState": {
+          "queue": ["application-bad", "application-good"],
+          "jobContentByApplication": {
+            "application-bad": "Use PostgreSQL.",
+            "application-good": "Build RESTful APIs with FastAPI."
+          }
+        },
+        "dependencyOutputs": {
+          "analyzerByApplication": {
+            "application-bad": {
+              "error": "Malformed model output."
+            },
+            "application-good": {
+              "summary": ["One.", "Two.", "Three."],
+              "skillGroups": [
+                {
+                  "label": "APIs & Integrations",
+                  "signals": [
+                    { "name": "FastAPI", "evidence": "FastAPI" }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "expectedOutcome": {
+          "failed": 1,
+          "analyzed": 1,
+          "repaired": 0
+        },
+        "expectedEffects": [
+          "load:application-bad",
+          "analyze:application-bad",
+          "load:application-good",
+          "analyze:application-good",
+          "save:application-good"
+        ],
+        "expectedState": {
+          "analysisBodies": ["application-good"],
+          "analyzedMarkers": ["application-good"]
+        },
+        "expectedCallCounts": {
+          "validateSchema": 1,
+          "findQueueItems": 1,
+          "loadAnalysisInput": 2,
+          "analyzeJobContent": 2,
+          "saveAnalysisFindings": 1
+        },
+        "forbiddenEffects": ["save:application-bad", "abort_batch"],
+        "cleanupResidue": {
+          "savedApplications": ["application-good"]
+        }
+      }
+    },
+    {
+      "id": "CAPTURE-002",
+      "title": "Parse Capture Evidence without reading or writing the workspace",
+      "classification": "parity_required",
+      "coverage": ["capture", "capture_evidence", "notion_persistence"],
+      "authority": "working prototype",
+      "evidenceSources": [
+        "src/features/jobPostings/test/captureService.test.js",
+        "docs/workflows.md#Fill-Form-And-Confirm"
+      ],
+      "prototypeExecutable": true,
+      "expectedTargetDisposition": "preserve",
+      "versions": {
+        "fixtureSchema": 1,
+        "scoringPolicy": null,
+        "normalizationDictionary": null
+      },
+      "observation": {
+        "runner": "capture_parse_only",
+        "action": "parse strong evidence for review",
+        "initialState": {
+          "evidence": {
+            "url": "https://example.com/jobs/456?utm_source=mail",
+            "pageTitle": "Platform Engineer at Example Labs",
+            "selectedText": "Platform Engineer\nCompany: Example Labs\nLocation: Remote - United States\nResponsibilities\nBuild reliable APIs and observable platform services. Partner with product and infrastructure teams. Own tested TypeScript and Python delivery. Improve performance and release quality. Requirements\nExperience with Python, REST APIs, automated testing, cloud platforms, and cross-functional delivery. Build reliable APIs and observable platform services."
+          }
+        },
+        "dependencyOutputs": {},
+        "expectedOutcome": {
+          "type": "parsed",
+          "jobUrl": "https://example.com/jobs/456",
+          "companyName": "Example Labs",
+          "role": "Platform Engineer",
+          "hasJobContent": true
+        },
+        "expectedEffects": [],
+        "expectedState": {
+          "workspace": { "applications": [] }
+        },
+        "expectedCallCounts": {},
+        "forbiddenEffects": ["validate_schema", "find_by_canonical_job_url", "create_application"],
+        "cleanupResidue": {
+          "workspaceCalls": 0
+        }
+      }
+    },
+    {
+      "id": "ANALYSIS-002",
+      "title": "Repair the analyzed marker without a duplicate body or model call",
+      "classification": "parity_required",
+      "coverage": ["application_analysis", "notion_persistence", "idempotency"],
+      "authority": "working prototype",
+      "evidenceSources": [
+        "src/features/jobPostings/test/analysisService.test.js",
+        "src/features/jobPostings/test/analysisStore.test.js",
+        "src/features/jobPostings/docs/adr/0007-append-analysis-before-marking-analyzed.md"
+      ],
+      "prototypeExecutable": true,
+      "expectedTargetDisposition": "preserve and add exact Match Score recovery",
+      "versions": {
+        "fixtureSchema": 1,
+        "scoringPolicy": null,
+        "normalizationDictionary": null
+      },
+      "observation": {
+        "runner": "analysis_repair",
+        "action": "run analysis for an Application with an existing readable analysis body",
+        "initialState": {
+          "queue": ["application-repair"],
+          "analysisBodyPresent": true,
+          "analyzed": false
+        },
+        "dependencyOutputs": {
+          "loadStatus": "repaired"
+        },
+        "expectedOutcome": {
+          "failed": 0,
+          "analyzed": 0,
+          "repaired": 1
+        },
+        "expectedEffects": ["load:application-repair"],
+        "expectedState": {
+          "analysisBodies": ["application-repair"],
+          "analyzedMarkers": ["application-repair"]
+        },
+        "expectedCallCounts": {
+          "validateSchema": 1,
+          "findQueueItems": 1,
+          "loadAnalysisInput": 1,
+          "analyzeJobContent": 0,
+          "saveAnalysisFindings": 0
+        },
+        "forbiddenEffects": ["analyze:application-repair", "save:application-repair"],
+        "cleanupResidue": {
+          "savedApplications": []
+        }
+      }
+    },
+    {
+      "id": "CAPTURE-003",
+      "title": "Observe Capture success, review, validation, confirmation, defaults, and body persistence",
+      "classification": "parity_required",
+      "coverage": ["capture", "notion_persistence", "idempotency"],
+      "authority": "working prototype",
+      "evidenceSources": [
+        "src/features/jobPostings/test/captureService.test.js",
+        "src/features/jobPostings/test/notion.test.js",
+        "src/features/jobPostings/test/notionBlocks.test.js"
+      ],
+      "prototypeExecutable": true,
+      "expectedTargetDisposition": "preserve semantic outcomes, defaults, and stable body sections",
+      "versions": {
+        "fixtureSchema": 1,
+        "scoringPolicy": null,
+        "normalizationDictionary": null
+      },
+      "observation": {
+        "runner": "capture_outcome_matrix",
+        "action": "exercise the observable Capture outcome and persistence matrix",
+        "initialState": {
+          "strongEvidence": {
+            "url": "https://example.com/jobs/789?utm_source=mail",
+            "pageTitle": "Frontend Engineer at Example Health",
+            "selectedText": "Frontend Engineer\nCompany: Example Health\nLocation: Remote - United States\nResponsibilities\nBuild accessible patient workflows with React and TypeScript. Partner with product and backend teams. Own automated tests and reliable releases. Improve application performance and observability. Requirements\nExperience with React, TypeScript, accessibility, REST APIs, automated testing, and cross-functional delivery. Build accessible patient workflows with React and TypeScript."
+          },
+          "weakEvidence": {
+            "url": "https://example.com/jobs/weak",
+            "pageTitle": "Careers",
+            "visibleText": "Role Apply now"
+          },
+          "missingContentEvidence": {
+            "url": "https://example.com/jobs/empty",
+            "pageTitle": "Careers"
+          },
+          "missingUrlEvidence": {
+            "pageTitle": "Backend Engineer at Example",
+            "selectedText": "Backend Engineer Company Example Location Remote Responsibilities Build reliable APIs with Python and PostgreSQL. Requirements Experience with Python, APIs, testing, and database systems. Build reliable APIs with Python and PostgreSQL for production services and partner teams."
+          },
+          "confirmedApplication": {
+            "jobPostingTitle": "Designer at Example",
+            "jobUrl": "https://example.com/jobs/790?utm_campaign=share",
+            "companyName": "Example",
+            "jobTitle": "Designer",
+            "location": "Remote",
+            "jobContent": "Responsibilities: Design accessible product workflows."
+          }
+        },
+        "dependencyOutputs": {
+          "schemaByCase": {
+            "created": "valid",
+            "review": "valid",
+            "invalid_schema": "invalid",
+            "confirmed": "valid",
+            "write_failure": "valid"
+          },
+          "duplicateByCase": {
+            "created": null,
+            "review": null,
+            "confirmed": null,
+            "write_failure": null
+          },
+          "writeByCase": {
+            "created": "success",
+            "confirmed": "success",
+            "write_failure": "failure"
+          }
+        },
+        "expectedOutcome": {
+          "created": "created",
+          "needsReview": "needs_review",
+          "missingContent": "failed",
+          "missingUrl": "failed",
+          "invalidSchema": "failed",
+          "confirmed": "created",
+          "writeFailure": "threw"
+        },
+        "expectedEffects": [
+          "created:validate_schema",
+          "created:find_by_canonical_job_url",
+          "created:create_application",
+          "review:validate_schema",
+          "review:find_by_canonical_job_url",
+          "invalid_schema:validate_schema",
+          "confirmed:validate_schema",
+          "confirmed:find_by_canonical_job_url",
+          "confirmed:create_application",
+          "write_failure:validate_schema",
+          "write_failure:find_by_canonical_job_url",
+          "write_failure:create_application"
+        ],
+        "expectedState": {
+          "records": [
+            {
+              "caseName": "created",
+              "jobUrl": "https://example.com/jobs/789",
+              "applicationStatus": "To Apply",
+              "analyzed": false,
+              "matchScorePresent": false,
+              "applicationDatePresent": false,
+              "headings": ["Capture Summary", "Job Content"]
+            },
+            {
+              "caseName": "confirmed",
+              "jobUrl": "https://example.com/jobs/790",
+              "applicationStatus": "To Apply",
+              "analyzed": false,
+              "matchScorePresent": false,
+              "applicationDatePresent": false,
+              "headings": ["Capture Summary", "Job Content"]
+            }
+          ]
+        },
+        "expectedCallCounts": {
+          "validateDatabaseSchema": 5,
+          "findExistingJobPosting": 4,
+          "createJobPostingPage": 3
+        },
+        "forbiddenEffects": [
+          "review:create_application",
+          "missing_content:validate_schema",
+          "missing_url:validate_schema",
+          "invalid_schema:create_application",
+          "write_failure:completed_application"
+        ],
+        "cleanupResidue": { "createdApplications": 2 }
+      }
+    },
+    {
+      "id": "ANALYSIS-ADD-001",
+      "title": "Persist deterministic Match Score for exact repair",
+      "classification": "target_addition",
+      "coverage": ["application_analysis", "notion_persistence", "idempotency"],
+      "authority": "reviewed final-app contract",
+      "evidenceSources": [
+        "docs/proposed-final-app/ai-workflows.md#Persisted-Application-Analysis-Body",
+        "docs/proposed-final-app/notion-schema.md#Application-Page-Body"
+      ],
+      "prototypeExecutable": false,
+      "expectedTargetDisposition": "add",
+      "versions": {
+        "fixtureSchema": 1,
+        "scoringPolicy": "matching-v1",
+        "normalizationDictionary": "skill-normalization-v1"
+      },
+      "observation": {
+        "action": "repair final analysis properties from a persisted body",
+        "initialState": {
+          "analysisBodyPresent": true,
+          "persistedMatchScore": 86,
+          "analyzed": false,
+          "matchScoreProperty": null
+        },
+        "dependencyOutputs": {
+          "analysisModel": "must not be called"
+        },
+        "expectedOutcome": {
+          "result": "repaired",
+          "matchScore": 86,
+          "analyzed": true
+        },
+        "expectedEffects": ["commit_match_score_and_analyzed"],
+        "expectedState": {
+          "application": {
+            "analysisBodyPresent": true,
+            "persistedMatchScore": 86,
+            "matchScoreProperty": 86,
+            "analyzed": true
+          }
+        },
+        "expectedCallCounts": { "analysisModel": 0 },
+        "forbiddenEffects": ["analysis_model_call", "append_duplicate_analysis_body"],
+        "cleanupResidue": {}
+      }
+    },
+    {
+      "id": "ANALYSIS-003",
+      "title": "Observe analysis evidence validation and body-first partial persistence",
+      "classification": "parity_required",
+      "coverage": ["application_analysis", "evidence_validation", "notion_persistence"],
+      "authority": "working prototype",
+      "evidenceSources": [
+        "src/features/jobPostings/test/analysisBlocks.test.js",
+        "src/features/jobPostings/test/analysisStore.test.js",
+        "src/features/jobPostings/docs/adr/0007-append-analysis-before-marking-analyzed.md"
+      ],
+      "prototypeExecutable": true,
+      "expectedTargetDisposition": "preserve validation and body-first/property-final safety",
+      "versions": {
+        "fixtureSchema": 1,
+        "scoringPolicy": null,
+        "normalizationDictionary": null
+      },
+      "observation": {
+        "runner": "analysis_validation_persistence_matrix",
+        "action": "validate model output and inject a failure after the analysis body append",
+        "initialState": {
+          "jobContent": "Build RESTful APIs with FastAPI and automated testing.",
+          "validModelOutput": {
+            "summary": ["The role builds APIs.", "FastAPI is required.", "Testing supports reliable delivery."],
+            "skillGroups": [
+              {
+                "label": "APIs & Integrations",
+                "signals": [
+                  { "name": "FastAPI", "evidence": "FastAPI" },
+                  { "name": "FastAPI", "evidence": "FastAPI" },
+                  { "name": "Communication", "evidence": "reliable delivery" }
+                ]
+              }
+            ]
+          },
+          "unsupportedModelOutput": {
+            "summary": ["One.", "Two.", "Three."],
+            "skillGroups": [
+              {
+                "label": "Infrastructure & Cloud",
+                "signals": [
+                  { "name": "Kubernetes", "evidence": "Kubernetes" }
+                ]
+              }
+            ]
+          }
+        },
+        "dependencyOutputs": { "finalPropertyCommit": "fails" },
+        "expectedOutcome": {
+          "summarySentenceCount": 3,
+          "signalNames": ["FastAPI"],
+          "unsupportedRejected": true,
+          "persistenceStatus": "failed",
+          "partial": true
+        },
+        "expectedEffects": ["append_analysis_body", "commit_analyzed_property"],
+        "expectedState": {
+          "analysisBodyHeadings": ["Job Posting Analysis", "Summary", "Skill Signals"],
+          "analyzed": false
+        },
+        "expectedCallCounts": {
+          "validateAnalysisOutput": 2,
+          "appendPageChildren": 1,
+          "markJobPostingAnalyzed": 1
+        },
+        "forbiddenEffects": ["duplicate_analysis_body", "commit_analyzed_true"],
+        "cleanupResidue": {
+          "analysisBodyPresent": true,
+          "analyzed": false
+        }
+      }
+    },
+    {
+      "id": "RESUME-001",
+      "title": "Block unsupported Resume claims before artifact creation",
+      "classification": "parity_required",
+      "coverage": ["resume_creation", "evidence_validation", "artifact_creation"],
+      "authority": "working prototype",
+      "evidenceSources": [
+        "src/features/resumes/test/resumeService.test.js",
+        "src/features/resumes/docs/adr/0026-fail-generation-before-creating-resume-when-required-evidence-is-insufficient.md"
+      ],
+      "prototypeExecutable": true,
+      "expectedTargetDisposition": "preserve",
+      "versions": {
+        "fixtureSchema": 1,
+        "scoringPolicy": "prototype-fit-v1",
+        "normalizationDictionary": "src/features/resumes/data/skill-normalization.json"
+      },
+      "observation": {
+        "runner": "resume_evidence_blocked",
+        "action": "create a Resume when required Fit Requirements have no evidence",
+        "initialState": {
+          "applicationId": "application-1",
+          "resumeRelation": []
+        },
+        "dependencyOutputs": {
+          "fitScore": 10,
+          "generationAllowed": false,
+          "supportedRequiredRequirementCount": 0
+        },
+        "expectedOutcome": {
+          "type": "failed",
+          "reason": "insufficient_master_resume_evidence"
+        },
+        "expectedEffects": [],
+        "expectedState": {
+          "resumes": [],
+          "notes": [],
+          "pdfs": [],
+          "resumeRelation": []
+        },
+        "expectedCallCounts": {
+          "findRelatedResume": 1,
+          "fitAnalysis": 1,
+          "resumeModel": 0,
+          "createResume": 0,
+          "createNote": 0,
+          "savePdf": 0,
+          "attachResume": 0,
+          "removePdf": 0,
+          "archiveNote": 0,
+          "archiveResume": 0
+        },
+        "forbiddenEffects": ["create_resume", "create_note", "save_pdf", "attach_resume"],
+        "cleanupResidue": {
+          "createdResumes": 0,
+          "createdNotes": 0,
+          "savedPdfs": 0,
+          "archivedResumes": 0,
+          "archivedNotes": 0,
+          "removedPdfs": 0,
+          "resumeRelation": []
+        }
+      }
+    },
+    {
+      "id": "ANALYSIS-004",
+      "title": "Observe prototype analysis queue eligibility and bounded query behavior",
+      "classification": "parity_required",
+      "coverage": ["application_analysis", "notion_persistence"],
+      "authority": "working prototype",
+      "evidenceSources": [
+        "src/features/jobPostings/lib/notion.js",
+        "src/features/jobPostings/test/notion.test.js",
+        "src/features/jobPostings/test/analysisService.test.js"
+      ],
+      "prototypeExecutable": true,
+      "expectedTargetDisposition": "preserve To Apply and unanalyzed eligibility; add readable Job Content and replace maximum 25 with 10",
+      "versions": { "fixtureSchema": 1, "scoringPolicy": null, "normalizationDictionary": null },
+      "observation": {
+        "runner": "analysis_queue_contract",
+        "action": "query a bounded Analysis Queue preview",
+        "initialState": { "requestedLimit": 3 },
+        "dependencyOutputs": {
+          "notionResults": [
+            { "id": "application-1", "title": "Engineer at Example" },
+            { "id": "application-2", "title": "Developer at Example" }
+          ]
+        },
+        "expectedOutcome": { "itemCount": 2, "requestedLimit": 3, "prototypeClampedMaximum": 25 },
+        "expectedEffects": [],
+        "expectedState": {
+          "queryFilter": {
+            "and": [
+              { "property": "Application Status", "select": { "equals": "To Apply" } },
+              { "property": "Analyzed", "checkbox": { "equals": false } }
+            ]
+          },
+          "pageSize": 3,
+          "itemIds": ["application-1", "application-2"]
+        },
+        "expectedCallCounts": { "queryAnalysisQueue": 1 },
+        "forbiddenEffects": ["unbounded_query", "include_applied", "include_analyzed"],
+        "cleanupResidue": {}
+      }
+    },
+    {
+      "id": "ARTIFACT-001",
+      "title": "Create the employer-facing Resume, fit-analysis Note, and PDF",
+      "classification": "parity_required",
+      "coverage": ["artifact_creation", "resume_creation", "notion_persistence"],
+      "authority": "working prototype",
+      "evidenceSources": [
+        "src/features/resumes/test/resumeService.test.js",
+        "src/features/resumes/docs/adr/0035-store-resume-fit-analysis-in-related-note.md",
+        "src/features/resumes/docs/adr/0036-save-job-specific-resume-pdf-export.md"
+      ],
+      "prototypeExecutable": true,
+      "expectedTargetDisposition": "preserve semantic artifacts; supersede physical path and relation staging",
+      "versions": {
+        "fixtureSchema": 1,
+        "scoringPolicy": "prototype-fit-v1",
+        "normalizationDictionary": "src/features/resumes/data/skill-normalization.json"
+      },
+      "observation": {
+        "runner": "resume_success",
+        "action": "create a supported Job-Specific Resume",
+        "initialState": {
+          "applicationId": "application-1",
+          "resumeRelation": []
+        },
+        "dependencyOutputs": {
+          "fitScore": 82,
+          "generationAllowed": true,
+          "generatedClaims": "valid"
+        },
+        "expectedOutcome": {
+          "type": "created",
+          "resumeId": "resume-1",
+          "noteId": "note-1",
+          "pdfCreated": true
+        },
+        "expectedEffects": ["create_resume", "create_note", "save_pdf", "attach_resume"],
+        "expectedState": {
+          "resumes": [
+            {
+              "id": "resume-1",
+              "archived": false,
+              "headings": [
+                "Elizabeth Parnell",
+                "Summary",
+                "Software Engineer",
+                "AI Studio Coach",
+                "Lead Instructor",
+                "Software Engineer"
+              ],
+              "roleBulletCounts": [5, 5, 5, 5],
+              "containsFitAnalysis": false
+            }
+          ],
+          "notes": [
+            {
+              "id": "note-1",
+              "archived": false,
+              "headings": [
+                "Resume Fit Analysis",
+                "Summary",
+                "Category Coverage",
+                "Requirement Evidence Map",
+                "Gaps",
+                "Generation Guardrails"
+              ]
+            }
+          ],
+          "pdfs": [{ "id": "pdf-1", "matchesResumeSource": true }],
+          "resumeRelation": ["resume-1"]
+        },
+        "expectedCallCounts": {
+          "findRelatedResume": 1,
+          "fitAnalysis": 1,
+          "resumeModel": 1,
+          "createResume": 1,
+          "createNote": 1,
+          "savePdf": 1,
+          "attachResume": 1,
+          "removePdf": 0,
+          "archiveNote": 0,
+          "archiveResume": 0
+        },
+        "forbiddenEffects": ["fit_analysis_in_resume_body"],
+        "cleanupResidue": {
+          "createdResumes": 1,
+          "createdNotes": 1,
+          "savedPdfs": 1,
+          "archivedResumes": 0,
+          "archivedNotes": 0,
+          "removedPdfs": 0,
+          "resumeRelation": ["resume-1"]
+        }
+      }
+    },
+    {
+      "id": "RESUME-002",
+      "title": "Return the existing Resume before generation or artifact work",
+      "classification": "parity_required",
+      "coverage": ["resume_creation", "idempotency", "artifact_creation"],
+      "authority": "working prototype",
+      "evidenceSources": [
+        "src/features/resumes/test/resumeService.test.js",
+        "src/features/resumes/docs/adr/0008-make-resume-creation-idempotent.md"
+      ],
+      "prototypeExecutable": true,
+      "expectedTargetDisposition": "preserve and rename already_exists to already_created",
+      "versions": {
+        "fixtureSchema": 1,
+        "scoringPolicy": null,
+        "normalizationDictionary": null
+      },
+      "observation": {
+        "runner": "resume_existing",
+        "action": "create a Resume for an Application with an existing Resume Attachment",
+        "initialState": {
+          "applicationId": "application-1",
+          "existingResumeId": "resume-existing"
+        },
+        "dependencyOutputs": {},
+        "expectedOutcome": {
+          "type": "already_exists",
+          "resumeId": "resume-existing"
+        },
+        "expectedEffects": [],
+        "expectedState": {
+          "resumes": [
+            {
+              "id": "resume-existing",
+              "archived": false,
+              "headings": [],
+              "roleBulletCounts": [],
+              "containsFitAnalysis": false
+            }
+          ],
+          "notes": [],
+          "pdfs": [],
+          "resumeRelation": ["resume-existing"]
+        },
+        "expectedCallCounts": {
+          "findRelatedResume": 1,
+          "fitAnalysis": 0,
+          "resumeModel": 0,
+          "createResume": 0,
+          "createNote": 0,
+          "savePdf": 0,
+          "attachResume": 0,
+          "removePdf": 0,
+          "archiveNote": 0,
+          "archiveResume": 0
+        },
+        "forbiddenEffects": [
+          "fit_analysis",
+          "resume_model_call",
+          "create_resume",
+          "create_note",
+          "save_pdf",
+          "attach_resume"
+        ],
+        "cleanupResidue": {
+          "createdResumes": 0,
+          "createdNotes": 0,
+          "savedPdfs": 0,
+          "archivedResumes": 0,
+          "archivedNotes": 0,
+          "removedPdfs": 0,
+          "resumeRelation": ["resume-existing"]
+        }
+      }
+    },
+    {
+      "id": "CLEANUP-001",
+      "title": "Compensate a failed final Resume attachment",
+      "classification": "parity_required",
+      "coverage": ["failure_cleanup", "artifact_creation", "idempotency"],
+      "authority": "working prototype",
+      "evidenceSources": [
+        "src/features/resumes/test/resumeService.test.js",
+        "src/features/resumes/docs/adr/0036-save-job-specific-resume-pdf-export.md"
+      ],
+      "prototypeExecutable": true,
+      "expectedTargetDisposition": "preserve outcome and strengthen relation cleanup",
+      "versions": {
+        "fixtureSchema": 1,
+        "scoringPolicy": "prototype-fit-v1",
+        "normalizationDictionary": "src/features/resumes/data/skill-normalization.json"
+      },
+      "observation": {
+        "runner": "resume_final_attach_failure",
+        "action": "create a Resume when the final Application attachment fails",
+        "initialState": {
+          "applicationId": "application-1",
+          "resumeRelation": []
+        },
+        "dependencyOutputs": {
+          "artifactWrites": "succeed",
+          "finalAttachment": "fails"
+        },
+        "expectedOutcome": {
+          "type": "failed",
+          "reason": "resume_generation_failed"
+        },
+        "expectedEffects": [
+          "create_resume",
+          "create_note",
+          "save_pdf",
+          "attach_resume",
+          "remove_pdf",
+          "archive_note",
+          "archive_resume"
+        ],
+        "expectedState": {
+          "resumes": [
+            {
+              "id": "resume-1",
+              "archived": true,
+              "headings": [
+                "Elizabeth Parnell",
+                "Summary",
+                "Software Engineer",
+                "AI Studio Coach",
+                "Lead Instructor",
+                "Software Engineer"
+              ],
+              "roleBulletCounts": [5, 5, 5, 5],
+              "containsFitAnalysis": false
+            }
+          ],
+          "notes": [
+            {
+              "id": "note-1",
+              "archived": true,
+              "headings": [
+                "Resume Fit Analysis",
+                "Summary",
+                "Category Coverage",
+                "Requirement Evidence Map",
+                "Gaps",
+                "Generation Guardrails"
+              ]
+            }
+          ],
+          "pdfs": [],
+          "resumeRelation": []
+        },
+        "expectedCallCounts": {
+          "findRelatedResume": 1,
+          "fitAnalysis": 1,
+          "resumeModel": 1,
+          "createResume": 1,
+          "createNote": 1,
+          "savePdf": 1,
+          "attachResume": 1,
+          "removePdf": 1,
+          "archiveNote": 1,
+          "archiveResume": 1
+        },
+        "forbiddenEffects": ["completed_resume_relation"],
+        "cleanupResidue": {
+          "createdResumes": 0,
+          "createdNotes": 0,
+          "archivedResumes": 1,
+          "archivedNotes": 1,
+          "savedPdfs": 0,
+          "removedPdfs": 1,
+          "resumeRelation": []
+        }
+      }
+    },
+    {
+      "id": "RESUME-003",
+      "title": "Observe Resume source validation and minimum role evidence failures",
+      "classification": "parity_required",
+      "coverage": ["resume_creation", "evidence_validation", "artifact_creation"],
+      "authority": "working prototype",
+      "evidenceSources": [
+        "src/features/resumes/test/resumeService.test.js",
+        "src/features/resumes/test/applicationReadyResumeDraft.test.js",
+        "src/features/resumes/docs/adr/0026-fail-generation-before-creating-resume-when-required-evidence-is-insufficient.md"
+      ],
+      "prototypeExecutable": true,
+      "expectedTargetDisposition": "preserve pre-artifact source and role-evidence guardrails",
+      "versions": {
+        "fixtureSchema": 1,
+        "scoringPolicy": "prototype-fit-v1",
+        "normalizationDictionary": "src/features/resumes/data/skill-normalization.json"
+      },
+      "observation": {
+        "runner": "resume_source_validation_matrix",
+        "action": "attempt Resume Creation with each invalid source state",
+        "initialState": { "applicationId": "application-1", "resumeRelation": [] },
+        "dependencyOutputs": {},
+        "expectedOutcome": {
+          "missingJobContent": { "type": "failed", "reason": "missing_job_content" },
+          "missingAnalysis": { "type": "failed", "reason": "missing_job_posting_analysis" },
+          "noMasterResume": { "type": "failed", "reason": "missing_master_resume" },
+          "multipleMasterResumes": { "type": "failed", "reason": "missing_master_resume" },
+          "emptyMasterEvidence": { "type": "failed", "reason": "missing_master_resume" },
+          "tooFewRoleBullets": { "type": "failed", "reason": "resume_generation_failed" }
+        },
+        "expectedEffects": [],
+        "expectedState": {
+          "missingJobContent": { "activeResumes": 0, "activeNotes": 0, "pdfs": 0, "resumeRelation": [] },
+          "missingAnalysis": { "activeResumes": 0, "activeNotes": 0, "pdfs": 0, "resumeRelation": [] },
+          "noMasterResume": { "activeResumes": 0, "activeNotes": 0, "pdfs": 0, "resumeRelation": [] },
+          "multipleMasterResumes": { "activeResumes": 0, "activeNotes": 0, "pdfs": 0, "resumeRelation": [] },
+          "emptyMasterEvidence": { "activeResumes": 0, "activeNotes": 0, "pdfs": 0, "resumeRelation": [] },
+          "tooFewRoleBullets": { "activeResumes": 0, "activeNotes": 0, "pdfs": 0, "resumeRelation": [] }
+        },
+        "expectedCallCounts": {
+          "missingJobContent": { "fitAnalysis": 0, "resumeModel": 0, "createResume": 0, "createNote": 0, "savePdf": 0 },
+          "missingAnalysis": { "fitAnalysis": 0, "resumeModel": 0, "createResume": 0, "createNote": 0, "savePdf": 0 },
+          "noMasterResume": { "fitAnalysis": 0, "resumeModel": 0, "createResume": 0, "createNote": 0, "savePdf": 0 },
+          "multipleMasterResumes": { "fitAnalysis": 0, "resumeModel": 0, "createResume": 0, "createNote": 0, "savePdf": 0 },
+          "emptyMasterEvidence": { "fitAnalysis": 0, "resumeModel": 0, "createResume": 0, "createNote": 0, "savePdf": 0 },
+          "tooFewRoleBullets": { "fitAnalysis": 1, "resumeModel": 1, "createResume": 0, "createNote": 0, "savePdf": 0 }
+        },
+        "forbiddenEffects": ["create_resume", "create_note", "save_pdf", "attach_resume"],
+        "cleanupResidue": {
+          "missingJobContent": { "activeResumes": 0, "activeNotes": 0, "pdfs": 0, "resumeRelation": [] },
+          "missingAnalysis": { "activeResumes": 0, "activeNotes": 0, "pdfs": 0, "resumeRelation": [] },
+          "noMasterResume": { "activeResumes": 0, "activeNotes": 0, "pdfs": 0, "resumeRelation": [] },
+          "multipleMasterResumes": { "activeResumes": 0, "activeNotes": 0, "pdfs": 0, "resumeRelation": [] },
+          "emptyMasterEvidence": { "activeResumes": 0, "activeNotes": 0, "pdfs": 0, "resumeRelation": [] },
+          "tooFewRoleBullets": { "activeResumes": 0, "activeNotes": 0, "pdfs": 0, "resumeRelation": [] }
+        }
+      }
+    },
+    {
+      "id": "RESUME-004",
+      "title": "Reject unsupported and cross-role Resume claims before rendering",
+      "classification": "parity_required",
+      "coverage": ["resume_creation", "evidence_validation"],
+      "authority": "working prototype",
+      "evidenceSources": [
+        "src/features/resumes/lib/applicationReadyResumeDraft.js",
+        "src/features/resumes/test/applicationReadyResumeDraft.test.js",
+        "src/features/resumes/docs/adr/0024-preserve-master-resume-structure-and-role-chronology.md"
+      ],
+      "prototypeExecutable": true,
+      "expectedTargetDisposition": "preserve claim support, role ownership, chronology, and minimum truthful bullet guarantees",
+      "versions": {
+        "fixtureSchema": 1,
+        "scoringPolicy": "prototype-fit-v1",
+        "normalizationDictionary": "src/features/resumes/data/skill-normalization.json"
+      },
+      "observation": {
+        "runner": "resume_claim_guardrails",
+        "action": "render a generated Resume containing an invented cross-role claim",
+        "initialState": {
+          "generatedClaim": "Invented a production GraphQL platform at Wayfair.",
+          "generatedRole": "Software Engineer, Wayfair",
+          "generatedTemplateId": "wayfair-software-engineer",
+          "citedEvidenceId": "evidence-3",
+          "evidenceOwner": "Software Engineer, ClinMatchGO"
+        },
+        "dependencyOutputs": {
+          "fitRequirementId": "req-1",
+          "supportedEvidenceId": "evidence-3"
+        },
+        "expectedOutcome": {
+          "unsupportedClaimPresent": false,
+          "crossRoleClaimPresent": false,
+          "roleCount": 4,
+          "allRolesAtLeastFiveBullets": true
+        },
+        "expectedEffects": [],
+        "expectedState": {
+          "workExperienceHeadings": [
+            "Software Engineer",
+            "AI Studio Coach",
+            "Lead Instructor",
+            "Software Engineer"
+          ],
+          "roleBulletCounts": [5, 5, 5, 5]
+        },
+        "expectedCallCounts": { "resumeModel": 1 },
+        "forbiddenEffects": ["render_invented_claim", "move_claim_across_roles"],
+        "cleanupResidue": {}
+      }
+    },
+    {
+      "id": "PRIVACY-001",
+      "title": "Keep provider and workspace credentials in backend configuration",
+      "classification": "parity_required",
+      "coverage": ["privacy"],
+      "authority": "working prototype and reviewed final-app contract",
+      "evidenceSources": [
+        "src/backend/config.js",
+        "docs/architecture.md#Token-Policies",
+        "docs/proposed-final-app/ai-workflows.md#Observability-And-Privacy"
+      ],
+      "prototypeExecutable": true,
+      "expectedTargetDisposition": "preserve backend-only credential ownership",
+      "versions": { "fixtureSchema": 1, "scoringPolicy": null, "normalizationDictionary": null },
+      "observation": {
+        "runner": "backend_credential_ownership",
+        "action": "load Notion and DeepSeek credentials from backend environment configuration",
+        "initialState": { "credentialOwner": "backend_environment" },
+        "dependencyOutputs": {
+          "environment": {
+            "NOTION_TOKEN": "notion-secret",
+            "DEEPSEEK_API_KEY": "deepseek-secret",
+            "DEEPSEEK_MODEL": "deepseek-v4-flash"
+          }
+        },
+        "expectedOutcome": {
+          "backendLoadedCredentialKeys": ["notionToken", "deepseekApiKey"]
+        },
+        "expectedEffects": ["load_backend_environment"],
+        "expectedState": {
+          "credentialOwner": "backend_environment",
+          "configuredModel": "deepseek-v4-flash"
+        },
+        "expectedCallCounts": { "loadConfig": 1 },
+        "forbiddenEffects": ["return_credential", "log_credential", "persist_credential_in_browser"],
+        "cleanupResidue": {}
+      }
+    },
+    {
+      "id": "PRIVACY-ADD-001",
+      "title": "Exclude private workflow payloads and local paths from normal output",
+      "classification": "target_addition",
+      "coverage": ["privacy"],
+      "authority": "reviewed final-app contract",
+      "evidenceSources": [
+        "docs/proposed-final-app/ai-workflows.md#Observability-And-Privacy",
+        "docs/proposed-final-app/extension.md#Privacy-And-Logging-Rules"
+      ],
+      "prototypeExecutable": false,
+      "expectedTargetDisposition": "add",
+      "versions": {
+        "fixtureSchema": 1,
+        "scoringPolicy": null,
+        "normalizationDictionary": null
+      },
+      "observation": {
+        "action": "return and log a completed workflow result",
+        "initialState": {
+          "containsPrivateJobContent": true,
+          "containsMasterResumeContent": true,
+          "containsCredential": true,
+          "containsAuthHeader": true,
+          "containsPrompt": true,
+          "containsRawModelOutput": true,
+          "containsGeneratedResumeText": true,
+          "containsNotionPayload": true,
+          "containsLocalPdfPath": true
+        },
+        "dependencyOutputs": {},
+        "expectedOutcome": {
+          "safeSummaryOnly": true
+        },
+        "expectedEffects": ["safe_metadata_log"],
+        "expectedState": {
+          "normalLogsContainPrivateContent": false,
+          "responseContainsPrivateContent": false,
+          "responseContainsLocalPath": false,
+          "safeMetadataFields": ["record_id", "outcome_code", "policy_version", "duration_ms"]
+        },
+        "expectedCallCounts": {},
+        "forbiddenEffects": [
+          "log_prompt",
+          "log_credential",
+          "log_auth_header",
+          "log_job_content",
+          "log_master_resume",
+          "log_raw_model_output",
+          "log_generated_resume_text",
+          "log_notion_payload",
+          "return_private_content",
+          "return_local_pdf_path"
+        ],
+        "cleanupResidue": {}
+      }
+    },
+    {
+      "id": "NOTION-001",
+      "title": "Observe legacy physical properties, stable body sections, and relation target compatibility",
+      "classification": "parity_required",
+      "coverage": ["notion_persistence", "capture", "idempotency"],
+      "authority": "working prototype",
+      "evidenceSources": [
+        "docs/notion-schema.md",
+        "src/features/jobPostings/test/notion.test.js",
+        "src/features/resumes/test/notion.test.js",
+        "src/features/notes/test/notion.test.js"
+      ],
+      "prototypeExecutable": true,
+      "expectedTargetDisposition": "preserve physical workspace compatibility behind canonical Application projections",
+      "versions": {
+        "fixtureSchema": 1,
+        "scoringPolicy": null,
+        "normalizationDictionary": null
+      },
+      "observation": {
+        "runner": "notion_compatibility",
+        "action": "build a captured record and validate current relation target representations",
+        "initialState": {
+          "parsedApplication": {
+            "jobPostingTitle": "Engineer at Example",
+            "jobUrl": "https://example.com/jobs/999",
+            "capturedUrl": "https://example.com/jobs/999?utm_source=mail",
+            "companyName": "Example",
+            "jobTitle": "Engineer",
+            "location": "Remote",
+            "jobContent": "Responsibilities: Build reliable APIs.",
+            "parsingNotes": []
+          }
+        },
+        "dependencyOutputs": {},
+        "expectedOutcome": {
+          "databaseIdAccepted": true,
+          "dataSourceIdAccepted": true,
+          "wrongInverseRejected": true
+        },
+        "expectedEffects": [],
+        "expectedState": {
+          "physicalPropertyNames": [
+            "Analyzed",
+            "Application Status",
+            "Company Name",
+            "Job Posting",
+            "Job Title",
+            "Job URL",
+            "Location"
+          ],
+          "stableBodyHeadings": ["Capture Summary", "Job Content"]
+        },
+        "expectedCallCounts": {
+          "validateRelationTarget": 3,
+          "buildPageProperties": 1,
+          "buildJobPostingBlocks": 1
+        },
+        "forbiddenEffects": ["rename_physical_notion_schema"],
+        "cleanupResidue": {}
+      }
+    },
+    {
+      "id": "CLEANUP-002",
+      "title": "Observe cleanup residue after Note, PDF, and final attachment failures",
+      "classification": "parity_required",
+      "coverage": ["failure_cleanup", "artifact_creation", "notion_persistence"],
+      "authority": "working prototype",
+      "evidenceSources": [
+        "src/features/resumes/test/resumeService.test.js",
+        "src/features/resumes/docs/adr/0036-save-job-specific-resume-pdf-export.md"
+      ],
+      "prototypeExecutable": true,
+      "expectedTargetDisposition": "preserve reverse compensation and strengthen partial relation clearing",
+      "versions": {
+        "fixtureSchema": 1,
+        "scoringPolicy": "prototype-fit-v1",
+        "normalizationDictionary": "src/features/resumes/data/skill-normalization.json"
+      },
+      "observation": {
+        "runner": "resume_cleanup_matrix",
+        "action": "inject failure at each post-generation artifact stage",
+        "initialState": { "applicationId": "application-1", "resumeRelation": [] },
+        "dependencyOutputs": {
+          "noteFailure": "create Note fails",
+          "pdfFailure": "save PDF fails",
+          "attachFailure": "final Resume attachment fails"
+        },
+        "expectedOutcome": {
+          "noteFailure": { "type": "failed", "reason": "resume_generation_failed" },
+          "pdfFailure": { "type": "failed", "reason": "resume_generation_failed" },
+          "attachFailure": { "type": "failed", "reason": "resume_generation_failed" }
+        },
+        "expectedEffects": [
+          "noteFailure:create_resume",
+          "noteFailure:create_note",
+          "noteFailure:archive_resume",
+          "pdfFailure:create_resume",
+          "pdfFailure:create_note",
+          "pdfFailure:save_pdf",
+          "pdfFailure:archive_note",
+          "pdfFailure:archive_resume",
+          "attachFailure:create_resume",
+          "attachFailure:create_note",
+          "attachFailure:save_pdf",
+          "attachFailure:attach_resume",
+          "attachFailure:remove_pdf",
+          "attachFailure:archive_note",
+          "attachFailure:archive_resume"
+        ],
+        "expectedState": {
+          "noteFailure": {
+            "resumes": [
+              {
+                "id": "resume-1",
+                "archived": true,
+                "headings": ["Elizabeth Parnell", "Summary", "Software Engineer", "AI Studio Coach", "Lead Instructor", "Software Engineer"],
+                "roleBulletCounts": [5, 5, 5, 5],
+                "containsFitAnalysis": false
+              }
+            ],
+            "notes": [],
+            "pdfs": [],
+            "resumeRelation": []
+          },
+          "pdfFailure": {
+            "resumes": [
+              {
+                "id": "resume-1",
+                "archived": true,
+                "headings": ["Elizabeth Parnell", "Summary", "Software Engineer", "AI Studio Coach", "Lead Instructor", "Software Engineer"],
+                "roleBulletCounts": [5, 5, 5, 5],
+                "containsFitAnalysis": false
+              }
+            ],
+            "notes": [
+              {
+                "id": "note-1",
+                "archived": true,
+                "headings": ["Resume Fit Analysis", "Summary", "Category Coverage", "Requirement Evidence Map", "Gaps", "Generation Guardrails"]
+              }
+            ],
+            "pdfs": [],
+            "resumeRelation": []
+          },
+          "attachFailure": {
+            "resumes": [
+              {
+                "id": "resume-1",
+                "archived": true,
+                "headings": ["Elizabeth Parnell", "Summary", "Software Engineer", "AI Studio Coach", "Lead Instructor", "Software Engineer"],
+                "roleBulletCounts": [5, 5, 5, 5],
+                "containsFitAnalysis": false
+              }
+            ],
+            "notes": [
+              {
+                "id": "note-1",
+                "archived": true,
+                "headings": ["Resume Fit Analysis", "Summary", "Category Coverage", "Requirement Evidence Map", "Gaps", "Generation Guardrails"]
+              }
+            ],
+            "pdfs": [],
+            "resumeRelation": []
+          }
+        },
+        "expectedCallCounts": {
+          "noteFailure": {
+            "findRelatedResume": 1,
+            "fitAnalysis": 1,
+            "resumeModel": 1,
+            "createResume": 1,
+            "createNote": 1,
+            "savePdf": 0,
+            "attachResume": 0,
+            "removePdf": 0,
+            "archiveNote": 0,
+            "archiveResume": 1
+          },
+          "pdfFailure": {
+            "findRelatedResume": 1,
+            "fitAnalysis": 1,
+            "resumeModel": 1,
+            "createResume": 1,
+            "createNote": 1,
+            "savePdf": 1,
+            "attachResume": 0,
+            "removePdf": 0,
+            "archiveNote": 1,
+            "archiveResume": 1
+          },
+          "attachFailure": {
+            "findRelatedResume": 1,
+            "fitAnalysis": 1,
+            "resumeModel": 1,
+            "createResume": 1,
+            "createNote": 1,
+            "savePdf": 1,
+            "attachResume": 1,
+            "removePdf": 1,
+            "archiveNote": 1,
+            "archiveResume": 1
+          }
+        },
+        "forbiddenEffects": [
+          "noteFailure:save_pdf",
+          "noteFailure:attach_resume",
+          "pdfFailure:attach_resume",
+          "attachFailure:completed_resume_relation"
+        ],
+        "cleanupResidue": {
+          "noteFailure": {
+            "createdResumes": 0,
+            "createdNotes": 0,
+            "savedPdfs": 0,
+            "archivedResumes": 1,
+            "archivedNotes": 0,
+            "removedPdfs": 0,
+            "resumeRelation": []
+          },
+          "pdfFailure": {
+            "createdResumes": 0,
+            "createdNotes": 0,
+            "savedPdfs": 0,
+            "archivedResumes": 1,
+            "archivedNotes": 1,
+            "removedPdfs": 0,
+            "resumeRelation": []
+          },
+          "attachFailure": {
+            "createdResumes": 0,
+            "createdNotes": 0,
+            "savedPdfs": 0,
+            "archivedResumes": 1,
+            "archivedNotes": 1,
+            "removedPdfs": 1,
+            "resumeRelation": []
+          }
+        }
+      }
+    },
+    {
+      "id": "TRANSPORT-001",
+      "title": "Replace NDJSON analysis streaming with one final response",
+      "classification": "superseded",
+      "coverage": ["application_analysis"],
+      "authority": "reviewed final-app contract",
+      "evidenceSources": [
+        "docs/architecture.md#Response-Contracts",
+        "docs/proposed-final-app/ai-workflows.md#Settled-V1-Decisions"
+      ],
+      "prototypeExecutable": false,
+      "expectedTargetDisposition": "replace",
+      "versions": {
+        "fixtureSchema": 1,
+        "scoringPolicy": null,
+        "normalizationDictionary": null
+      },
+      "observation": {
+        "action": "run an Application Analysis batch",
+        "initialState": {
+          "prototypeTransport": "ndjson"
+        },
+        "dependencyOutputs": {},
+        "expectedOutcome": {
+          "targetTransport": "single_final_json_response"
+        },
+        "expectedEffects": ["dashboard_pending_state", "final_typed_summary"],
+        "expectedState": { "targetTransport": "single_final_json_response" },
+        "expectedCallCounts": {},
+        "forbiddenEffects": ["target_ndjson_contract", "target_backend_html_contract"],
+        "cleanupResidue": {}
+      }
+    },
+    {
+      "id": "EXTENSION-DEFECT-001",
+      "title": "Do not preserve the broken side-panel result element",
+      "classification": "known_defect",
+      "coverage": ["capture"],
+      "authority": "observed prototype defect",
+      "evidenceSources": [
+        "src/features/jobPostings/extension/popup.html",
+        "src/features/jobPostings/extension/popup.js"
+      ],
+      "prototypeExecutable": false,
+      "expectedTargetDisposition": "reject",
+      "versions": {
+        "fixtureSchema": 1,
+        "scoringPolicy": null,
+        "normalizationDictionary": null
+      },
+      "observation": {
+        "action": "render a Capture Result",
+        "initialState": {
+          "resultElementPresent": false
+        },
+        "dependencyOutputs": {},
+        "expectedOutcome": {
+          "knownDefect": "result renderer dereferences a missing element"
+        },
+        "expectedEffects": [],
+        "expectedState": { "resultElementPresent": false },
+        "expectedCallCounts": {},
+        "forbiddenEffects": ["preserve_missing_result_element"],
+        "cleanupResidue": {}
+      }
+    },
+    {
+      "id": "API-DEFERRED-001",
+      "title": "Defer exact public request and response schemas",
+      "classification": "deferred",
+      "coverage": ["capture", "application_analysis", "resume_creation"],
+      "authority": "Wayfinder dependency map",
+      "evidenceSources": [
+        ".scratch/proposed-final-app/issues/05-lock-public-api-client-contract.md"
+      ],
+      "prototypeExecutable": false,
+      "expectedTargetDisposition": "defer to public API client contract",
+      "versions": {
+        "fixtureSchema": 1,
+        "scoringPolicy": null,
+        "normalizationDictionary": null
+      },
+      "observation": {
+        "action": "lock exact target HTTP schemas",
+        "initialState": {},
+        "dependencyOutputs": {},
+        "expectedOutcome": null,
+        "expectedEffects": [],
+        "expectedState": {},
+        "expectedCallCounts": {},
+        "forbiddenEffects": ["settle_exact_api_in_parity_inventory"],
+        "cleanupResidue": {}
+      }
+    },
+    {
+      "id": "SUPERSEDED-001",
+      "title": "Replace legacy operator surfaces, transport, batch range, and queue leakage",
+      "classification": "superseded",
+      "coverage": ["capture", "application_analysis", "resume_creation"],
+      "authority": "reviewed final-app contract",
+      "evidenceSources": [
+        "docs/proposed-final-app/routes.md",
+        "docs/proposed-final-app/frontend.md",
+        "docs/proposed-final-app/extension.md",
+        "docs/proposed-final-app/ai-workflows.md"
+      ],
+      "prototypeExecutable": false,
+      "expectedTargetDisposition": "replace legacy UI and transport with reviewed dashboard and extension contracts",
+      "versions": { "fixtureSchema": 1, "scoringPolicy": null, "normalizationDictionary": null },
+      "observation": {
+        "action": "compare legacy operator surfaces with the reviewed target",
+        "initialState": {
+          "legacyBehaviors": [
+            "separate analysis and resumes HTML pages",
+            "legacy route names",
+            "NDJSON progress",
+            "analysis batch maximum 25",
+            "unreadable Job Content admitted to the queue",
+            "Location required for Capture creation"
+          ]
+        },
+        "dependencyOutputs": {},
+        "expectedOutcome": {
+          "targetBehaviors": [
+            "single dashboard process console",
+            "reviewed Application routes",
+            "one final typed response",
+            "analysis batch maximum 10",
+            "eligible-only queues",
+            "Location optional for Capture creation"
+          ]
+        },
+        "expectedEffects": [],
+        "expectedState": { "legacySurfaceRequired": false },
+        "expectedCallCounts": {},
+        "forbiddenEffects": ["freeze_legacy_ui", "freeze_ndjson", "freeze_batch_25", "require_location"],
+        "cleanupResidue": {}
+      }
+    },
+    {
+      "id": "SUPERSEDED-002",
+      "title": "Replace prototype-specific Resume, runtime, prompt, and local-path details",
+      "classification": "superseded",
+      "coverage": ["resume_creation", "artifact_creation", "privacy"],
+      "authority": "reviewed final-app contract",
+      "evidenceSources": [
+        "docs/proposed-final-app/ai-workflows.md",
+        "docs/proposed-final-app/notion-schema.md",
+        "docs/proposed-final-app/routes.md"
+      ],
+      "prototypeExecutable": false,
+      "expectedTargetDisposition": "replace prototype-specific implementation details with canonical target contracts",
+      "versions": { "fixtureSchema": 1, "scoringPolicy": null, "normalizationDictionary": null },
+      "observation": {
+        "action": "classify prototype-specific Resume and runtime behavior",
+        "initialState": {
+          "legacyBehaviors": [
+            "four hard-coded Elizabeth roles",
+            "Fit Score scale 0 to 1",
+            "already_exists result",
+            "local export path and filename",
+            "Node to Python sidecar",
+            "prompt character slicing",
+            "private content previews in logs"
+          ]
+        },
+        "dependencyOutputs": {},
+        "expectedOutcome": {
+          "targetBehaviors": [
+            "Master Resume derived structure",
+            "public score scale 0 to 100",
+            "already_created result",
+            "backend-owned PDF download",
+            "Python workflow modules",
+            "complete-record prompt selection",
+            "safe metadata logging"
+          ]
+        },
+        "expectedEffects": [],
+        "expectedState": { "prototypeSpecificDetailsRequired": false },
+        "expectedCallCounts": {},
+        "forbiddenEffects": ["freeze_fixed_template", "return_local_path", "log_private_payload"],
+        "cleanupResidue": {}
+      }
+    },
+    {
+      "id": "TARGET-ADD-002",
+      "title": "Add canonical Resume rendering, unchanged non-work sections, and typed cleanup state",
+      "classification": "target_addition",
+      "coverage": ["resume_creation", "artifact_creation", "failure_cleanup", "privacy"],
+      "authority": "reviewed final-app contract",
+      "evidenceSources": [
+        "docs/proposed-final-app/ai-workflows.md",
+        "docs/proposed-final-app/notion-schema.md",
+        "docs/proposed-final-app/routes.md"
+      ],
+      "prototypeExecutable": false,
+      "expectedTargetDisposition": "add before parity cutover",
+      "versions": { "fixtureSchema": 1, "scoringPolicy": "matching-v1", "normalizationDictionary": "skill-normalization-v1" },
+      "observation": {
+        "action": "complete target-only Resume and cleanup guarantees",
+        "initialState": {},
+        "dependencyOutputs": {},
+        "expectedOutcome": {
+          "canonicalResumeDocument": true,
+          "nonWorkSectionsUnchanged": true,
+          "notionAndPdfShareSource": true,
+          "typedCleanupBooleans": true,
+          "partialRelationsCleared": true
+        },
+        "expectedEffects": [],
+        "expectedState": { "targetCutoverReady": true },
+        "expectedCallCounts": {},
+        "forbiddenEffects": ["render_from_raw_model_output", "rewrite_non_work_sections"],
+        "cleanupResidue": {}
+      }
+    },
+    {
+      "id": "DEFECT-002",
+      "title": "Do not freeze contradictory direct-capture docs or an unused skipped result",
+      "classification": "known_defect",
+      "coverage": ["capture", "application_analysis"],
+      "authority": "observed prototype contradiction",
+      "evidenceSources": [
+        "docs/workflows.md",
+        "src/features/jobPostings/test/extensionManifest.test.js",
+        "src/features/jobPostings/types/contracts.js"
+      ],
+      "prototypeExecutable": false,
+      "expectedTargetDisposition": "reject until a named product condition requires either behavior",
+      "versions": { "fixtureSchema": 1, "scoringPolicy": null, "normalizationDictionary": null },
+      "observation": {
+        "action": "classify contradictory and unused prototype behavior",
+        "initialState": { "directCaptureDocumented": true, "directCaptureRendered": false, "skippedDeclared": true, "skippedBranchObserved": false },
+        "dependencyOutputs": {},
+        "expectedOutcome": { "reviewFirstAuthoritative": true, "skippedTargetOutcomeRequired": false },
+        "expectedEffects": [],
+        "expectedState": { "knownDefectsPreserved": false },
+        "expectedCallCounts": {},
+        "forbiddenEffects": ["require_direct_capture", "invent_skipped_branch"],
+        "cleanupResidue": {}
+      }
+    },
+    {
+      "id": "WAYFINDER-DEFERRED-001",
+      "title": "Defer module, Notion mapping, runtime, recovery, demo, and roadmap decisions",
+      "classification": "deferred",
+      "coverage": ["capture", "application_analysis", "resume_creation", "notion_persistence", "failure_cleanup"],
+      "authority": "Wayfinder dependency map",
+      "evidenceSources": [
+        ".scratch/proposed-final-app/issues/04-choose-target-module-seams.md",
+        ".scratch/proposed-final-app/issues/06-define-notion-compatibility-adapter.md",
+        ".scratch/proposed-final-app/issues/07-choose-runtime-repository-topology.md",
+        ".scratch/proposed-final-app/issues/08-set-concurrency-idempotency-recovery.md",
+        ".scratch/proposed-final-app/issues/09-define-demo-mode-acceptance.md",
+        ".scratch/proposed-final-app/issues/10-build-migration-roadmap.md"
+      ],
+      "prototypeExecutable": false,
+      "expectedTargetDisposition": "resolve through owning Wayfinder tickets",
+      "versions": { "fixtureSchema": 1, "scoringPolicy": null, "normalizationDictionary": null },
+      "observation": {
+        "action": "route unresolved compatibility questions to their owners",
+        "initialState": {},
+        "dependencyOutputs": {},
+        "expectedOutcome": { "resolvedHere": false },
+        "expectedEffects": [],
+        "expectedState": { "owningTicketsRetained": true },
+        "expectedCallCounts": {},
+        "forbiddenEffects": ["settle_deferred_decision_in_parity_inventory"],
+        "cleanupResidue": {}
+      }
+    }
+  ]
+}

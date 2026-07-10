@@ -1,0 +1,3 @@
+# Use repo-local hybrid ML runtime for fit analysis
+
+Resume Fit Analysis uses a hybrid runtime inside this repository: Node owns the existing backend workflow, Notion orchestration, evidence validation, and Notion writes, while the local Python runtime owns keyword coverage, skill normalization, semantic similarity, gap analysis, and weighted scoring. The repository includes a local Python environment for ML/NLP support that is started as part of `npm start`, and the workflow stores only the resulting analysis and resume content in Notion instead of maintaining a vector database or requiring a paid embedding provider.

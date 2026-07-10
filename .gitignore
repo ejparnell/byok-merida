@@ -1,0 +1,12 @@
+.env
+node_modules/
+apps/web-prototype/dist/
+coverage/
+export/
+.DS_Store
+src/features/jobPostings/extension/local-config.js
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+apps/

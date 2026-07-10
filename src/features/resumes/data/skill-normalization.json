@@ -1,0 +1,170 @@
+{
+  "version": 1,
+  "skills": [
+    {
+      "canonical": "PostgreSQL",
+      "category": "Databases",
+      "aliases": ["postgres", "postgresql", "postgre sql"]
+    },
+    {
+      "canonical": "REST APIs",
+      "category": "APIs & Integrations",
+      "aliases": ["rest api", "rest apis", "restful api", "restful apis", "rest services"]
+    },
+    {
+      "canonical": "JavaScript",
+      "category": "Programming Languages",
+      "aliases": ["js", "javascript"]
+    },
+    {
+      "canonical": "TypeScript",
+      "category": "Programming Languages",
+      "aliases": ["ts", "typescript"]
+    },
+    {
+      "canonical": "React",
+      "category": "Frameworks & Libraries",
+      "aliases": ["react", "react.js", "reactjs"]
+    },
+    {
+      "canonical": "Next.js",
+      "category": "Frameworks & Libraries",
+      "aliases": ["next", "next.js", "nextjs"]
+    },
+    {
+      "canonical": "Node.js",
+      "category": "Frameworks & Libraries",
+      "aliases": ["node", "node.js", "nodejs"]
+    },
+    {
+      "canonical": "Express",
+      "category": "Frameworks & Libraries",
+      "aliases": ["express", "express.js", "expressjs"]
+    },
+    {
+      "canonical": "FastAPI",
+      "category": "Frameworks & Libraries",
+      "aliases": ["fastapi", "fast api"]
+    },
+    {
+      "canonical": "Python",
+      "category": "Programming Languages",
+      "aliases": ["python", "python3"]
+    },
+    {
+      "canonical": "SQL",
+      "category": "Databases",
+      "aliases": ["sql", "structured query language"]
+    },
+    {
+      "canonical": "NoSQL",
+      "category": "Databases",
+      "aliases": ["nosql", "no sql", "non relational database", "non-relational database"]
+    },
+    {
+      "canonical": "MongoDB",
+      "category": "Databases",
+      "aliases": ["mongodb", "mongo", "mongo db"]
+    },
+    {
+      "canonical": "GraphQL",
+      "category": "APIs & Integrations",
+      "aliases": ["graphql", "graph ql"]
+    },
+    {
+      "canonical": "HTML",
+      "category": "Programming Languages",
+      "aliases": ["html", "html5"]
+    },
+    {
+      "canonical": "CSS",
+      "category": "Programming Languages",
+      "aliases": ["css", "css3"]
+    },
+    {
+      "canonical": "Tailwind CSS",
+      "category": "Frameworks & Libraries",
+      "aliases": ["tailwind", "tailwind css"]
+    },
+    {
+      "canonical": "AWS",
+      "category": "Cloud & Platforms",
+      "aliases": ["aws", "amazon web services"]
+    },
+    {
+      "canonical": "Azure",
+      "category": "Cloud & Platforms",
+      "aliases": ["azure", "microsoft azure"]
+    },
+    {
+      "canonical": "Google Cloud",
+      "category": "Cloud & Platforms",
+      "aliases": ["gcp", "google cloud", "google cloud platform"]
+    },
+    {
+      "canonical": "Docker",
+      "category": "DevOps & Tooling",
+      "aliases": ["docker", "containerization", "containers"]
+    },
+    {
+      "canonical": "Kubernetes",
+      "category": "DevOps & Tooling",
+      "aliases": ["kubernetes", "k8s"]
+    },
+    {
+      "canonical": "CI/CD",
+      "category": "DevOps & Tooling",
+      "aliases": ["ci/cd", "ci cd", "continuous integration", "continuous delivery", "continuous deployment"]
+    },
+    {
+      "canonical": "GitHub Actions",
+      "category": "DevOps & Tooling",
+      "aliases": ["github actions", "gh actions"]
+    },
+    {
+      "canonical": "Jest",
+      "category": "Testing & Quality",
+      "aliases": ["jest", "jest tests"]
+    },
+    {
+      "canonical": "Playwright",
+      "category": "Testing & Quality",
+      "aliases": ["playwright", "playwright tests"]
+    },
+    {
+      "canonical": "Cypress",
+      "category": "Testing & Quality",
+      "aliases": ["cypress", "cypress tests"]
+    },
+    {
+      "canonical": "Healthcare",
+      "category": "Domain Knowledge",
+      "aliases": ["healthcare", "health care", "health tech", "healthtech"]
+    },
+    {
+      "canonical": "Clinical Workflows",
+      "category": "Domain Knowledge",
+      "aliases": ["clinical", "clinical workflow", "clinical workflows"]
+    },
+    {
+      "canonical": "HIPAA",
+      "category": "Domain Knowledge",
+      "aliases": ["hipaa", "hipaa compliance"]
+    },
+    {
+      "canonical": "Machine Learning",
+      "category": "AI & ML",
+      "aliases": ["machine learning", "ml"]
+    },
+    {
+      "canonical": "LLM Applications",
+      "category": "AI & ML",
+      "aliases": ["llm app", "llm apps", "llm applications", "ai tooling", "ai tools", "model integration", "model integrations"]
+    },
+    {
+      "canonical": "Notion",
+      "category": "Workflow & Collaboration",
+      "aliases": ["notion", "notion api"]
+    }
+  ]
+}
