@@ -1,3 +1,4 @@
+import html
 import re
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -19,7 +20,12 @@ def canonicalize_url(raw_url: str) -> str:
 
 
 def prepare_capture(evidence: CaptureEvidence) -> tuple[dict, str, list[str]]:
-    source = evidence.selected_text.strip() or evidence.visible_text.strip()
+    semantic_text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", evidence.semantic_html))
+    source = (
+        evidence.selected_text.strip()
+        or evidence.visible_text.strip()
+        or html.unescape(semantic_text).strip()
+    )
     title = evidence.title.strip()
     match = re.match(r"^(.+?)\s+(?:at|[-|])\s+(.+)$", title, re.IGNORECASE)
     role = match.group(1).strip() if match else title
@@ -35,9 +41,9 @@ def prepare_capture(evidence: CaptureEvidence) -> tuple[dict, str, list[str]]:
     preview = source[:280] + ("…" if len(source) > 280 else "")
     draft = {
         "jobUrl": canonicalize_url(evidence.url),
-        "companyName": company,
-        "role": role,
-        "location": "",
+        "companyName": company or None,
+        "role": role or None,
+        "location": None,
         "jobContentPreview": preview,
     }
     return draft, source, errors

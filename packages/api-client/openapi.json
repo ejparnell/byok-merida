@@ -1,0 +1,3298 @@
+{
+  "components": {
+    "schemas": {
+      "AnalysisQueueItem": {
+        "properties": {
+          "applicationId": {
+            "title": "Applicationid",
+            "type": "string"
+          },
+          "applicationStatus": {
+            "const": "To Apply",
+            "title": "Applicationstatus",
+            "type": "string"
+          },
+          "companyName": {
+            "title": "Companyname",
+            "type": "string"
+          },
+          "jobUrl": {
+            "title": "Joburl",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "applicationId",
+          "title",
+          "companyName",
+          "role",
+          "applicationStatus",
+          "jobUrl"
+        ],
+        "title": "AnalysisQueueItem",
+        "type": "object"
+      },
+      "AnalysisResultItem": {
+        "properties": {
+          "applicationId": {
+            "title": "Applicationid",
+            "type": "string"
+          },
+          "applicationStatus": {
+            "const": "To Apply",
+            "title": "Applicationstatus",
+            "type": "string"
+          },
+          "companyName": {
+            "title": "Companyname",
+            "type": "string"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "jobUrl": {
+            "title": "Joburl",
+            "type": "string"
+          },
+          "matchScore": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matchscore"
+          },
+          "result": {
+            "enum": [
+              "analyzed",
+              "repaired",
+              "skipped",
+              "failed"
+            ],
+            "title": "Result",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "applicationId",
+          "title",
+          "companyName",
+          "role",
+          "applicationStatus",
+          "jobUrl",
+          "result",
+          "matchScore",
+          "errors"
+        ],
+        "title": "AnalysisResultItem",
+        "type": "object"
+      },
+      "ApiErrorDetail": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "requestId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requestid"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "requestId"
+        ],
+        "title": "ApiErrorDetail",
+        "type": "object"
+      },
+      "ApiErrorResponse": {
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ApiErrorDetail"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "ok": {
+            "const": false,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "error"
+        ],
+        "title": "ApiErrorResponse",
+        "type": "object"
+      },
+      "ApplicationAlreadyCapturedResponse": {
+        "properties": {
+          "application": {
+            "$ref": "#/components/schemas/CapturedApplication"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "ok": {
+            "const": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "result": {
+            "const": "already_captured",
+            "title": "Result",
+            "type": "string"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "result",
+          "application"
+        ],
+        "title": "ApplicationAlreadyCapturedResponse",
+        "type": "object"
+      },
+      "ApplicationAnalysisBlockedResponse": {
+        "properties": {
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "failed": {
+            "const": 0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisResultItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "ok": {
+            "const": false,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "processed": {
+            "const": 0,
+            "title": "Processed",
+            "type": "integer"
+          },
+          "repaired": {
+            "const": 0,
+            "title": "Repaired",
+            "type": "integer"
+          },
+          "result": {
+            "const": "blocked",
+            "title": "Result",
+            "type": "string"
+          },
+          "status": {
+            "const": "blocked",
+            "title": "Status",
+            "type": "string"
+          },
+          "succeeded": {
+            "const": 0,
+            "title": "Succeeded",
+            "type": "integer"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "status",
+          "result",
+          "processed",
+          "succeeded",
+          "failed",
+          "repaired",
+          "items"
+        ],
+        "title": "ApplicationAnalysisBlockedResponse",
+        "type": "object"
+      },
+      "ApplicationAnalysisChecks": {
+        "properties": {
+          "applicationsDatabase": {
+            "enum": [
+              "ready",
+              "blocked",
+              "not_checked"
+            ],
+            "title": "Applicationsdatabase",
+            "type": "string"
+          },
+          "deepseek": {
+            "enum": [
+              "ready",
+              "blocked",
+              "not_checked"
+            ],
+            "title": "Deepseek",
+            "type": "string"
+          },
+          "evidenceMatcher": {
+            "enum": [
+              "ready",
+              "blocked",
+              "not_checked"
+            ],
+            "title": "Evidencematcher",
+            "type": "string"
+          },
+          "jobContentAccess": {
+            "enum": [
+              "ready",
+              "blocked",
+              "not_checked"
+            ],
+            "title": "Jobcontentaccess",
+            "type": "string"
+          },
+          "masterResumeEvidence": {
+            "enum": [
+              "ready",
+              "blocked",
+              "not_checked"
+            ],
+            "title": "Masterresumeevidence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "deepseek",
+          "applicationsDatabase",
+          "jobContentAccess",
+          "masterResumeEvidence",
+          "evidenceMatcher"
+        ],
+        "title": "ApplicationAnalysisChecks",
+        "type": "object"
+      },
+      "ApplicationAnalysisCompletedResponse": {
+        "properties": {
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "failed": {
+            "minimum": 0.0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisResultItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "ok": {
+            "const": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "processed": {
+            "minimum": 0.0,
+            "title": "Processed",
+            "type": "integer"
+          },
+          "repaired": {
+            "minimum": 0.0,
+            "title": "Repaired",
+            "type": "integer"
+          },
+          "result": {
+            "const": "completed",
+            "title": "Result",
+            "type": "string"
+          },
+          "succeeded": {
+            "minimum": 0.0,
+            "title": "Succeeded",
+            "type": "integer"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "result",
+          "processed",
+          "succeeded",
+          "failed",
+          "repaired",
+          "items"
+        ],
+        "title": "ApplicationAnalysisCompletedResponse",
+        "type": "object"
+      },
+      "ApplicationAnalysisHealthResponse": {
+        "properties": {
+          "checks": {
+            "$ref": "#/components/schemas/ApplicationAnalysisChecks"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "blocked"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          },
+          "workflow": {
+            "const": "application_analysis",
+            "title": "Workflow",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "status",
+          "workflow",
+          "checks"
+        ],
+        "title": "ApplicationAnalysisHealthResponse",
+        "type": "object"
+      },
+      "ApplicationAnalysisQueueBlockedResponse": {
+        "properties": {
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisQueueItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "ok": {
+            "const": false,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/Pagination"
+          },
+          "queueCount": {
+            "const": 0,
+            "title": "Queuecount",
+            "type": "integer"
+          },
+          "status": {
+            "const": "blocked",
+            "title": "Status",
+            "type": "string"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "status",
+          "queueCount",
+          "items",
+          "pagination"
+        ],
+        "title": "ApplicationAnalysisQueueBlockedResponse",
+        "type": "object"
+      },
+      "ApplicationAnalysisQueueReadyResponse": {
+        "properties": {
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisQueueItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "ok": {
+            "const": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/Pagination"
+          },
+          "queueCount": {
+            "minimum": 0.0,
+            "title": "Queuecount",
+            "type": "integer"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "queueCount",
+          "items",
+          "pagination"
+        ],
+        "title": "ApplicationAnalysisQueueReadyResponse",
+        "type": "object"
+      },
+      "ApplicationCaptureBlockedResponse": {
+        "properties": {
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "ok": {
+            "const": false,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "result": {
+            "const": "blocked",
+            "title": "Result",
+            "type": "string"
+          },
+          "status": {
+            "const": "blocked",
+            "title": "Status",
+            "type": "string"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "status",
+          "result"
+        ],
+        "title": "ApplicationCaptureBlockedResponse",
+        "type": "object"
+      },
+      "ApplicationCreatedResponse": {
+        "properties": {
+          "application": {
+            "$ref": "#/components/schemas/CapturedApplication"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "ok": {
+            "const": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "result": {
+            "const": "created",
+            "title": "Result",
+            "type": "string"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "result",
+          "application"
+        ],
+        "title": "ApplicationCreatedResponse",
+        "type": "object"
+      },
+      "ApplicationNeedsReviewResponse": {
+        "properties": {
+          "draft": {
+            "$ref": "#/components/schemas/PreparedApplicationDraft"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "missingFields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missingfields",
+            "type": "array"
+          },
+          "needsReview": {
+            "const": true,
+            "title": "Needsreview",
+            "type": "boolean"
+          },
+          "ok": {
+            "const": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "result": {
+            "const": "needs_review",
+            "title": "Result",
+            "type": "string"
+          },
+          "reviewReasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reviewreasons",
+            "type": "array"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "result",
+          "draft",
+          "needsReview",
+          "reviewReasons",
+          "missingFields"
+        ],
+        "title": "ApplicationNeedsReviewResponse",
+        "type": "object"
+      },
+      "CaptureEvidence": {
+        "properties": {
+          "selectedText": {
+            "default": "",
+            "maxLength": 120000,
+            "title": "Selectedtext",
+            "type": "string"
+          },
+          "semanticHtml": {
+            "default": "",
+            "maxLength": 120000,
+            "title": "Semantichtml",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          },
+          "visibleText": {
+            "default": "",
+            "maxLength": 120000,
+            "title": "Visibletext",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "CaptureEvidence",
+        "type": "object"
+      },
+      "CapturedApplication": {
+        "properties": {
+          "applicationStatus": {
+            "const": "To Apply",
+            "title": "Applicationstatus",
+            "type": "string"
+          },
+          "companyName": {
+            "title": "Companyname",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "jobUrl": {
+            "title": "Joburl",
+            "type": "string"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "companyName",
+          "role",
+          "location",
+          "jobUrl",
+          "applicationStatus",
+          "url"
+        ],
+        "title": "CapturedApplication",
+        "type": "object"
+      },
+      "CleanupSummary": {
+        "properties": {
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "not_required",
+              "completed",
+              "incomplete"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "errors"
+        ],
+        "title": "CleanupSummary",
+        "type": "object"
+      },
+      "ConfigurationValidationFailure": {
+        "properties": {
+          "kind": {
+            "const": "configuration",
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "setting": {
+            "title": "Setting",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "setting",
+          "message"
+        ],
+        "title": "ConfigurationValidationFailure",
+        "type": "object"
+      },
+      "ConfirmApplicationRequest": {
+        "properties": {
+          "draft": {
+            "$ref": "#/components/schemas/ConfirmedApplicationDraft"
+          }
+        },
+        "required": [
+          "draft"
+        ],
+        "title": "ConfirmApplicationRequest",
+        "type": "object"
+      },
+      "ConfirmApplicationResponse": {
+        "discriminator": {
+          "mapping": {
+            "already_captured": "#/components/schemas/ApplicationAlreadyCapturedResponse",
+            "blocked": "#/components/schemas/ApplicationCaptureBlockedResponse",
+            "created": "#/components/schemas/ApplicationCreatedResponse"
+          },
+          "propertyName": "result"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/ApplicationCreatedResponse"
+          },
+          {
+            "$ref": "#/components/schemas/ApplicationAlreadyCapturedResponse"
+          },
+          {
+            "$ref": "#/components/schemas/ApplicationCaptureBlockedResponse"
+          }
+        ],
+        "title": "ConfirmApplicationResponse"
+      },
+      "ConfirmedApplicationDraft": {
+        "properties": {
+          "companyName": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Companyname",
+            "type": "string"
+          },
+          "jobContent": {
+            "maxLength": 120000,
+            "minLength": 20,
+            "title": "Jobcontent",
+            "type": "string"
+          },
+          "jobUrl": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Joburl",
+            "type": "string"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "role": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobUrl",
+          "companyName",
+          "role",
+          "jobContent"
+        ],
+        "title": "ConfirmedApplicationDraft",
+        "type": "object"
+      },
+      "CreateResumeRequest": {
+        "properties": {
+          "applicationId": {
+            "minLength": 1,
+            "title": "Applicationid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "applicationId"
+        ],
+        "title": "CreateResumeRequest",
+        "type": "object"
+      },
+      "CreateResumeResponse": {
+        "discriminator": {
+          "mapping": {
+            "already_created": "#/components/schemas/ResumeAlreadyCreatedResponse",
+            "blocked": "#/components/schemas/ResumeCreationBlockedResponse",
+            "created": "#/components/schemas/ResumeCreatedResponse",
+            "failed": "#/components/schemas/ResumeCreationFailedResponse"
+          },
+          "propertyName": "result"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/ResumeCreatedResponse"
+          },
+          {
+            "$ref": "#/components/schemas/ResumeAlreadyCreatedResponse"
+          },
+          {
+            "$ref": "#/components/schemas/ResumeCreationBlockedResponse"
+          },
+          {
+            "$ref": "#/components/schemas/ResumeCreationFailedResponse"
+          }
+        ],
+        "title": "CreateResumeResponse"
+      },
+      "GetApplicationAnalysisQueueResponse": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ApplicationAnalysisQueueReadyResponse"
+          },
+          {
+            "$ref": "#/components/schemas/ApplicationAnalysisQueueBlockedResponse"
+          }
+        ],
+        "title": "GetApplicationAnalysisQueueResponse"
+      },
+      "GetResumeCreationQueueResponse": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ResumeCreationQueueReadyResponse"
+          },
+          {
+            "$ref": "#/components/schemas/ResumeCreationQueueBlockedResponse"
+          }
+        ],
+        "title": "GetResumeCreationQueueResponse"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthChecks": {
+        "properties": {
+          "analysis": {
+            "enum": [
+              "ready",
+              "blocked",
+              "not_checked"
+            ],
+            "title": "Analysis",
+            "type": "string"
+          },
+          "notion": {
+            "enum": [
+              "ready",
+              "blocked",
+              "not_checked"
+            ],
+            "title": "Notion",
+            "type": "string"
+          },
+          "resumes": {
+            "enum": [
+              "ready",
+              "blocked",
+              "not_checked"
+            ],
+            "title": "Resumes",
+            "type": "string"
+          },
+          "settings": {
+            "enum": [
+              "ready",
+              "blocked",
+              "not_checked"
+            ],
+            "title": "Settings",
+            "type": "string"
+          }
+        },
+        "required": [
+          "settings",
+          "notion",
+          "analysis",
+          "resumes"
+        ],
+        "title": "HealthChecks",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "properties": {
+          "checks": {
+            "$ref": "#/components/schemas/HealthChecks"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "mode": {
+            "enum": [
+              "demo",
+              "real"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "service": {
+            "const": "merida-api",
+            "title": "Service",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "blocked"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "status",
+          "service",
+          "mode",
+          "checks"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "NotionDatabaseChecks": {
+        "properties": {
+          "applications": {
+            "enum": [
+              "ready",
+              "blocked",
+              "not_checked"
+            ],
+            "title": "Applications",
+            "type": "string"
+          },
+          "notes": {
+            "enum": [
+              "ready",
+              "blocked",
+              "not_checked"
+            ],
+            "title": "Notes",
+            "type": "string"
+          },
+          "resumes": {
+            "enum": [
+              "ready",
+              "blocked",
+              "not_checked"
+            ],
+            "title": "Resumes",
+            "type": "string"
+          }
+        },
+        "required": [
+          "applications",
+          "resumes",
+          "notes"
+        ],
+        "title": "NotionDatabaseChecks",
+        "type": "object"
+      },
+      "NotionHealthResponse": {
+        "properties": {
+          "databases": {
+            "$ref": "#/components/schemas/NotionDatabaseChecks"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "blocked"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          },
+          "workspace": {
+            "enum": [
+              "demo",
+              "notion"
+            ],
+            "title": "Workspace",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "status",
+          "workspace",
+          "databases"
+        ],
+        "title": "NotionHealthResponse",
+        "type": "object"
+      },
+      "OperatorConfigured": {
+        "properties": {
+          "deepseek": {
+            "title": "Deepseek",
+            "type": "boolean"
+          },
+          "notion": {
+            "title": "Notion",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "notion",
+          "deepseek"
+        ],
+        "title": "OperatorConfigured",
+        "type": "object"
+      },
+      "OperatorModels": {
+        "properties": {
+          "analysis": {
+            "title": "Analysis",
+            "type": "string"
+          },
+          "resumes": {
+            "title": "Resumes",
+            "type": "string"
+          }
+        },
+        "required": [
+          "analysis",
+          "resumes"
+        ],
+        "title": "OperatorModels",
+        "type": "object"
+      },
+      "OperatorSettingsResponse": {
+        "properties": {
+          "configured": {
+            "$ref": "#/components/schemas/OperatorConfigured"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "mode": {
+            "enum": [
+              "demo",
+              "real"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "models": {
+            "$ref": "#/components/schemas/OperatorModels"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          },
+          "workspace": {
+            "enum": [
+              "demo",
+              "notion"
+            ],
+            "title": "Workspace",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "mode",
+          "workspace",
+          "models",
+          "configured"
+        ],
+        "title": "OperatorSettingsResponse",
+        "type": "object"
+      },
+      "Pagination": {
+        "properties": {
+          "hasMore": {
+            "title": "Hasmore",
+            "type": "boolean"
+          },
+          "limit": {
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextcursor"
+          }
+        },
+        "required": [
+          "limit",
+          "nextCursor",
+          "hasMore"
+        ],
+        "title": "Pagination",
+        "type": "object"
+      },
+      "PdfArtifactSummary": {
+        "properties": {
+          "downloadUrl": {
+            "title": "Downloadurl",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          }
+        },
+        "required": [
+          "filename",
+          "downloadUrl"
+        ],
+        "title": "PdfArtifactSummary",
+        "type": "object"
+      },
+      "PrepareApplicationRequest": {
+        "properties": {
+          "evidence": {
+            "$ref": "#/components/schemas/CaptureEvidence"
+          }
+        },
+        "required": [
+          "evidence"
+        ],
+        "title": "PrepareApplicationRequest",
+        "type": "object"
+      },
+      "PrepareApplicationResponse": {
+        "discriminator": {
+          "mapping": {
+            "needs_review": "#/components/schemas/ApplicationNeedsReviewResponse",
+            "prepared": "#/components/schemas/PreparedApplicationResponse"
+          },
+          "propertyName": "result"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/PreparedApplicationResponse"
+          },
+          {
+            "$ref": "#/components/schemas/ApplicationNeedsReviewResponse"
+          }
+        ],
+        "title": "PrepareApplicationResponse"
+      },
+      "PreparedApplicationDraft": {
+        "properties": {
+          "companyName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Companyname"
+          },
+          "jobContentPreview": {
+            "title": "Jobcontentpreview",
+            "type": "string"
+          },
+          "jobUrl": {
+            "title": "Joburl",
+            "type": "string"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          }
+        },
+        "required": [
+          "jobUrl",
+          "companyName",
+          "role",
+          "location",
+          "jobContentPreview"
+        ],
+        "title": "PreparedApplicationDraft",
+        "type": "object"
+      },
+      "PreparedApplicationResponse": {
+        "properties": {
+          "draft": {
+            "$ref": "#/components/schemas/PreparedApplicationDraft"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "missingFields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missingfields",
+            "type": "array"
+          },
+          "needsReview": {
+            "const": false,
+            "title": "Needsreview",
+            "type": "boolean"
+          },
+          "ok": {
+            "const": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "result": {
+            "const": "prepared",
+            "title": "Result",
+            "type": "string"
+          },
+          "reviewReasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reviewreasons",
+            "type": "array"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "result",
+          "draft",
+          "needsReview",
+          "reviewReasons",
+          "missingFields"
+        ],
+        "title": "PreparedApplicationResponse",
+        "type": "object"
+      },
+      "RequestValidationFailure": {
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "kind": {
+            "const": "request",
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "field",
+          "message"
+        ],
+        "title": "RequestValidationFailure",
+        "type": "object"
+      },
+      "ResetDemoResponse": {
+        "properties": {
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "ok": {
+            "const": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "result": {
+            "const": "reset",
+            "title": "Result",
+            "type": "string"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "result"
+        ],
+        "title": "ResetDemoResponse",
+        "type": "object"
+      },
+      "ResumeAlreadyCreatedResponse": {
+        "properties": {
+          "application": {
+            "$ref": "#/components/schemas/ResumeApplicationSummary"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResumeArtifactSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ok": {
+            "const": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "pdf": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PdfArtifactSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "result": {
+            "const": "already_created",
+            "title": "Result",
+            "type": "string"
+          },
+          "resume": {
+            "$ref": "#/components/schemas/ResumeArtifactSummary"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "result",
+          "application",
+          "resume",
+          "note",
+          "pdf"
+        ],
+        "title": "ResumeAlreadyCreatedResponse",
+        "type": "object"
+      },
+      "ResumeApplicationSummary": {
+        "properties": {
+          "companyName": {
+            "title": "Companyname",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "companyName",
+          "role"
+        ],
+        "title": "ResumeApplicationSummary",
+        "type": "object"
+      },
+      "ResumeArtifactSummary": {
+        "properties": {
+          "companyName": {
+            "title": "Companyname",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "companyName",
+          "role",
+          "url"
+        ],
+        "title": "ResumeArtifactSummary",
+        "type": "object"
+      },
+      "ResumeCreatedResponse": {
+        "properties": {
+          "application": {
+            "$ref": "#/components/schemas/ResumeApplicationSummary"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "note": {
+            "$ref": "#/components/schemas/ResumeArtifactSummary"
+          },
+          "ok": {
+            "const": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "pdf": {
+            "$ref": "#/components/schemas/PdfArtifactSummary"
+          },
+          "result": {
+            "const": "created",
+            "title": "Result",
+            "type": "string"
+          },
+          "resume": {
+            "$ref": "#/components/schemas/ResumeArtifactSummary"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "result",
+          "application",
+          "resume",
+          "note",
+          "pdf"
+        ],
+        "title": "ResumeCreatedResponse",
+        "type": "object"
+      },
+      "ResumeCreationBlockedResponse": {
+        "properties": {
+          "cleanup": {
+            "$ref": "#/components/schemas/CleanupSummary"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "ok": {
+            "const": false,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "result": {
+            "const": "blocked",
+            "title": "Result",
+            "type": "string"
+          },
+          "status": {
+            "const": "blocked",
+            "title": "Status",
+            "type": "string"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "status",
+          "result",
+          "cleanup"
+        ],
+        "title": "ResumeCreationBlockedResponse",
+        "type": "object"
+      },
+      "ResumeCreationChecks": {
+        "properties": {
+          "deepseek": {
+            "enum": [
+              "ready",
+              "blocked",
+              "not_checked"
+            ],
+            "title": "Deepseek",
+            "type": "string"
+          },
+          "fitAnalysis": {
+            "enum": [
+              "ready",
+              "blocked",
+              "not_checked"
+            ],
+            "title": "Fitanalysis",
+            "type": "string"
+          },
+          "masterResume": {
+            "enum": [
+              "ready",
+              "blocked",
+              "not_checked"
+            ],
+            "title": "Masterresume",
+            "type": "string"
+          },
+          "notion": {
+            "enum": [
+              "ready",
+              "blocked",
+              "not_checked"
+            ],
+            "title": "Notion",
+            "type": "string"
+          },
+          "pdfExport": {
+            "enum": [
+              "ready",
+              "blocked",
+              "not_checked"
+            ],
+            "title": "Pdfexport",
+            "type": "string"
+          }
+        },
+        "required": [
+          "deepseek",
+          "notion",
+          "fitAnalysis",
+          "masterResume",
+          "pdfExport"
+        ],
+        "title": "ResumeCreationChecks",
+        "type": "object"
+      },
+      "ResumeCreationFailedResponse": {
+        "properties": {
+          "cleanup": {
+            "$ref": "#/components/schemas/CleanupSummary"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "ok": {
+            "const": false,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "result": {
+            "const": "failed",
+            "title": "Result",
+            "type": "string"
+          },
+          "status": {
+            "const": "failed",
+            "title": "Status",
+            "type": "string"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "status",
+          "result",
+          "cleanup"
+        ],
+        "title": "ResumeCreationFailedResponse",
+        "type": "object"
+      },
+      "ResumeCreationHealthResponse": {
+        "properties": {
+          "checks": {
+            "$ref": "#/components/schemas/ResumeCreationChecks"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "blocked"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          },
+          "workflow": {
+            "const": "resume_creation",
+            "title": "Workflow",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "status",
+          "workflow",
+          "checks"
+        ],
+        "title": "ResumeCreationHealthResponse",
+        "type": "object"
+      },
+      "ResumeCreationQueueBlockedResponse": {
+        "properties": {
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ResumeQueueItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "ok": {
+            "const": false,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/Pagination"
+          },
+          "queueCount": {
+            "const": 0,
+            "title": "Queuecount",
+            "type": "integer"
+          },
+          "status": {
+            "const": "blocked",
+            "title": "Status",
+            "type": "string"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "status",
+          "queueCount",
+          "items",
+          "pagination"
+        ],
+        "title": "ResumeCreationQueueBlockedResponse",
+        "type": "object"
+      },
+      "ResumeCreationQueueReadyResponse": {
+        "properties": {
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ResumeQueueItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "ok": {
+            "const": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/Pagination"
+          },
+          "queueCount": {
+            "minimum": 0.0,
+            "title": "Queuecount",
+            "type": "integer"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "queueCount",
+          "items",
+          "pagination"
+        ],
+        "title": "ResumeCreationQueueReadyResponse",
+        "type": "object"
+      },
+      "ResumeQueueItem": {
+        "properties": {
+          "analyzed": {
+            "const": true,
+            "title": "Analyzed",
+            "type": "boolean"
+          },
+          "applicationId": {
+            "title": "Applicationid",
+            "type": "string"
+          },
+          "applicationStatus": {
+            "const": "To Apply",
+            "title": "Applicationstatus",
+            "type": "string"
+          },
+          "companyName": {
+            "title": "Companyname",
+            "type": "string"
+          },
+          "hasResume": {
+            "const": false,
+            "title": "Hasresume",
+            "type": "boolean"
+          },
+          "jobUrl": {
+            "title": "Joburl",
+            "type": "string"
+          },
+          "matchScore": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Matchscore",
+            "type": "integer"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "applicationId",
+          "title",
+          "companyName",
+          "role",
+          "applicationStatus",
+          "jobUrl",
+          "matchScore",
+          "analyzed",
+          "hasResume"
+        ],
+        "title": "ResumeQueueItem",
+        "type": "object"
+      },
+      "RunApplicationAnalysisRequest": {
+        "properties": {
+          "limit": {
+            "default": 5,
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "title": "RunApplicationAnalysisRequest",
+        "type": "object"
+      },
+      "RunApplicationAnalysisResponse": {
+        "discriminator": {
+          "mapping": {
+            "blocked": "#/components/schemas/ApplicationAnalysisBlockedResponse",
+            "completed": "#/components/schemas/ApplicationAnalysisCompletedResponse"
+          },
+          "propertyName": "result"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/ApplicationAnalysisCompletedResponse"
+          },
+          {
+            "$ref": "#/components/schemas/ApplicationAnalysisBlockedResponse"
+          }
+        ],
+        "title": "RunApplicationAnalysisResponse"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "WorkspaceSchemaValidationFailure": {
+        "properties": {
+          "database": {
+            "title": "Database",
+            "type": "string"
+          },
+          "kind": {
+            "const": "workspace_schema",
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "property": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Property"
+          }
+        },
+        "required": [
+          "kind",
+          "database",
+          "property",
+          "message"
+        ],
+        "title": "WorkspaceSchemaValidationFailure",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Local-first Application Capture, Analysis, and Resume Creation.",
+    "title": "Merida API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/applications/analysis/queue": {
+      "get": {
+        "operationId": "getApplicationAnalysisQueue",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 5,
+              "maximum": 10,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetApplicationAnalysisQueueResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          }
+        },
+        "summary": "Get Analysis Queue"
+      }
+    },
+    "/api/v1/applications/analysis/run": {
+      "post": {
+        "operationId": "runApplicationAnalysis",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunApplicationAnalysisRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunApplicationAnalysisResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          }
+        },
+        "summary": "Run Application Analysis"
+      }
+    },
+    "/api/v1/applications/confirm": {
+      "post": {
+        "operationId": "confirmApplication",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Capture-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Capture-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmApplicationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfirmApplicationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          }
+        },
+        "summary": "Confirm Application"
+      }
+    },
+    "/api/v1/applications/prepare": {
+      "post": {
+        "operationId": "prepareApplication",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Capture-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Capture-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrepareApplicationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrepareApplicationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          }
+        },
+        "summary": "Prepare Application"
+      }
+    },
+    "/api/v1/demo/reset": {
+      "post": {
+        "operationId": "resetDemo",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResetDemoResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          }
+        },
+        "summary": "Reset Demo"
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          }
+        },
+        "summary": "Get Health"
+      }
+    },
+    "/api/v1/health/analysis": {
+      "get": {
+        "operationId": "getApplicationAnalysisHealth",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationAnalysisHealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          }
+        },
+        "summary": "Get Analysis Health"
+      }
+    },
+    "/api/v1/health/notion": {
+      "get": {
+        "operationId": "getNotionHealth",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotionHealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          }
+        },
+        "summary": "Get Notion Health"
+      }
+    },
+    "/api/v1/health/resumes": {
+      "get": {
+        "operationId": "getResumeCreationHealth",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeCreationHealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          }
+        },
+        "summary": "Get Resume Health"
+      }
+    },
+    "/api/v1/operator/settings": {
+      "get": {
+        "operationId": "getOperatorSettings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperatorSettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          }
+        },
+        "summary": "Get Operator Settings"
+      }
+    },
+    "/api/v1/resumes/create": {
+      "post": {
+        "operationId": "createResume",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateResumeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateResumeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          }
+        },
+        "summary": "Create Resume"
+      }
+    },
+    "/api/v1/resumes/queue": {
+      "get": {
+        "operationId": "getResumeCreationQueue",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 5,
+              "maximum": 10,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetResumeCreationQueueResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          }
+        },
+        "summary": "Get Resume Queue"
+      }
+    },
+    "/api/v1/resumes/{resumeId}/pdf": {
+      "get": {
+        "operationId": "downloadResumePdf",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resumeId",
+            "required": true,
+            "schema": {
+              "title": "Resumeid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          }
+        },
+        "summary": "Download Resume Pdf"
+      }
+    }
+  }
+}

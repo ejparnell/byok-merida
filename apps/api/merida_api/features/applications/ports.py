@@ -1,10 +1,10 @@
 from typing import Protocol
 
-from .schemas import ConfirmedDraft
+from .schemas import ConfirmedApplicationDraft
 
 
 class CaptureStore(Protocol):
-    async def confirm_capture(self, draft: ConfirmedDraft) -> dict: ...
+    async def confirm_capture(self, draft: ConfirmedApplicationDraft) -> dict: ...
 
 
 class ApplicationAnalysisStore(Protocol):

@@ -1,46 +1,55 @@
-async function request(path, options = {}) {
-  const response = await fetch(path, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-  })
-  const body = await response.json().catch(() => null)
-  if (!response.ok) {
-    throw new Error(body?.error?.message || body?.errors?.[0] || `Request failed (${response.status}).`)
+import {
+  createClient,
+  createResume,
+  getApplicationAnalysisQueue,
+  getHealth,
+  getOperatorSettings,
+  getResumeCreationQueue,
+  resetDemo,
+  runApplicationAnalysis,
+} from '@merida/api-client'
+
+const operatorError = (error) => {
+  if (error instanceof Error) return error
+  return new Error(error?.error?.message || error?.errors?.[0] || 'The API request failed.')
+}
+
+const invoke = async (request) => {
+  try {
+    return await request
+  } catch (error) {
+    throw operatorError(error)
   }
-  return body
 }
 
-const queueUrl = (path, cursor) => {
-  const params = new URLSearchParams({ limit: '5' })
-  if (cursor) params.set('cursor', cursor)
-  return `${path}?${params}`
-}
+const queueQuery = (cursor) => ({ limit: 5, ...(cursor ? { cursor } : {}) })
 
-export function createDashboardClient() {
+export function createDashboardClient(options = {}) {
+  const generatedClient = createClient({
+    baseUrl: options.baseUrl || globalThis.location?.origin || 'http://127.0.0.1:8000',
+    fetch: options.fetch,
+    responseStyle: 'data',
+    throwOnError: true,
+  })
+
   return {
     async loadDashboard({ analysisCursor, resumeCursor }) {
       const [health, settings, analysisQueue, resumeQueue] = await Promise.all([
-        request('/api/v1/health'),
-        request('/api/v1/operator/settings'),
-        request(queueUrl('/api/v1/applications/analysis/queue', analysisCursor)),
-        request(queueUrl('/api/v1/resumes/queue', resumeCursor)),
+        invoke(getHealth({ client: generatedClient })),
+        invoke(getOperatorSettings({ client: generatedClient })),
+        invoke(getApplicationAnalysisQueue({ client: generatedClient, query: queueQuery(analysisCursor) })),
+        invoke(getResumeCreationQueue({ client: generatedClient, query: queueQuery(resumeCursor) })),
       ])
       return { health, settings, analysisQueue, resumeQueue }
     },
     runAnalysis(limit) {
-      return request('/api/v1/applications/analysis/run', {
-        method: 'POST',
-        body: JSON.stringify({ limit }),
-      })
+      return invoke(runApplicationAnalysis({ client: generatedClient, body: { limit } }))
     },
     createResume(applicationId) {
-      return request('/api/v1/resumes/create', {
-        method: 'POST',
-        body: JSON.stringify({ applicationId }),
-      })
+      return invoke(createResume({ client: generatedClient, body: { applicationId } }))
     },
     resetDemo() {
-      return request('/api/v1/demo/reset', { method: 'POST', body: '{}' })
+      return invoke(resetDemo({ client: generatedClient }))
     },
   }
 }

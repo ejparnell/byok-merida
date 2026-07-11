@@ -1,13 +1,14 @@
 import asyncio
 from copy import deepcopy
 from datetime import date
+import hashlib
 import json
 from pathlib import Path
 import re
 from uuid import uuid4
 
-from ..features.applications.schemas import ConfirmedDraft
-from ..shared.pagination import decode_cursor, encode_cursor
+from ..features.applications.schemas import ConfirmedApplicationDraft
+from ..shared.pagination import InvalidCursor, decode_cursor, encode_cursor
 from .pdf_export import write_simple_pdf
 
 
@@ -86,7 +87,7 @@ class DemoWorkspace:
     async def reset(self) -> dict:
         async with self._lock:
             self._save(initial_demo_state())
-        return {"ok": True, "result": "reset", "errors": []}
+        return {"ok": True, "result": "reset", "validationFailures": [], "errors": []}
 
     @staticmethod
     def _application_ref(application: dict) -> dict:
@@ -95,6 +96,8 @@ class DemoWorkspace:
             "title": f'{application["role"]} at {application["companyName"]}',
             "companyName": application["companyName"],
             "role": application["role"],
+            "location": application.get("location") or None,
+            "jobUrl": application["jobUrl"],
             "applicationStatus": application["applicationStatus"],
             "url": f'https://www.notion.so/demo/{application["id"]}',
         }
@@ -111,18 +114,27 @@ class DemoWorkspace:
         }
 
     @staticmethod
-    def _page(items: list[dict], limit: int, cursor: str | None) -> tuple[list[dict], dict]:
-        offset = decode_cursor(cursor)
+    def _page(
+        items: list[dict], limit: int, cursor: str | None, context: str
+    ) -> tuple[list[dict], dict]:
+        fingerprint = hashlib.sha256(
+            "\n".join(item["id"] for item in items).encode()
+        ).hexdigest()[:16]
+        offset = decode_cursor(cursor, context, fingerprint)
+        if offset > len(items):
+            raise InvalidCursor("Cursor is invalid or expired.")
         selected = items[offset : offset + limit]
         next_offset = offset + len(selected)
         has_more = next_offset < len(items)
         return selected, {
             "limit": limit,
-            "nextCursor": encode_cursor(next_offset) if has_more else None,
+            "nextCursor": encode_cursor(next_offset, context, fingerprint)
+            if has_more
+            else None,
             "hasMore": has_more,
         }
 
-    async def confirm_capture(self, draft: ConfirmedDraft) -> dict:
+    async def confirm_capture(self, draft: ConfirmedApplicationDraft) -> dict:
         async with self._lock:
             for application in self._state["applications"]:
                 if application["jobUrl"] == draft.job_url:
@@ -130,6 +142,7 @@ class DemoWorkspace:
                         "ok": True,
                         "result": "already_captured",
                         "application": self._application_ref(application),
+                        "validationFailures": [],
                         "errors": [],
                     }
             application = {
@@ -152,6 +165,7 @@ class DemoWorkspace:
             "ok": True,
             "result": "created",
             "application": self._application_ref(application),
+            "validationFailures": [],
             "errors": [],
         }
 
@@ -169,12 +183,13 @@ class DemoWorkspace:
 
     async def analysis_queue(self, limit: int, cursor: str | None) -> dict:
         candidates = self._analysis_candidates()
-        page, pagination = self._page(candidates, limit, cursor)
+        page, pagination = self._page(candidates, limit, cursor, "application_analysis")
         return {
             "ok": True,
             "queueCount": len(candidates),
             "items": [self._queue_ref(item) for item in page],
             "pagination": pagination,
+            "validationFailures": [],
             "errors": [],
         }
 
@@ -233,6 +248,7 @@ class DemoWorkspace:
             "failed": failed,
             "repaired": repaired,
             "items": results,
+            "validationFailures": [],
             "errors": [],
         }
 
@@ -252,7 +268,7 @@ class DemoWorkspace:
 
     async def resume_queue(self, limit: int, cursor: str | None) -> dict:
         candidates = self._resume_candidates()
-        page, pagination = self._page(candidates, limit, cursor)
+        page, pagination = self._page(candidates, limit, cursor, "resume_creation")
         items = []
         for application in page:
             items.append(
@@ -268,6 +284,7 @@ class DemoWorkspace:
             "queueCount": len(candidates),
             "items": items,
             "pagination": pagination,
+            "validationFailures": [],
             "errors": [],
         }
 
@@ -298,10 +315,19 @@ class DemoWorkspace:
                 "filename": resume["filename"],
                 "downloadUrl": f'/api/v1/resumes/{resume["id"]}/pdf',
             },
+            "validationFailures": [],
             "errors": [],
         }
         if note:
-            payload["note"] = {"id": note["id"], "title": note["title"], "url": note["url"]}
+            payload["note"] = {
+                "id": note["id"],
+                "title": note["title"],
+                "companyName": application["companyName"],
+                "role": application["role"],
+                "url": note["url"],
+            }
+        else:
+            payload["note"] = None
         return payload
 
     async def create_resume(self, application_id: str) -> dict:
@@ -312,11 +338,11 @@ class DemoWorkspace:
                 None,
             )
             if not application:
-                return {"ok": False, "status": "blocked", "result": "blocked", "cleanup": {}, "validationFailures": [], "errors": ["Application was not found."]}
+                return {"ok": False, "status": "blocked", "result": "blocked", "cleanup": {"status": "not_required", "errors": []}, "validationFailures": [], "errors": ["Application was not found."]}
             if application["resumeId"]:
                 return self._existing_resume_result(application)
             if application not in self._resume_candidates():
-                return {"ok": False, "status": "blocked", "result": "blocked", "cleanup": {}, "validationFailures": [], "errors": ["Application is not eligible for Resume Creation."]}
+                return {"ok": False, "status": "blocked", "result": "blocked", "cleanup": {"status": "not_required", "errors": []}, "validationFailures": [], "errors": ["Application is not eligible for Resume Creation."]}
 
             resume_id = f"resume-{uuid4().hex[:10]}"
             note_id = f"note-{uuid4().hex[:10]}"
@@ -359,7 +385,10 @@ class DemoWorkspace:
                     "ok": False,
                     "status": "failed",
                     "result": "failed",
-                    "cleanup": {"relationsCleared": True, "draftResumeArchived": True, "draftNoteArchived": True, "pdfDeleted": not pdf_path.exists()},
+                    "cleanup": {
+                        "status": "completed" if not pdf_path.exists() else "incomplete",
+                        "errors": [] if not pdf_path.exists() else ["Generated PDF could not be removed."],
+                    },
                     "validationFailures": [],
                     "errors": ["Resume artifacts could not be committed."],
                 }

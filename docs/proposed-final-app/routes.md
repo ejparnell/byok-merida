@@ -4,22 +4,33 @@ These are backend routes for the FastAPI app. They do not include React page rou
 
 The locked v1 namespace is `/api/v1`. Paths below omit that prefix for readability, but callers use `/api/v1/...` exactly.
 
+The FastAPI OpenAPI document is the wire-contract source of truth. Every public
+operation has a stable `operationId` and a named Pydantic request or response
+model. One generated Fetch package, `@merida/api-client`, serves both React
+consumers through dashboard-owned and extension-owned adapters. Handwritten
+route payload types and generic fetch layers are not part of the final app.
+
 ## Shared Route Rules
 
 ### JSON response shape
+
+All JSON responses include `ok`, `validationFailures`, and `errors`. Successful
+responses use `ok: true`; expected workflow blocks use `ok: false` with a typed
+`status` and `result`; technical HTTP errors use the common `error` object.
 
 All JSON success responses include:
 
 ```json
 {
   "ok": true,
+  "validationFailures": [],
   "errors": []
 }
 ```
 
 Routes may add `status`, `result`, `items`, `pagination`, or route-specific objects when useful.
 
-All JSON failure responses include:
+Expected workflow blocks include:
 
 ```json
 {
@@ -32,21 +43,53 @@ All JSON failure responses include:
 }
 ```
 
-Routes may add route-specific fields such as `result`, `cleanup`, or an empty `items` list. `validationFailures` is only populated for Notion schema or configuration failures.
+Routes may add route-specific fields such as `result`, `cleanup`, or an empty `items` list.
+
+Technical HTTP errors use:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "invalid_request",
+    "message": "Request validation failed.",
+    "requestId": null
+  },
+  "validationFailures": [
+    {
+      "kind": "request",
+      "field": "limit",
+      "message": "Input should be less than or equal to 10"
+    }
+  ],
+  "errors": [
+    "Request validation failed."
+  ]
+}
+```
+
+`validationFailures` is a discriminated union. Request failures use
+`kind=request`; safe backend configuration failures use `kind=configuration`;
+and Notion schema failures use `kind=workspace_schema` with database and
+property context. Clients branch on `status`, `result`, or `error.code`, never
+on human-readable messages.
 
 ### HTTP status boundary
 
-Expected workflow blocks may return `200` with `ok: false`. These are valid product outcomes, not backend crashes. Examples include insufficient Master Resume evidence, capture needing review, and Notion schema readiness blocks.
+Expected workflow blocks may return `200` with `ok: false`. These are valid product outcomes, not backend crashes. Examples include insufficient Master Resume evidence and Notion schema readiness blocks. Capture `needs_review` is a successful review outcome with `ok: true`.
 
 Technical and request failures should use HTTP status codes:
 
 | HTTP status | Use for |
 | --- | --- |
-| `400` | Invalid request body, missing required fields, invalid `limit`. |
-| `401` or `403` | Missing or invalid `X-Capture-Token` on Chrome extension write routes. |
+| `400` | `invalid_request` or `invalid_cursor`. FastAPI's default `422` body is not public. |
+| `401` | `invalid_capture_token` for either a missing or invalid capture token. |
 | `404` | Requested PDF or backend-owned resource was not found. |
+| `405` | `method_not_allowed` for a known route with the wrong HTTP method. |
 | `409` | Conflicting state that the route cannot safely treat as idempotent. |
-| `500` | Unexpected backend failure. |
+| `413` | Capture body or field exceeds the locked request limit. |
+| `415` | A JSON-body route received an unsupported content type. |
+| `500` | Sanitized `internal_error` with a correlation `requestId`. |
 
 ### Auth boundary
 
@@ -57,6 +100,14 @@ The v1 app is a local operator app.
 - Dashboard routes are intended for the local same-origin React app talking to the local FastAPI backend.
 - No user login or multi-user auth is planned for v1.
 - No secrets are accepted from the frontend.
+
+### CORS boundary
+
+- Production dashboard traffic is same-origin.
+- Development web origins and the installed `chrome-extension://` origin are explicit allow-list entries.
+- Wildcard, reflected, and credentialed origins are forbidden.
+- Browser preflight allows only `GET`, `POST`, `OPTIONS`, `Content-Type`, and `X-Capture-Token`.
+- Requests without an `Origin`, such as local CLI calls, remain possible; capture writes still require the token.
 
 ## Health Checks
 
@@ -335,6 +386,11 @@ Request body:
 
 The request may contain full captured page text. The response must not echo full `Job Content`.
 
+Capture bodies are limited to `1 MiB`. URL is limited to `4,096` characters,
+title to `1,000`, each evidence text field to `120,000`, and combined evidence
+text to `240,000`. Oversized input returns `413 payload_too_large` without
+echoing source content.
+
 Success:
 
 ```json
@@ -352,6 +408,10 @@ Success:
   "errors": []
 }
 ```
+
+An incomplete but reviewable parse is also HTTP `200` with `ok: true`, result
+`needs_review`, `needsReview: true`, typed `missingFields`, safe
+`reviewReasons`, and the partial draft. Prepare never writes to the workspace.
 
 ### `POST /applications/confirm`
 
@@ -478,6 +538,9 @@ Request body:
 The route processes the backend's next eligible batch by `limit`, independent of the dashboard's current pagination cursor. The visible queue is a preview, not a selection mechanism.
 
 The route should process a bounded batch and return one final response. Each item failure should be isolated so one bad Application does not fail the whole batch.
+
+There is no NDJSON, SSE, WebSocket, or automatic POST retry. The dashboard owns
+pending presentation until this final response arrives.
 
 The route does not intentionally rerun Application Analysis for already analyzed Applications. If it finds an existing readable `Application Analysis` section with `Analyzed = false`, it repairs the properties by setting `Analyzed = true` and recovering `Match Score` when possible. If the score cannot be recovered, `Match Score` should be left empty.
 
@@ -662,7 +725,7 @@ Success:
   },
   "pdf": {
     "filename": "exampleco-senior-software-engineer.pdf",
-    "downloadUrl": "/resumes/resume_123/pdf"
+    "downloadUrl": "/api/v1/resumes/resume_123/pdf"
   },
   "errors": []
 }
@@ -688,7 +751,7 @@ Already created:
     "url": "https://notion.so/example-resume"
   },
   "pdf": {
-    "downloadUrl": "/resumes/resume_123/pdf"
+    "downloadUrl": "/api/v1/resumes/resume_123/pdf"
   },
   "errors": []
 }
@@ -702,10 +765,8 @@ Failure:
   "status": "blocked",
   "result": "blocked",
   "cleanup": {
-    "relationsCleared": false,
-    "draftResumeArchived": false,
-    "draftNoteArchived": false,
-    "pdfDeleted": false
+    "status": "not_required",
+    "errors": []
   },
   "validationFailures": [],
   "errors": [
@@ -723,10 +784,35 @@ Failure:
 ```json
 {
   "ok": false,
-  "status": "not_found",
+  "error": {
+    "code": "pdf_not_found",
+    "message": "Resume PDF was not found.",
+    "requestId": null
+  },
   "validationFailures": [],
   "errors": [
-    "PDF export was not found for this Resume."
+    "Resume PDF was not found."
   ]
 }
 ```
+
+## Demo Administration
+
+| HTTP verb | Route | Simple explanation |
+| --- | --- | --- |
+| `POST` | `/demo/reset` | Restores deterministic fictional demo state. |
+
+`POST /demo/reset` remains in OpenAPI in both modes. It returns result `reset`
+in demo mode and `404 demo_not_active` in real mode, so both modes use one
+generated client contract.
+
+## Generated Client And Verification
+
+- `@hey-api/openapi-ts` `0.99.0` and TypeScript `5.9.3` are pinned development dependencies.
+- The accepted OpenAPI JSON and generated source are reproducible artifacts; generated files are read-only.
+- Stable operation IDs determine SDK function names, and named Pydantic models determine exported TypeScript names.
+- The generated package owns URL/query encoding, JSON serialization, response decoding, typed technical errors, and PDF typing.
+- The dashboard adapter configures same-origin transport and never sends `X-Capture-Token`.
+- The extension adapter configures the stored backend URL and sends `X-Capture-Token` only to prepare and confirm.
+- Generated transport performs no automatic POST retries. Domain-key repeat behavior remains `already_captured` by canonical Job URL and `already_created` by existing final Resume relation.
+- The deterministic FastAPI ASGI application and its emitted OpenAPI document are the highest contract test seam; both React builds must consume the same generated package.
