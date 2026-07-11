@@ -4,7 +4,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ApiModel(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+    model_config = ConfigDict(
+        extra="forbid", populate_by_name=True, serialize_by_alias=True
+    )
 
 
 class RequestValidationFailure(ApiModel):
@@ -40,8 +42,23 @@ class CommonResponse(ApiModel):
     errors: list[str]
 
 
+ApiErrorCode = Literal[
+    "invalid_request",
+    "invalid_cursor",
+    "invalid_capture_token",
+    "not_found",
+    "pdf_not_found",
+    "demo_not_active",
+    "method_not_allowed",
+    "conflict",
+    "payload_too_large",
+    "unsupported_media_type",
+    "internal_error",
+]
+
+
 class ApiErrorDetail(ApiModel):
-    code: str
+    code: ApiErrorCode
     message: str
     request_id: str | None = Field(alias="requestId")
 

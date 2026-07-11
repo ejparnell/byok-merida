@@ -55,3 +55,28 @@ test('starting a new capture requires discard confirmation when review is dirty'
   assert.equal(outcome, 'discard_confirmation_required')
   assert.equal(session.getState().review.companyName, 'Edited Example')
 })
+
+test('semantic-only evidence is converted to readable in-memory Job Content on confirm', async () => {
+  let confirmed = null
+  const client = {
+    prepare: async () => ({
+      ok: true,
+      result: 'prepared',
+      draft: { jobUrl: 'https://example.test/job', companyName: 'Example', role: 'Engineer', location: null, jobContentPreview: 'Build reliable systems.' },
+    }),
+    confirm: async (draft) => {
+      confirmed = draft
+      return { ok: true, result: 'created', application: { id: 'app-1' } }
+    },
+  }
+  const session = createCaptureSession(client)
+  const evidence = {
+    url: 'https://example.test/job',
+    semanticHtml: '<article><h1>Engineer</h1><p>Build reliable systems.</p></article>',
+  }
+
+  await session.prepare(evidence, { tabId: 1, url: evidence.url })
+  await session.confirm()
+
+  assert.equal(confirmed.jobContent, 'Engineer Build reliable systems.')
+})

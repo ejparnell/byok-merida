@@ -273,6 +273,7 @@ document form the single highest-level contract test seam.
 - The reviewed proposed route document should be reconciled to this issue before implementation tickets treat it as authoritative. In particular, it must adopt named response models, the common technical error envelope, `needs_review` prepare semantics, the fixed CORS policy, and the generated-client boundary.
 - Demo mode and real mode use the same route inventory and schemas. Mode-specific availability appears as typed results, never as a second demo-only client contract.
 - The recommended test seam was accepted from the user's instruction to proceed with the recommendations: use the FastAPI ASGI/OpenAPI boundary as the single highest seam, with generated-client compilation and consumer-adapter tests proving downstream usability.
+- The implementation materializes the logical client package in the current checkout so both React consumers can use it. Its physical directory and workspace wiring remain provisional; issue 07 may move them without changing the package name, generated surface, or public API contract.
 
 ## Answer
 

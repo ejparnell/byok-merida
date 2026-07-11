@@ -214,24 +214,33 @@ def create_app(
     async def starlette_http_exception_handler(
         _request: Request, exc: StarletteHTTPException
     ):
-        codes = {
-            404: "not_found",
-            405: "method_not_allowed",
-            415: "unsupported_media_type",
+        framework_errors = {
+            404: ("not_found", "Resource was not found."),
+            405: ("method_not_allowed", "Method is not allowed for this resource."),
+            415: ("unsupported_media_type", "Content-Type is not supported."),
         }
-        messages = {
-            404: "Resource was not found.",
-            405: "Method is not allowed for this resource.",
-            415: "Content-Type is not supported.",
-        }
+        code, message = framework_errors.get(
+            exc.status_code,
+            ("internal_error", "An unexpected backend error occurred."),
+        )
         return _error_response(
             exc.status_code,
-            codes.get(exc.status_code, "http_error"),
-            messages.get(exc.status_code, str(exc.detail)),
+            code,
+            message,
         )
 
     @app.exception_handler(RequestValidationError)
     async def request_validation_handler(_request: Request, exc: RequestValidationError):
+        if any(
+            error["type"] == "missing"
+            and tuple(error["loc"]) == ("header", "X-Capture-Token")
+            for error in exc.errors()
+        ):
+            return _error_response(
+                401,
+                "invalid_capture_token",
+                "A valid X-Capture-Token header is required.",
+            )
         if any(
             error["type"] in {"string_too_long", "payload_too_large"}
             for error in exc.errors()

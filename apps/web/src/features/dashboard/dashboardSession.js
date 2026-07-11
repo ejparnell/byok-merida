@@ -35,6 +35,10 @@ export function createDashboardSession(client, onChange = () => {}) {
       })
       return data
     } catch (error) {
+      if (error.code === 'invalid_cursor' && (analysisCursor || resumeCursor)) {
+        publish({ analysisCursor: null, resumeCursor: null, loading: false })
+        return load({ reset: true })
+      }
       publish({ loading: false, errors: [error.message || 'The local backend could not be reached.'] })
       return null
     }
@@ -58,7 +62,10 @@ export function createDashboardSession(client, onChange = () => {}) {
       try {
         const result = await client.runAnalysis(clampLimit(limit))
         publish({ analysisRunning: false, analysisResult: result })
-        if (result.ok && result.result === 'completed') {
+        const queueChanged = result.ok
+          && result.result === 'completed'
+          && ((result.processed || 0) > 0 || (result.repaired || 0) > 0)
+        if (queueChanged) {
           publish({ analysisCursor: null, resumeCursor: null })
           await load({ reset: true })
         } else {
@@ -78,9 +85,9 @@ export function createDashboardSession(client, onChange = () => {}) {
         publish({
           activeResumeId: null,
           resumeResults: { ...state.resumeResults, [applicationId]: result },
-          resumeCursor: result.ok ? null : state.resumeCursor,
+          resumeCursor: result.ok && result.result === 'created' ? null : state.resumeCursor,
         })
-        await load({ reset: Boolean(result.ok) })
+        await load()
         return result
       } catch (error) {
         publish({ activeResumeId: null, errors: [error.message || 'Resume Creation could not be completed.'] })

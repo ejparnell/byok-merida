@@ -83,7 +83,7 @@ export type ApiErrorDetail = {
     /**
      * Code
      */
-    code: string;
+    code: 'invalid_request' | 'invalid_cursor' | 'invalid_capture_token' | 'not_found' | 'pdf_not_found' | 'demo_not_active' | 'method_not_allowed' | 'conflict' | 'payload_too_large' | 'unsupported_media_type' | 'internal_error';
     /**
      * Message
      */
@@ -1358,11 +1358,11 @@ export type RunApplicationAnalysisResponse2 = RunApplicationAnalysisResponses[ke
 
 export type ConfirmApplicationData = {
     body: ConfirmApplicationRequest;
-    headers?: {
+    headers: {
         /**
          * X-Capture-Token
          */
-        'X-Capture-Token'?: string | null;
+        'X-Capture-Token': string;
     };
     path?: never;
     query?: never;
@@ -1405,11 +1405,11 @@ export type ConfirmApplicationResponse2 = ConfirmApplicationResponses[keyof Conf
 
 export type PrepareApplicationData = {
     body: PrepareApplicationRequest;
-    headers?: {
+    headers: {
         /**
          * X-Capture-Token
          */
-        'X-Capture-Token'?: string | null;
+        'X-Capture-Token': string;
     };
     path?: never;
     query?: never;

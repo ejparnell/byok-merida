@@ -1,19 +1,15 @@
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel
+from pydantic import Field, RootModel
 
-from ...shared.schemas import CommonResponse, Pagination
+from ...shared.schemas import ApiModel, CommonResponse, Pagination
 
 
-class CreateResumeRequest(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
-
+class CreateResumeRequest(ApiModel):
     application_id: str = Field(alias="applicationId", min_length=1)
 
 
-class ResumeQueueItem(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
-
+class ResumeQueueItem(ApiModel):
     application_id: str = Field(alias="applicationId")
     title: str
     company_name: str = Field(alias="companyName")
@@ -46,9 +42,7 @@ class GetResumeCreationQueueResponse(
     pass
 
 
-class ResumeApplicationSummary(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
-
+class ResumeApplicationSummary(ApiModel):
     id: str
     title: str
     company_name: str = Field(alias="companyName")
@@ -59,14 +53,12 @@ class ResumeArtifactSummary(ResumeApplicationSummary):
     url: str
 
 
-class PdfArtifactSummary(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
-
+class PdfArtifactSummary(ApiModel):
     filename: str
     download_url: str = Field(alias="downloadUrl")
 
 
-class CleanupSummary(BaseModel):
+class CleanupSummary(ApiModel):
     status: Literal["not_required", "completed", "incomplete"]
     errors: list[str]
 

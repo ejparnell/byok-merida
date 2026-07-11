@@ -18,7 +18,7 @@
     "final:typecheck": "npm run final:client && tsc -p packages/api-client/tsconfig.json --noEmit",
     "final:build": "npm run final:client && vite build apps/web && vite build apps/extension",
     "final:start": ".venv/bin/uvicorn merida_api.main:app --app-dir apps/api --host 127.0.0.1 --port 8000",
-    "test:final": "npm run final:typecheck && vite build apps/web && vite build apps/extension && node --test apps/web/src/features/dashboard/dashboardSession.test.js apps/web/src/shared/api/dashboardClient.test.js apps/extension/src/session/captureSession.test.js apps/extension/src/shared/captureClient.test.js && .venv/bin/pytest apps/api/tests",
+    "test:final": "npm run final:typecheck && vite build apps/web && vite build apps/extension && node --test apps/web/src/features/dashboard/dashboardSession.test.js apps/web/src/shared/api/dashboardClient.test.js apps/extension/src/session/captureSession.test.js apps/extension/src/shared/activeTabEvidence.test.js apps/extension/src/shared/captureClient.test.js && .venv/bin/pytest apps/api/tests",
     "prototype:frontend": "vite apps/web-prototype --host 127.0.0.1 --port 4173",
     "prototype:extension": "vite apps/extension-prototype --host 127.0.0.1 --port 4174",
     "setup:ml": "python3 -m venv .venv && .venv/bin/python -m pip install -r src/features/resumes/ml/requirements.txt",

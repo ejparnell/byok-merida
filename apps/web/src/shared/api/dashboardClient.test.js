@@ -47,6 +47,9 @@ test('dashboard adapter never retries a failed analysis POST automatically', asy
   }
   const client = createDashboardClient({ baseUrl: 'http://merida.test', fetch })
 
-  await assert.rejects(() => client.runAnalysis(5), /Analysis failed/)
+  await assert.rejects(
+    () => client.runAnalysis(5),
+    (error) => error.message === 'Analysis failed.' && error.code === 'internal_error',
+  )
   assert.equal(calls, 1)
 })

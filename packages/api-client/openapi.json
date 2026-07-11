@@ -2,6 +2,7 @@
   "components": {
     "schemas": {
       "AnalysisQueueItem": {
+        "additionalProperties": false,
         "properties": {
           "applicationId": {
             "title": "Applicationid",
@@ -41,6 +42,7 @@
         "type": "object"
       },
       "AnalysisResultItem": {
+        "additionalProperties": false,
         "properties": {
           "applicationId": {
             "title": "Applicationid",
@@ -113,8 +115,22 @@
         "type": "object"
       },
       "ApiErrorDetail": {
+        "additionalProperties": false,
         "properties": {
           "code": {
+            "enum": [
+              "invalid_request",
+              "invalid_cursor",
+              "invalid_capture_token",
+              "not_found",
+              "pdf_not_found",
+              "demo_not_active",
+              "method_not_allowed",
+              "conflict",
+              "payload_too_large",
+              "unsupported_media_type",
+              "internal_error"
+            ],
             "title": "Code",
             "type": "string"
           },
@@ -143,6 +159,7 @@
         "type": "object"
       },
       "ApiErrorResponse": {
+        "additionalProperties": false,
         "properties": {
           "error": {
             "$ref": "#/components/schemas/ApiErrorDetail"
@@ -195,6 +212,7 @@
         "type": "object"
       },
       "ApplicationAlreadyCapturedResponse": {
+        "additionalProperties": false,
         "properties": {
           "application": {
             "$ref": "#/components/schemas/CapturedApplication"
@@ -253,6 +271,7 @@
         "type": "object"
       },
       "ApplicationAnalysisBlockedResponse": {
+        "additionalProperties": false,
         "properties": {
           "errors": {
             "items": {
@@ -345,6 +364,7 @@
         "type": "object"
       },
       "ApplicationAnalysisChecks": {
+        "additionalProperties": false,
         "properties": {
           "applicationsDatabase": {
             "enum": [
@@ -403,6 +423,7 @@
         "type": "object"
       },
       "ApplicationAnalysisCompletedResponse": {
+        "additionalProperties": false,
         "properties": {
           "errors": {
             "items": {
@@ -489,6 +510,7 @@
         "type": "object"
       },
       "ApplicationAnalysisHealthResponse": {
+        "additionalProperties": false,
         "properties": {
           "checks": {
             "$ref": "#/components/schemas/ApplicationAnalysisChecks"
@@ -555,6 +577,7 @@
         "type": "object"
       },
       "ApplicationAnalysisQueueBlockedResponse": {
+        "additionalProperties": false,
         "properties": {
           "errors": {
             "items": {
@@ -627,6 +650,7 @@
         "type": "object"
       },
       "ApplicationAnalysisQueueReadyResponse": {
+        "additionalProperties": false,
         "properties": {
           "errors": {
             "items": {
@@ -693,6 +717,7 @@
         "type": "object"
       },
       "ApplicationCaptureBlockedResponse": {
+        "additionalProperties": false,
         "properties": {
           "errors": {
             "items": {
@@ -753,6 +778,7 @@
         "type": "object"
       },
       "ApplicationCreatedResponse": {
+        "additionalProperties": false,
         "properties": {
           "application": {
             "$ref": "#/components/schemas/CapturedApplication"
@@ -811,6 +837,7 @@
         "type": "object"
       },
       "ApplicationNeedsReviewResponse": {
+        "additionalProperties": false,
         "properties": {
           "draft": {
             "$ref": "#/components/schemas/PreparedApplicationDraft"
@@ -891,6 +918,7 @@
         "type": "object"
       },
       "CaptureEvidence": {
+        "additionalProperties": false,
         "properties": {
           "selectedText": {
             "default": "",
@@ -930,6 +958,7 @@
         "type": "object"
       },
       "CapturedApplication": {
+        "additionalProperties": false,
         "properties": {
           "applicationStatus": {
             "const": "To Apply",
@@ -986,6 +1015,7 @@
         "type": "object"
       },
       "CleanupSummary": {
+        "additionalProperties": false,
         "properties": {
           "errors": {
             "items": {
@@ -1012,6 +1042,7 @@
         "type": "object"
       },
       "ConfigurationValidationFailure": {
+        "additionalProperties": false,
         "properties": {
           "kind": {
             "const": "configuration",
@@ -1036,6 +1067,7 @@
         "type": "object"
       },
       "ConfirmApplicationRequest": {
+        "additionalProperties": false,
         "properties": {
           "draft": {
             "$ref": "#/components/schemas/ConfirmedApplicationDraft"
@@ -1070,6 +1102,7 @@
         "title": "ConfirmApplicationResponse"
       },
       "ConfirmedApplicationDraft": {
+        "additionalProperties": false,
         "properties": {
           "companyName": {
             "maxLength": 200,
@@ -1118,6 +1151,7 @@
         "type": "object"
       },
       "CreateResumeRequest": {
+        "additionalProperties": false,
         "properties": {
           "applicationId": {
             "minLength": 1,
@@ -1193,6 +1227,7 @@
         "type": "object"
       },
       "HealthChecks": {
+        "additionalProperties": false,
         "properties": {
           "analysis": {
             "enum": [
@@ -1241,6 +1276,7 @@
         "type": "object"
       },
       "HealthResponse": {
+        "additionalProperties": false,
         "properties": {
           "checks": {
             "$ref": "#/components/schemas/HealthChecks"
@@ -1316,6 +1352,7 @@
         "type": "object"
       },
       "NotionDatabaseChecks": {
+        "additionalProperties": false,
         "properties": {
           "applications": {
             "enum": [
@@ -1354,6 +1391,7 @@
         "type": "object"
       },
       "NotionHealthResponse": {
+        "additionalProperties": false,
         "properties": {
           "databases": {
             "$ref": "#/components/schemas/NotionDatabaseChecks"
@@ -1423,6 +1461,7 @@
         "type": "object"
       },
       "OperatorConfigured": {
+        "additionalProperties": false,
         "properties": {
           "deepseek": {
             "title": "Deepseek",
@@ -1441,6 +1480,7 @@
         "type": "object"
       },
       "OperatorModels": {
+        "additionalProperties": false,
         "properties": {
           "analysis": {
             "title": "Analysis",
@@ -1459,6 +1499,7 @@
         "type": "object"
       },
       "OperatorSettingsResponse": {
+        "additionalProperties": false,
         "properties": {
           "configured": {
             "$ref": "#/components/schemas/OperatorConfigured"
@@ -1532,6 +1573,7 @@
         "type": "object"
       },
       "Pagination": {
+        "additionalProperties": false,
         "properties": {
           "hasMore": {
             "title": "Hasmore",
@@ -1564,6 +1606,7 @@
         "type": "object"
       },
       "PdfArtifactSummary": {
+        "additionalProperties": false,
         "properties": {
           "downloadUrl": {
             "title": "Downloadurl",
@@ -1582,6 +1625,7 @@
         "type": "object"
       },
       "PrepareApplicationRequest": {
+        "additionalProperties": false,
         "properties": {
           "evidence": {
             "$ref": "#/components/schemas/CaptureEvidence"
@@ -1612,6 +1656,7 @@
         "title": "PrepareApplicationResponse"
       },
       "PreparedApplicationDraft": {
+        "additionalProperties": false,
         "properties": {
           "companyName": {
             "anyOf": [
@@ -1666,6 +1711,7 @@
         "type": "object"
       },
       "PreparedApplicationResponse": {
+        "additionalProperties": false,
         "properties": {
           "draft": {
             "$ref": "#/components/schemas/PreparedApplicationDraft"
@@ -1746,6 +1792,7 @@
         "type": "object"
       },
       "RequestValidationFailure": {
+        "additionalProperties": false,
         "properties": {
           "field": {
             "title": "Field",
@@ -1770,6 +1817,7 @@
         "type": "object"
       },
       "ResetDemoResponse": {
+        "additionalProperties": false,
         "properties": {
           "errors": {
             "items": {
@@ -1824,6 +1872,7 @@
         "type": "object"
       },
       "ResumeAlreadyCreatedResponse": {
+        "additionalProperties": false,
         "properties": {
           "application": {
             "$ref": "#/components/schemas/ResumeApplicationSummary"
@@ -1908,6 +1957,7 @@
         "type": "object"
       },
       "ResumeApplicationSummary": {
+        "additionalProperties": false,
         "properties": {
           "companyName": {
             "title": "Companyname",
@@ -1936,6 +1986,7 @@
         "type": "object"
       },
       "ResumeArtifactSummary": {
+        "additionalProperties": false,
         "properties": {
           "companyName": {
             "title": "Companyname",
@@ -1969,6 +2020,7 @@
         "type": "object"
       },
       "ResumeCreatedResponse": {
+        "additionalProperties": false,
         "properties": {
           "application": {
             "$ref": "#/components/schemas/ResumeApplicationSummary"
@@ -2039,6 +2091,7 @@
         "type": "object"
       },
       "ResumeCreationBlockedResponse": {
+        "additionalProperties": false,
         "properties": {
           "cleanup": {
             "$ref": "#/components/schemas/CleanupSummary"
@@ -2103,6 +2156,7 @@
         "type": "object"
       },
       "ResumeCreationChecks": {
+        "additionalProperties": false,
         "properties": {
           "deepseek": {
             "enum": [
@@ -2161,6 +2215,7 @@
         "type": "object"
       },
       "ResumeCreationFailedResponse": {
+        "additionalProperties": false,
         "properties": {
           "cleanup": {
             "$ref": "#/components/schemas/CleanupSummary"
@@ -2225,6 +2280,7 @@
         "type": "object"
       },
       "ResumeCreationHealthResponse": {
+        "additionalProperties": false,
         "properties": {
           "checks": {
             "$ref": "#/components/schemas/ResumeCreationChecks"
@@ -2291,6 +2347,7 @@
         "type": "object"
       },
       "ResumeCreationQueueBlockedResponse": {
+        "additionalProperties": false,
         "properties": {
           "errors": {
             "items": {
@@ -2363,6 +2420,7 @@
         "type": "object"
       },
       "ResumeCreationQueueReadyResponse": {
+        "additionalProperties": false,
         "properties": {
           "errors": {
             "items": {
@@ -2429,6 +2487,7 @@
         "type": "object"
       },
       "ResumeQueueItem": {
+        "additionalProperties": false,
         "properties": {
           "analyzed": {
             "const": true,
@@ -2487,6 +2546,7 @@
         "type": "object"
       },
       "RunApplicationAnalysisRequest": {
+        "additionalProperties": false,
         "properties": {
           "limit": {
             "default": 5,
@@ -2558,6 +2618,7 @@
         "type": "object"
       },
       "WorkspaceSchemaValidationFailure": {
+        "additionalProperties": false,
         "properties": {
           "database": {
             "title": "Database",
@@ -2745,17 +2806,10 @@
           {
             "in": "header",
             "name": "X-Capture-Token",
-            "required": false,
+            "required": true,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Capture-Token"
+              "title": "X-Capture-Token",
+              "type": "string"
             }
           }
         ],
@@ -2841,17 +2895,10 @@
           {
             "in": "header",
             "name": "X-Capture-Token",
-            "required": false,
+            "required": true,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Capture-Token"
+              "title": "X-Capture-Token",
+              "type": "string"
             }
           }
         ],

@@ -8,6 +8,14 @@ const EMPTY_STATE = {
   errors: [],
 }
 
+const readableJobContent = (evidence) => {
+  const semanticText = String(evidence.semanticHtml || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return evidence.selectedText?.trim() || evidence.visibleText?.trim() || semanticText
+}
+
 export function createCaptureSession(client, onChange = () => {}) {
   let state = { ...EMPTY_STATE }
 
@@ -62,7 +70,7 @@ export function createCaptureSession(client, onChange = () => {}) {
       if (!state.review || !state.evidence || state.phase === 'confirming') return null
       const required = ['companyName', 'role', 'jobUrl']
       const missing = required.filter((field) => !String(state.review[field] || '').trim())
-      const jobContent = state.evidence.selectedText?.trim() || state.evidence.visibleText?.trim() || ''
+      const jobContent = readableJobContent(state.evidence)
       if (jobContent.length < 20) missing.push('jobContent')
       if (missing.length) {
         publish({ errors: [`Required fields are missing: ${missing.join(', ')}.`] })

@@ -206,6 +206,23 @@ def test_analysis_and_resume_workflows_move_items_between_eligible_queues(tmp_pa
         assert analyzed_id not in {item["applicationId"] for item in refreshed["items"]}
 
 
+def test_already_created_resume_reports_a_missing_historical_pdf_as_null(tmp_path):
+    with make_client(tmp_path) as client:
+        resume_queue = client.get("/api/v1/resumes/queue", params={"limit": 1}).json()
+        application_id = resume_queue["items"][0]["applicationId"]
+        created = client.post(
+            "/api/v1/resumes/create", json={"applicationId": application_id}
+        ).json()
+        (tmp_path / "export" / created["pdf"]["filename"]).unlink()
+
+        existing = client.post(
+            "/api/v1/resumes/create", json={"applicationId": application_id}
+        ).json()
+
+    assert existing["result"] == "already_created"
+    assert existing["pdf"] is None
+
+
 def test_invalid_cursor_is_a_request_error_not_a_workflow_block(tmp_path):
     with make_client(tmp_path) as client:
         response = client.get(
@@ -270,6 +287,37 @@ def test_request_validation_uses_the_public_error_envelope(tmp_path):
         ],
         "errors": ["Request validation failed."],
     }
+
+
+def test_requests_reject_extra_fields_and_whitespace_only_capture_values(tmp_path):
+    headers = {"X-Capture-Token": "test-capture-token"}
+
+    with make_client(tmp_path) as client:
+        extra = client.post(
+            "/api/v1/resumes/create",
+            json={"applicationId": "app-orbit", "model": "other", "prompt": "x"},
+        )
+        whitespace = client.post(
+            "/api/v1/applications/confirm",
+            headers=headers,
+            json={
+                "draft": {
+                    "jobUrl": "https://example.com/jobs/42",
+                    "companyName": "   ",
+                    "role": "Engineer",
+                    "location": None,
+                    "jobContent": " " * 25,
+                }
+            },
+        )
+
+    assert extra.status_code == 400
+    assert {failure["field"] for failure in extra.json()["validationFailures"]} == {
+        "model",
+        "prompt",
+    }
+    assert whitespace.status_code == 400
+    assert whitespace.json()["error"]["code"] == "invalid_request"
 
 
 def test_capture_authentication_uses_the_same_safe_error_envelope(tmp_path):
@@ -547,6 +595,27 @@ def test_openapi_locks_the_public_route_inventory_and_named_responses(tmp_path):
         "ConfirmCaptureRequest",
         "AnalysisRunRequest",
     } & component_names
+    capture_header = next(
+        parameter
+        for parameter in schema["paths"]["/api/v1/applications/prepare"]["post"][
+            "parameters"
+        ]
+        if parameter["name"] == "X-Capture-Token"
+    )
+    assert capture_header["required"] is True
+    assert set(schema["components"]["schemas"]["ApiErrorDetail"]["properties"]["code"]["enum"]) == {
+        "invalid_request",
+        "invalid_cursor",
+        "invalid_capture_token",
+        "not_found",
+        "pdf_not_found",
+        "demo_not_active",
+        "method_not_allowed",
+        "conflict",
+        "payload_too_large",
+        "unsupported_media_type",
+        "internal_error",
+    }
 
 
 def test_emitted_openapi_matches_the_accepted_client_contract(tmp_path):

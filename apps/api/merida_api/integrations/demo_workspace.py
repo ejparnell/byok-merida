@@ -150,7 +150,7 @@ class DemoWorkspace:
                 "companyName": draft.company_name.strip(),
                 "role": draft.role.strip(),
                 "jobUrl": draft.job_url,
-                "location": draft.location.strip(),
+                "location": draft.location,
                 "jobContent": draft.job_content.strip(),
                 "applicationStatus": "To Apply",
                 "dateFound": date.today().isoformat(),
@@ -291,7 +291,10 @@ class DemoWorkspace:
     def _existing_resume_result(self, application: dict) -> dict:
         resume = self._state["resumes"][application["resumeId"]]
         note = self._state["notes"].get(resume["noteId"])
-        return self._resume_result("already_created", application, resume, note)
+        result = self._resume_result("already_created", application, resume, note)
+        if self.pdf_path(resume["id"]) is None:
+            result["pdf"] = None
+        return result
 
     @staticmethod
     def _resume_result(result: str, application: dict, resume: dict, note: dict | None) -> dict:

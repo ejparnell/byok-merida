@@ -2,21 +2,9 @@ import {
   confirmApplication,
   createClient,
   getHealth,
+  invokeApi,
   prepareApplication,
 } from '@merida/api-client'
-
-const operatorError = (error) => {
-  if (error instanceof Error) return error
-  return new Error(error?.error?.message || error?.errors?.[0] || 'The API request failed.')
-}
-
-const invoke = async (request) => {
-  try {
-    return await request
-  } catch (error) {
-    throw operatorError(error)
-  }
-}
 
 export function createCaptureClient(settings, options = {}) {
   const generatedClient = createClient({
@@ -28,13 +16,13 @@ export function createCaptureClient(settings, options = {}) {
   const protectedHeaders = () => ({ 'X-Capture-Token': settings.captureToken })
 
   return {
-    health: () => invoke(getHealth({ client: generatedClient })),
-    prepare: (evidence) => invoke(prepareApplication({
+    health: () => invokeApi(getHealth({ client: generatedClient })),
+    prepare: (evidence) => invokeApi(prepareApplication({
       client: generatedClient,
       body: { evidence },
       headers: protectedHeaders(),
     })),
-    confirm: (draft) => invoke(confirmApplication({
+    confirm: (draft) => invokeApi(confirmApplication({
       client: generatedClient,
       body: { draft },
       headers: protectedHeaders(),

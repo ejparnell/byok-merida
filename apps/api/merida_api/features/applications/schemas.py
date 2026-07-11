@@ -1,14 +1,10 @@
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator, model_validator
+from pydantic import Field, RootModel, field_validator, model_validator
 from pydantic_core import PydanticCustomError
 
-from ...shared.schemas import CommonResponse, Pagination
-
-
-class ApiModel(BaseModel):
-    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+from ...shared.schemas import ApiModel, CommonResponse, Pagination
 
 
 class CaptureEvidence(ApiModel):
@@ -21,7 +17,8 @@ class CaptureEvidence(ApiModel):
     @field_validator("url")
     @classmethod
     def validate_url(cls, value: str) -> str:
-        parts = urlsplit(value.strip())
+        value = value.strip()
+        parts = urlsplit(value)
         if parts.scheme not in {"http", "https"} or not parts.netloc:
             raise ValueError("URL must be an absolute HTTP(S) URL.")
         return value
@@ -51,6 +48,18 @@ class ConfirmedApplicationDraft(ApiModel):
     role: str = Field(min_length=1, max_length=200)
     location: str | None = Field(default=None, max_length=300)
     job_content: str = Field(alias="jobContent", min_length=20, max_length=120_000)
+
+    @field_validator("company_name", "role", "job_content", mode="before")
+    @classmethod
+    def strip_required_text(cls, value: str) -> str:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("location", mode="before")
+    @classmethod
+    def strip_optional_text(cls, value: str | None) -> str | None:
+        if not isinstance(value, str):
+            return value
+        return value.strip() or None
 
     @field_validator("job_url")
     @classmethod

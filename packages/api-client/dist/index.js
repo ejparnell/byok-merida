@@ -716,6 +716,24 @@ var downloadResumePdf = (options) => (options.client ?? client).get({
 	...options
 });
 //#endregion
-export { confirmApplication, createClient, createResume, downloadResumePdf, getApplicationAnalysisHealth, getApplicationAnalysisQueue, getHealth, getNotionHealth, getOperatorSettings, getResumeCreationHealth, getResumeCreationQueue, prepareApplication, resetDemo, runApplicationAnalysis };
+//#region packages/api-client/src/operatorError.ts
+var toOperatorError = (error) => {
+	if (error instanceof Error) return error;
+	const payload = error;
+	const operatorError = new Error(payload?.error?.message || payload?.errors?.[0] || "The API request failed.");
+	operatorError.code = payload?.error?.code;
+	operatorError.requestId = payload?.error?.requestId;
+	operatorError.validationFailures = payload?.validationFailures;
+	return operatorError;
+};
+var invokeApi = async (request) => {
+	try {
+		return await request;
+	} catch (error) {
+		throw toOperatorError(error);
+	}
+};
+//#endregion
+export { confirmApplication, createClient, createResume, downloadResumePdf, getApplicationAnalysisHealth, getApplicationAnalysisQueue, getHealth, getNotionHealth, getOperatorSettings, getResumeCreationHealth, getResumeCreationQueue, invokeApi, prepareApplication, resetDemo, runApplicationAnalysis, toOperatorError };
 
 //# sourceMappingURL=index.js.map
