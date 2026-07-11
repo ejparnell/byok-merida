@@ -290,7 +290,8 @@ class DemoWorkspace:
 
     def _existing_resume_result(self, application: dict) -> dict:
         resume = self._state["resumes"][application["resumeId"]]
-        note = self._state["notes"].get(resume["noteId"])
+        note_id = resume.get("noteId")
+        note = self._state["notes"].get(note_id) if note_id else None
         result = self._resume_result("already_created", application, resume, note)
         if self.pdf_path(resume["id"]) is None:
             result["pdf"] = None

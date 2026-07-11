@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 import logging
 from pathlib import Path
+from typing import cast, get_args
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Path as ApiPath, Query, Request
@@ -33,6 +34,7 @@ from .integrations.demo_workspace import DemoWorkspace
 from .shared.pagination import InvalidCursor
 from .shared.schemas import (
     ApiErrorResponse,
+    ApiErrorCode,
     ApplicationAnalysisHealthResponse,
     HealthResponse,
     NotionHealthResponse,
@@ -81,7 +83,7 @@ def _health(settings: Settings) -> dict:
 
 def _error_response(
     status_code: int,
-    code: str,
+    code: ApiErrorCode,
     message: str,
     *,
     validation_failures: list[dict] | None = None,
@@ -100,6 +102,12 @@ def _error_response(
             "errors": [message],
         },
     )
+
+
+def _public_error_code(value: object, status_code: int) -> ApiErrorCode:
+    if value in get_args(ApiErrorCode):
+        return cast(ApiErrorCode, value)
+    return "internal_error" if status_code >= 500 else "invalid_request"
 
 
 def create_app(
@@ -203,10 +211,14 @@ def create_app(
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(_request: Request, exc: HTTPException):
-        detail = exc.detail if isinstance(exc.detail, dict) else {"code": "http_error", "message": str(exc.detail)}
+        detail = (
+            exc.detail
+            if isinstance(exc.detail, dict)
+            else {"message": str(exc.detail)}
+        )
         return _error_response(
             exc.status_code,
-            detail.get("code", "http_error"),
+            _public_error_code(detail.get("code"), exc.status_code),
             detail.get("message", "Request failed."),
         )
 

@@ -135,3 +135,25 @@ test('created resume resets only the Resume Creation Queue cursor', async () => 
 
   assert.deepEqual(loads, [['analysis-page', null]])
 })
+
+test('failure-only analysis preserves valid queue cursors', async () => {
+  const loads = []
+  const client = {
+    loadDashboard: async ({ analysisCursor, resumeCursor }) => {
+      loads.push([analysisCursor, resumeCursor])
+      return {
+        health: { checks: { analysis: 'ready', resumes: 'ready' } },
+        settings: { models: { analysis: 'demo', resumes: 'demo' } },
+        analysisQueue: { queueCount: 1, items: [], pagination: { nextCursor: null } },
+        resumeQueue: { queueCount: 0, items: [], pagination: { nextCursor: null } },
+      }
+    },
+    runAnalysis: async () => ({ ok: true, result: 'completed', processed: 1, succeeded: 0, failed: 1, repaired: 0, items: [{ result: 'failed' }] }),
+  }
+  const session = createDashboardSession(client)
+  session.setCursors('analysis-page', 'resume-page')
+
+  await session.runAnalysis(1)
+
+  assert.deepEqual(loads, [['analysis-page', 'resume-page']])
+})

@@ -64,7 +64,7 @@ export function createDashboardSession(client, onChange = () => {}) {
         publish({ analysisRunning: false, analysisResult: result })
         const queueChanged = result.ok
           && result.result === 'completed'
-          && ((result.processed || 0) > 0 || (result.repaired || 0) > 0)
+          && ((result.succeeded || 0) > 0 || (result.repaired || 0) > 0)
         if (queueChanged) {
           publish({ analysisCursor: null, resumeCursor: null })
           await load({ reset: true })

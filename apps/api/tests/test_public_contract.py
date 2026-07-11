@@ -1,11 +1,12 @@
 import json
 from pathlib import Path
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from merida_api.app import create_app
 from merida_api.core.settings import Settings
-from merida_api.integrations.demo_workspace import DemoWorkspace
+from merida_api.integrations.demo_workspace import DemoWorkspace, initial_demo_state
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -213,7 +214,9 @@ def test_already_created_resume_reports_a_missing_historical_pdf_as_null(tmp_pat
         created = client.post(
             "/api/v1/resumes/create", json={"applicationId": application_id}
         ).json()
+        download = client.get(created["pdf"]["downloadUrl"])
         (tmp_path / "export" / created["pdf"]["filename"]).unlink()
+        missing_download = client.get(created["pdf"]["downloadUrl"])
 
         existing = client.post(
             "/api/v1/resumes/create", json={"applicationId": application_id}
@@ -221,6 +224,199 @@ def test_already_created_resume_reports_a_missing_historical_pdf_as_null(tmp_pat
 
     assert existing["result"] == "already_created"
     assert existing["pdf"] is None
+    assert download.status_code == 200
+    assert download.headers["content-type"] == "application/pdf"
+    assert download.content.startswith(b"%PDF")
+    assert missing_download.status_code == 404
+    assert missing_download.json()["error"]["code"] == "pdf_not_found"
+
+
+def test_already_created_resume_allows_missing_historical_note_and_pdf(tmp_path):
+    state = initial_demo_state()
+    application = next(item for item in state["applications"] if item["id"] == "app-orbit")
+    application["resumeId"] = "resume-historical"
+    state["resumes"]["resume-historical"] = {
+        "id": "resume-historical",
+        "title": "Platform Engineer at Orbit Works",
+        "url": "https://www.notion.so/demo/resume-historical",
+        "filename": "missing.pdf",
+    }
+    state_path = tmp_path / "state.json"
+    state_path.write_text(json.dumps(state))
+    settings = Settings(
+        merida_mode="demo",
+        demo_state_path=state_path,
+        export_path=tmp_path / "export",
+    )
+
+    with TestClient(create_app(settings)) as client:
+        existing = client.post(
+            "/api/v1/resumes/create", json={"applicationId": "app-orbit"}
+        ).json()
+
+    assert existing["result"] == "already_created"
+    assert existing["note"] is None
+    assert existing["pdf"] is None
+
+
+def test_real_mode_exposes_typed_blocked_health_queues_and_resume_outcome(tmp_path):
+    settings = Settings(
+        merida_mode="real",
+        demo_state_path=tmp_path / "state.json",
+        export_path=tmp_path / "export",
+    )
+
+    with TestClient(create_app(settings)) as client:
+        health = client.get("/api/v1/health")
+        analysis_queue = client.get("/api/v1/applications/analysis/queue")
+        resume_queue = client.get("/api/v1/resumes/queue")
+        resume = client.post(
+            "/api/v1/resumes/create", json={"applicationId": "app-orbit"}
+        )
+
+    assert health.status_code == 200
+    assert health.json()["status"] == "blocked"
+    for queue in (analysis_queue, resume_queue):
+        assert queue.status_code == 200
+        assert queue.json()["status"] == "blocked"
+        assert queue.json()["items"] == []
+    assert resume.status_code == 200
+    assert resume.json()["result"] == "blocked"
+    assert resume.json()["cleanup"]["status"] == "not_required"
+
+
+def test_analysis_repairs_existing_findings_without_rerunning_work(tmp_path):
+    state = initial_demo_state()
+    application = next(item for item in state["applications"] if item["id"] == "app-northstar")
+    application["analysis"] = {"summary": "Existing findings", "skillSignals": ["React"]}
+    application["matchScore"] = 77
+    state_path = tmp_path / "state.json"
+    state_path.write_text(json.dumps(state))
+    settings = Settings(
+        merida_mode="demo",
+        demo_state_path=state_path,
+        export_path=tmp_path / "export",
+    )
+
+    with TestClient(create_app(settings)) as client:
+        response = client.post(
+            "/api/v1/applications/analysis/run", json={"limit": 1}
+        )
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["result"] == "repaired"
+    assert response.json()["repaired"] == 1
+
+
+def test_public_seam_serializes_partial_analysis_and_failed_resume_outcomes(tmp_path):
+    class OutcomeWorkspace(DemoWorkspace):
+        async def run_analysis(self, limit):
+            return {
+                "ok": True,
+                "result": "completed",
+                "processed": 2,
+                "succeeded": 1,
+                "failed": 1,
+                "repaired": 0,
+                "items": [
+                    {
+                        "applicationId": "app-1",
+                        "title": "Engineer at Example",
+                        "companyName": "Example",
+                        "role": "Engineer",
+                        "applicationStatus": "To Apply",
+                        "jobUrl": "https://example.test/job-1",
+                        "result": "analyzed",
+                        "matchScore": 80,
+                        "errors": [],
+                    },
+                    {
+                        "applicationId": "app-2",
+                        "title": "Developer at Example",
+                        "companyName": "Example",
+                        "role": "Developer",
+                        "applicationStatus": "To Apply",
+                        "jobUrl": "https://example.test/job-2",
+                        "result": "failed",
+                        "matchScore": None,
+                        "errors": ["Application Analysis failed for this item."],
+                    },
+                ],
+                "validationFailures": [],
+                "errors": [],
+            }
+
+        async def create_resume(self, application_id):
+            return {
+                "ok": False,
+                "status": "failed",
+                "result": "failed",
+                "cleanup": {
+                    "status": "incomplete",
+                    "errors": ["Generated PDF could not be removed."],
+                },
+                "validationFailures": [],
+                "errors": ["Resume artifacts could not be committed."],
+            }
+
+    settings = Settings(
+        merida_mode="demo",
+        demo_state_path=tmp_path / "state.json",
+        export_path=tmp_path / "export",
+    )
+    workspace = OutcomeWorkspace(settings.demo_state_path, settings.export_path)
+
+    with TestClient(create_app(settings, workspace=workspace)) as client:
+        analysis = client.post(
+            "/api/v1/applications/analysis/run", json={"limit": 2}
+        )
+        resume = client.post(
+            "/api/v1/resumes/create", json={"applicationId": "app-1"}
+        )
+
+    assert analysis.status_code == 200
+    assert analysis.json()["failed"] == 1
+    assert {item["result"] for item in analysis.json()["items"]} == {
+        "analyzed",
+        "failed",
+    }
+    assert resume.status_code == 200
+    assert resume.json()["result"] == "failed"
+    assert resume.json()["cleanup"]["status"] == "incomplete"
+
+
+def test_invalid_json_and_conflict_use_the_locked_technical_envelope(tmp_path):
+    class ConflictWorkspace(DemoWorkspace):
+        async def run_analysis(self, limit):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "conflict",
+                    "message": "Application Analysis is already running.",
+                },
+            )
+
+    settings = Settings(
+        merida_mode="demo",
+        demo_state_path=tmp_path / "state.json",
+        export_path=tmp_path / "export",
+    )
+    workspace = ConflictWorkspace(settings.demo_state_path, settings.export_path)
+
+    with TestClient(create_app(settings, workspace=workspace)) as client:
+        invalid_json = client.post(
+            "/api/v1/applications/analysis/run",
+            content="{",
+            headers={"Content-Type": "application/json"},
+        )
+        conflict = client.post(
+            "/api/v1/applications/analysis/run", json={"limit": 1}
+        )
+
+    assert invalid_json.status_code == 400
+    assert invalid_json.json()["error"]["code"] == "invalid_request"
+    assert conflict.status_code == 409
+    assert conflict.json()["error"]["code"] == "conflict"
 
 
 def test_invalid_cursor_is_a_request_error_not_a_workflow_block(tmp_path):
