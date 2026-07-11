@@ -24,6 +24,8 @@ Produce a coherent, decision-complete implementation specification and dependenc
 
 - [Inventory the prototype behaviors that define migration parity](issues/01-inventory-prototype-parity-contract.md) — Versioned parity now protects workflow outcomes, evidence guardrails, semantic Notion effects, idempotency, artifacts, and cleanup while explicitly superseding legacy UI, transport, runtime, template, and local-path details.
 - [Validate the external AI and runtime dependency assumptions](issues/02-validate-external-ai-runtime-assumptions.md) — FastAPI, Pydantic, LangGraph, DeepSeek V4, and generated OpenAPI clients have a compatible, pinned candidate baseline; JSON is the v1 prompt format because no Python TOON implementation currently passes Merida's acceptance bar.
+- [Prototype the critical dashboard and extension interactions](issues/03-prototype-critical-operator-interactions.md) — The selected Workflow Overview dashboard and Focused Flow side panel establish two interaction seams, eligible-only queues, pending plus final results, retained Resume outputs, review-first Capture, dirty-form protection, and source-page provenance without preserving disposable prototype code.
+- [Choose the target module seams and ownership model](issues/04-choose-target-module-seams.md) — Applications now owns pursuit workflows behind narrow workflow-specific store and model interfaces, with deterministic Matching as a shared leaf and Resume artifact commit kept inside Resumes.
 
 ## Not yet specified
 

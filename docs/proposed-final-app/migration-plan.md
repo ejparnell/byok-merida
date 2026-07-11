@@ -1,237 +1,63 @@
 # Migration Plan
 
-This plan moves the working prototype toward the proposed FastAPI and React app without throwing away the proven workflow.
+This plan migrates the proven Node prototype into the FastAPI and React target one workflow at a time. The prototype remains runnable until each workflow passes parity at its public module interface.
 
-The safest path is to preserve contracts first, then replace the runtime shell, then replace the UI surfaces.
+## Current State
 
-## Phase 0: Preserve The Prototype Contract
+Completed:
 
-Status: documentation phase.
+- versioned prototype parity inventory
+- accepted dashboard and extension interaction prototypes
+- target workflow module seams and dependency direction
+- FastAPI `/api/v1` shell and OpenAPI schema
+- workflow-owned Python store interfaces
+- persisted demo adapter and deterministic demo workflow results
+- production React `/dashboard`
+- production React MV3 review-first side panel
+- PDF download and demo reset
+- public REST and UI-session tests
 
-Goals:
+Not yet cut over:
 
-- keep current docs as the source of truth for the working prototype
-- add proposed final-app docs under `docs/proposed-final-app`
-- list current response contracts and workflow guardrails
-- identify behavior that must not regress during the rewrite
+- real Notion store adapters
+- real DeepSeek task-specific model adapters
+- Python ports of the full Matching and evidence-validation policies
+- real Resume artifact commit and compensation
+- parity-based retirement of Node workflow routes
 
-Exit criteria:
+## Cutover Rule
 
-- target architecture is documented
-- target codebase structure is documented
-- target workflows are documented
-- migration plan is documented
+Each workflow is a vertical migration slice. A slice may cut over only when:
 
-## Phase 1: Contract Inventory
+1. the real adapter satisfies the workflow-owned interface conformance suite;
+2. every relevant `parity_required` and `target_addition` fixture passes;
+3. forbidden effects and private-data logging checks pass;
+4. idempotency, commit ordering, and cleanup cases pass;
+5. the React caller works through the same OpenAPI contract used by demo mode;
+6. the prototype route remains available as a fallback until the slice is accepted.
 
-Goals:
+## Slice 1: Real Application Capture
 
-- capture current result types for Capture, Analysis, and Resume Creation
-- translate existing response objects into Pydantic schemas
-- define OpenAPI names that match domain language
-- add fixture examples for success, review, already exists, skipped, repaired, and failed results
+Implement `CaptureStore` with the Notion compatibility mapping for the unchanged Applications database. Preserve canonical URL duplicate detection, readable Capture Summary and Job Content blocks, schema validation, and `To Apply` defaults.
 
-Deliverables:
+Exit: the React side panel can prepare and confirm against Notion, duplicate confirmation is idempotent, and no private Job Content enters extension persistence or normal logs.
 
-- `apps/api/merida_api/features/*/schemas.py`
-- contract fixtures under `apps/api/tests/fixtures/contracts/`
-- generated TypeScript API client proof of concept
+## Slice 2: Real Application Analysis
 
-Exit criteria:
+Implement `ApplicationAnalysisStore`, the task-specific DeepSeek Analysis model adapter, evidence validation, deterministic Matching, body-first commit, and property repair.
 
-- Pydantic models can represent current prototype responses
-- generated TypeScript types compile in a tiny React proof
+Exit: bounded sequential batches preserve per-Application isolation, unsupported signals are rejected, exact Match Score recovery works, and the React dashboard receives one final result.
 
-## Phase 2: FastAPI App Shell
+## Slice 3: Real Resume Creation
 
-Goals:
+Port Fit Requirement extraction, Matching, evidence gating, Resume Draft generation, claim traces, Notes rendering, PDF rendering, and `ResumeArtifactCommitter` behind `ResumeCreationStore`.
 
-- create FastAPI app factory
-- add settings loading and validation
-- add CORS and token dependencies
-- add health and readiness endpoints
-- add test scaffolding with pytest
+Exit: one-at-a-time creation is idempotent, Resume and PDF render from the same validated document, final attachment is last, and every partial failure compensates in reverse order with explicit residue.
 
-Deliverables:
+## Slice 4: Real-Mode Enablement
 
-- `apps/api/merida_api/app.py`
-- `apps/api/merida_api/main.py`
-- `apps/api/merida_api/core/settings.py`
-- `apps/api/merida_api/core/auth.py`
-- `apps/api/tests/test_health.py`
+Enable `MERIDA_MODE=real` only after all three slices pass readiness and parity. Generate the frontend client from the accepted OpenAPI document, add CI gates for backend tests and both React builds, and refresh setup/operations docs.
 
-Exit criteria:
+## Slice 5: Prototype Retirement
 
-- `GET /api/health` works
-- `GET /api/readiness` reports missing config without crashing
-- protected endpoints can share one token dependency
-- CI can run backend tests
-
-## Phase 3: Workspace Adapters
-
-Goals:
-
-- create semantic Workspace interface
-- implement Notion adapter from current Notion clients
-- implement demo adapter from local fixtures
-- preserve relation validation behavior
-
-Deliverables:
-
-- Notion workspace adapter
-- demo workspace adapter
-- fixture data for a safe public walkthrough
-- adapter tests
-
-Exit criteria:
-
-- Capture, Analysis, and Resume modules can use workspace methods without knowing whether storage is Notion or demo fixtures
-- demo mode can run without Notion secrets
-
-## Phase 4: Port Job Posting Capture
-
-Goals:
-
-- move Capture Evidence normalization, parsing, duplicate detection, and write orchestration behind the FastAPI Job Posting Capture module
-- keep extension-origin token behavior
-- keep parse-only review behavior
-
-Deliverables:
-
-- `POST /api/job-postings/parse`
-- `POST /api/job-postings/capture`
-- `POST /api/job-postings/confirm`
-- module and router tests
-
-Exit criteria:
-
-- existing capture fixtures pass against the FastAPI module
-- demo adapter can create a sample Job Posting
-- Notion adapter can create a real Job Posting
-
-## Phase 5: Build React Operator App
-
-Goals:
-
-- create Vite React app
-- generate API client from FastAPI OpenAPI
-- build workspace readiness, `/analysis`, and `/resumes` pages
-- replace backend-rendered HTML pages with React routes
-
-Deliverables:
-
-- `apps/web/src/app`
-- generated API client package
-- React pages for readiness, analysis, resumes, and settings
-- frontend tests for key states
-
-Exit criteria:
-
-- React app can display backend readiness
-- `/analysis` page can run against demo data
-- `/resumes` page can run against demo data
-
-## Phase 6: Build React Extension
-
-Goals:
-
-- move the side panel UI to React
-- isolate Chrome APIs behind extension modules
-- preserve active-tab, selected-text, frame evidence, parse, direct capture, and confirm flows
-
-Deliverables:
-
-- React side-panel app
-- MV3 manifest
-- service worker
-- content-script evidence collector
-- extension settings module
-
-Exit criteria:
-
-- extension can parse a live page through the FastAPI backend
-- extension can create or confirm a Job Posting
-- extension stores only backend URL and capture token
-
-## Phase 7: Port Job Posting Analysis
-
-Goals:
-
-- move Analysis Batch Run into FastAPI modules
-- keep DeepSeek JSON behavior and evidence validation
-- keep append-before-marking semantics
-- stream progress to React
-
-Deliverables:
-
-- `GET /api/job-postings/analysis/status`
-- `POST /api/job-postings/analysis/run`
-- streaming adapter
-- module and router tests
-
-Exit criteria:
-
-- demo mode can run a deterministic analysis batch
-- real mode can run a DeepSeek-backed analysis batch
-- one failed Job Posting does not stop the batch
-
-## Phase 8: Port Resume Creation
-
-Goals:
-
-- move Resume Fit Analysis into a Python module behind one interface
-- port Resume Creation orchestration
-- preserve evidence sufficiency checks, claim-trace validation, note creation, PDF export, attachment-last behavior, and cleanup
-
-Deliverables:
-
-- `GET /api/resumes/status`
-- `POST /api/resumes/create`
-- Resume Fit Analysis module
-- Application-Ready Resume Draft module
-- PDF export module
-- module and router tests
-
-Exit criteria:
-
-- demo mode can create a Job-Specific Resume from fixture evidence
-- real mode can create a Job-Specific Resume in Notion
-- cleanup behavior is tested for partial write failures
-
-## Phase 9: Portfolio Readiness
-
-Goals:
-
-- make the app understandable to someone arriving from GitHub or LinkedIn
-- make the demo path easy to run
-- avoid exposing private user data
-
-Deliverables:
-
-- refreshed root `README.md`
-- screenshots or short video/GIF
-- `.env.example`
-- demo command
-- architecture diagram
-- CI workflow
-- release checklist
-
-Exit criteria:
-
-- a reviewer can run demo mode without Notion or DeepSeek credentials
-- a reviewer can understand the real integration path
-- all tests, type checks, and builds pass in CI
-
-## Suggested Implementation Order
-
-1. FastAPI app shell.
-2. Pydantic schemas and OpenAPI client generation.
-3. Demo workspace adapter.
-4. React operator app against demo data.
-5. Job Posting Capture real adapter.
-6. React extension.
-7. Job Posting Analysis.
-8. Resume Creation.
-9. Portfolio polish.
-
-This order gives you a visible app early while keeping the hard evidence-backed workflow protected behind module interfaces.
+Archive or remove Node routes only after the equivalent FastAPI workflow has operated successfully with existing Notion data and a rollback point is recorded. Preserve historical prototype docs and parity fixtures as migration evidence.

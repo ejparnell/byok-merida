@@ -1,0 +1,1 @@
+"""Merida FastAPI application."""

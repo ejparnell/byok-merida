@@ -25,12 +25,11 @@ The React web dashboard remains responsible for Application Analysis and Resume 
 
 | Route | Used for | Purpose |
 | --- | --- | --- |
-| `GET /health` | Side-panel readiness | Shows whether the local backend and Notion workspace are ready for capture. |
-| `POST /applications/parse` | Review-first capture | Parses Capture Evidence without writing an Application. |
-| `POST /applications/capture` | Optional quick capture | Creates an Application immediately when the captured fields are complete and confidence is high enough. |
-| `POST /applications/confirm` | Reviewed capture | Writes the user-reviewed Application to Notion. |
+| `GET /api/v1/health` | Side-panel readiness | Shows whether the local backend and capture workspace are ready. |
+| `POST /api/v1/applications/prepare` | Review-first capture | Parses Capture Evidence without writing an Application. |
+| `POST /api/v1/applications/confirm` | Reviewed capture | Writes the user-reviewed Application to the workspace. |
 
-All three Application capture requests from the extension include `X-Capture-Token`. `GET /health` follows the local dashboard health contract and does not require the capture token.
+Both Application Capture requests from the extension include `X-Capture-Token`. `GET /api/v1/health` follows the local dashboard health contract and does not require the capture token.
 
 The extension should not call Application Analysis, Resume Creation, operator settings, generic Notion CRUD, or PDF routes.
 
@@ -57,7 +56,7 @@ The header should show:
 - refresh button
 - settings button
 
-The side panel should call `GET /health` when it opens and when the user manually refreshes readiness.
+The side panel should call `GET /api/v1/health` when it opens and when the user manually refreshes readiness.
 
 Readiness states:
 
@@ -70,7 +69,7 @@ Readiness states:
 | Notion blocked | Show the backend error and exact schema validation failures when returned. |
 | Other workflow blocked | Keep capture enabled when capture and Notion are ready, even if Application Analysis or Resume Creation is blocked. |
 
-The extension should interpret health for capture readiness only. A globally blocked `/health` response must not automatically disable capture when the blocking error belongs only to Application Analysis or Resume Creation.
+The extension should interpret health for capture readiness only. A globally blocked `/api/v1/health` response must not automatically disable capture when the blocking error belongs only to Application Analysis or Resume Creation.
 
 Do not show analysis model, resume model, queue counts, Master Resume readiness, fit-analysis readiness, or PDF readiness in the extension.
 
@@ -84,7 +83,7 @@ Clicking **Fill Form** should:
 2. Identify the active tab in the current Chrome window.
 3. Collect Capture Evidence from the active source page and readable frames.
 4. Normalize the collected evidence into the extension request shape.
-5. Call `POST /applications/parse`.
+5. Call `POST /api/v1/applications/prepare`.
 6. Render the returned parsed fields in the review form without writing to Notion.
 
 While the action is running:
@@ -149,7 +148,7 @@ Capture owns the required creation fields and Capture Defaults. Application mana
 
 The primary form action should be labeled **Create in Notion**.
 
-Clicking it should call `POST /applications/confirm` with the reviewed parsed fields and the Job Content retained for the current capture session.
+Clicking it should call `POST /api/v1/applications/confirm` with the reviewed parsed fields and the Job Content retained for the current capture session.
 
 Before sending:
 
@@ -166,23 +165,6 @@ While confirming:
 - keep the reviewed values visible
 - show a small spinner and `Creating Application`
 - preserve the form if the request fails
-
-## Optional Quick Capture
-
-The side panel may include a secondary **Quick Capture** action that calls `POST /applications/capture` with the current Capture Evidence.
-
-Quick Capture should never bypass backend confidence, duplicate detection, schema validation, or readable Job Content requirements.
-
-Possible results:
-
-| Result | Side-panel behavior |
-| --- | --- |
-| `created` | Show the created Application summary and Notion link. |
-| `already_captured` | Show the existing Application summary and Notion link. Do not treat it as an error. |
-| `needs_review` | Populate and open the review form with returned fields and reasons. |
-| failed request | Show the error and keep a retry or review-first action available when safe. |
-
-Quick Capture is secondary to **Fill Form**. It should not become the only or visually dominant capture path.
 
 ## Capture Result
 
@@ -263,7 +245,7 @@ The settings surface should provide:
 
 - save action
 - masked capture-token input
-- connection test using `GET /health`
+- connection test using `GET /api/v1/health`
 - success or failure result
 - reset to the documented local backend URL
 

@@ -41,6 +41,9 @@ app-data/
 
 ## Backend Layout
 
+This is the logical ownership layout established by the module-seam decision.
+The runtime-topology decision will settle exact package roots and build files.
+
 ```text
 apps/api/merida_api/
   main.py
@@ -50,44 +53,48 @@ apps/api/merida_api/
     auth.py
     cors.py
     errors.py
-    streaming.py
   features/
-    job_postings/
+    applications/
       router_capture.py
       router_analysis.py
       schemas.py
       capture.py
-      capture_evidence.py
-      parser.py
       analysis.py
-      analysis_store.py
-      adapters/
-        notion.py
-        demo.py
+      ports.py
+      tests/
+    job_postings/
+      models.py
+      parser.py
+      capture_evidence.py
+      tests/
+    matching/
+      models.py
+      evidence_matching.py
+      scoring_policy.py
       tests/
     resumes/
       router.py
       schemas.py
       creation.py
+      ports.py
       fit_analysis.py
       application_ready_draft.py
+      artifact_committer.py
       resume_blocks.py
       resume_template.py
-      pdf_export.py
       data/
         skill_normalization.json
-      adapters/
-        notion.py
-        demo.py
       tests/
     notes/
-      schemas.py
-      adapters/
-        notion.py
-        demo.py
+      models.py
+      resume_fit_analysis_note.py
       tests/
   integrations/
-    deepseek_json.py
+    notion_workspace.py
+    demo_workspace.py
+    deepseek_models.py
+    demo_models.py
+    pdf_export.py
     notion_relations.py
   shared/
     result.py
@@ -99,8 +106,9 @@ apps/api/merida_api/
 - `router_*.py` files parse HTTP input and call one module.
 - `schemas.py` files hold Pydantic request and response models for a feature.
 - Workflow modules return typed results, not FastAPI `Response` objects.
-- Notion-specific code stays in `adapters/notion.py`.
-- Demo fixture code stays in `adapters/demo.py`.
+- Applications owns pursuit workflow orchestration; Job Postings owns source-opportunity parsing and values.
+- Each workflow owns its narrow store and model interfaces in `ports.py`.
+- Notion, demo, DeepSeek, PDF, and filesystem adapters depend inward on those interfaces.
 - Shared integration modules are only for concepts used by multiple features.
 - Feature tests target the module interface first, router behavior second.
 
@@ -113,19 +121,12 @@ apps/web/src/
     routes.tsx
     providers.tsx
   features/
-    workspace/
-      WorkspaceHome.tsx
-      readinessQueries.ts
-    analysis/
-      AnalysisPage.tsx
-      AnalysisRunPanel.tsx
-      analysisQueries.ts
-    resumes/
-      ResumesPage.tsx
-      ResumeQueueTable.tsx
-      resumeQueries.ts
-    settings/
-      SettingsPage.tsx
+    dashboard/
+      DashboardPage.tsx
+      ReadinessPanel.tsx
+      ApplicationAnalysisPanel.tsx
+      ResumeCreationPanel.tsx
+      dashboardQueries.ts
   shared/
     api/
     ui/
@@ -193,63 +194,112 @@ packages/
 
 These are the interfaces implementation should protect.
 
-### Job Posting Capture
+### Application Capture
 
 ```python
-class JobPostingCapture:
-    async def parse(self, evidence: CaptureEvidenceInput) -> CaptureParseResult: ...
-    async def capture(self, evidence: CaptureEvidenceInput) -> CaptureResult: ...
-    async def confirm(self, parsed: ParsedJobPostingInput) -> CaptureResult: ...
+class ApplicationCapture:
+    async def prepare(self, evidence: CaptureEvidenceInput) -> CaptureDraft: ...
+    async def confirm(self, draft: ConfirmedCaptureDraft) -> CaptureResult: ...
 ```
 
-The module hides evidence normalization, parser confidence, duplicate detection, schema validation, and workspace writes.
+The module hides Job Posting parsing, confidence evaluation, URL
+canonicalization, duplicate detection, schema validation, and workspace writes.
+It does not expose a direct Quick Capture operation.
 
-### Job Posting Analysis
+### Application Analysis
 
 ```python
-class JobPostingAnalysis:
-    async def status(self) -> AnalysisStatus: ...
-    async def run_batch(
-        self,
-        limit: int,
-        emit: AnalysisEventEmitter,
-    ) -> AnalysisRunSummary: ...
+class ApplicationAnalysis:
+    async def get_queue(self, query: QueueQuery) -> ApplicationQueuePage: ...
+    async def run_batch(self, limit: int) -> AnalysisRunSummary: ...
 ```
 
-The module hides queue selection, Job Content loading, DeepSeek calls, evidence validation, append-before-marking, and isolated per-posting failures.
+The module hides eligible queue selection, Job Content loading, task-specific
+model calls, evidence validation, deterministic Match Score calculation,
+body-first persistence, repair, and isolated per-Application failures. It
+returns one final result and has no event-emitter seam.
 
 ### Resume Creation
 
 ```python
 class ResumeCreation:
-    async def status(self) -> ResumeStatus: ...
-    async def create_for_job_posting(
-        self,
-        job_posting_page_id: str,
-    ) -> ResumeCreationResult: ...
+    async def get_queue(self, query: QueueQuery) -> ResumeQueuePage: ...
+    async def create(self, application_id: str) -> ResumeCreationResult: ...
 ```
 
-The module hides queue rules, Master Resume reads, Fit Requirement extraction, Resume Fit Analysis, resume generation, claim-trace validation, Notion writes, PDF export, attachment, and cleanup.
+The module hides queue rules, Master Resume reads, Fit Requirement extraction,
+Matching, Resume Fit Analysis, resume generation, claim-trace validation, and
+artifact commit behavior.
 
-### Workspace
+### Workflow-owned store interfaces
 
-The workspace seam should expose semantic operations, not CRUD plumbing.
+There is no global workspace interface. Each workflow owns the smallest
+semantic interface required by its implementation.
 
 ```python
-class Workspace:
-    async def get_capture_readiness(self) -> CaptureReadiness: ...
-    async def find_job_posting_by_url(self, job_url: str) -> JobPostingRef | None: ...
-    async def create_job_posting(self, parsed: ParsedJobPosting) -> JobPostingRef: ...
-    async def get_analysis_status(self) -> AnalysisStatus: ...
-    async def list_analysis_queue(self, limit: int) -> list[JobPostingRef]: ...
-    async def load_analysis_input(self, job_posting_id: str) -> AnalysisInput: ...
-    async def save_analysis_findings(self, job_posting_id: str, findings: AnalysisFindings) -> None: ...
-    async def get_resume_status(self) -> ResumeStatus: ...
-    async def load_resume_creation_input(self, job_posting_id: str) -> ResumeCreationInput: ...
-    async def save_resume_creation_output(self, output: ResumeCreationOutput) -> ResumeCreationRefs: ...
+class CaptureStore(Protocol):
+    async def find_application_by_canonical_url(self, job_url: str) -> ApplicationRef | None: ...
+    async def create_application(self, draft: ConfirmedCaptureDraft) -> ApplicationRef: ...
+
+class ApplicationAnalysisStore(Protocol):
+    async def get_queue(self, query: QueueQuery) -> ApplicationQueuePage: ...
+    async def load_input(self, application_id: str) -> ApplicationAnalysisInput: ...
+    async def commit(self, result: ValidatedApplicationAnalysis) -> None: ...
+
+class ResumeCreationStore(Protocol):
+    async def get_queue(self, query: QueueQuery) -> ResumeQueuePage: ...
+    async def load_input(self, application_id: str) -> ResumeCreationInput: ...
+    # Artifact operations used only by ResumeArtifactCommitter.
 ```
 
-Notion and demo fixtures are adapters behind this seam.
+The Notion and demo adapters may implement every interface, but the composition
+root injects only the relevant interface into each workflow. Exact operation
+names may be refined by the Notion compatibility decision without widening the
+interfaces or exposing Notion payloads.
+
+### Matching and model interfaces
+
+```python
+class Matching:
+    def match(
+        self,
+        targets: list[MatchTarget],
+        evidence_items: list[EvidenceItem],
+        scoring_policy: ScoringPolicy,
+    ) -> MatchResult: ...
+
+class ApplicationAnalysisModel(Protocol):
+    async def analyze(self, job_content: JobContent) -> ProposedAnalysis: ...
+
+class FitRequirementModel(Protocol):
+    async def extract(
+        self,
+        job_content: JobContent,
+        analysis: ApplicationAnalysisDocument,
+    ) -> list[FitRequirement]: ...
+
+class ResumeDraftModel(Protocol):
+    async def generate(self, input: ValidatedDraftInput) -> ProposedResumeDraft: ...
+```
+
+Matching is deterministic and provider-independent. Model interfaces are
+workflow-specific; DeepSeek and demo adapters hide prompt and provider details.
+
+### Notes and artifact commit
+
+```python
+def create_resume_fit_analysis_note(
+    fit_analysis: ResumeFitAnalysis,
+    claim_traces: list[ClaimTrace],
+) -> NoteDocument: ...
+
+class ResumeArtifactCommitter:
+    async def commit(self, bundle: ValidatedResumeBundle) -> ArtifactCommitResult: ...
+```
+
+The committer owns effect ordering, final attachment, reverse compensation, and
+explicit cleanup reporting. It remains internal to Resumes rather than becoming
+a generic transaction framework.
 
 ## Testing Surface
 
@@ -257,9 +307,9 @@ The interface is the test surface.
 
 | Test type | Target |
 | --- | --- |
-| Backend module tests | Capture, Analysis, Resume Fit Analysis, Resume Creation, PDF export. |
-| Backend adapter tests | Notion relation validation, demo workspace behavior, DeepSeek JSON retries. |
-| Router tests | HTTP status, auth policy, request validation, streaming shape. |
+| Backend module tests | Application Capture, Application Analysis, Matching, Resume Creation, Notes rendering, artifact commit. |
+| Backend adapter tests | Narrow store conformance, Notion relation validation, demo behavior, task-specific model contracts. |
+| Router tests | HTTP status, auth policy, request validation, and final response shape. |
 | Frontend unit tests | Rendering, queue interactions, progress states, error states. |
 | Extension tests | Capture Evidence collection, settings storage, API client calls. |
 | End-to-end tests | Demo mode Capture -> Analysis -> Resume Creation path. |
@@ -268,6 +318,6 @@ Prototype tests that only assert internal plumbing should be replaced as deeper 
 
 ## Naming Rules
 
-- Use `Job Posting`, `Job Content`, `Job Posting Analysis`, `Resume Creation Queue`, `Master Resume`, `Job-Specific Resume`, `Resume Fit Analysis`, and `Resume Fit Analysis Note` exactly as the current domain docs define them.
+- Use `Application`, `Job Posting`, `Job Content`, `Application Analysis`, `Resume Creation Queue`, `Master Resume`, `Job-Specific Resume`, `Resume Fit Analysis`, and `Resume Fit Analysis Note` exactly as the reviewed domain docs define them.
 - Use `module`, `interface`, `seam`, and `adapter` for architecture docs.
 - Avoid renaming domains just because the implementation language changes.

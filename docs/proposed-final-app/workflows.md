@@ -1,196 +1,87 @@
-# Proposed Final App Workflows
+# Proposed Final-App Workflows
 
-The final app keeps the current operator sequence but moves the surfaces to React and the server layer to FastAPI.
+Merida has three separate workflows behind three public module interfaces. The React dashboard and extension are adapters over those modules; Notion remains the record-management surface.
 
-## Daily Operator Sequence
+## 1. Application Capture
 
-1. Start the FastAPI backend.
-2. Open the React operator app.
-3. Use the React Chrome side panel to capture Job Postings.
-4. Run Job Posting Analysis from the React `/analysis` page.
-5. Create Job-Specific Resumes from the React `/resumes` page.
-6. Review the created Resume, related Resume Fit Analysis Note, and PDF export.
+Surface: React Chrome MV3 side panel.
 
-Demo mode follows the same sequence but uses sample workspace data instead of private Notion records.
+Module interface:
 
-## Capture Workflow
-
-Surface: React Chrome side panel.
-
-Backend module: Job Posting Capture.
-
-```text
-Source Page
-  -> extension collects Capture Evidence
-  -> POST /api/job-postings/parse or /capture
-  -> FastAPI validates request body
-  -> Job Posting Capture module normalizes and parses evidence
-  -> workspace adapter validates destination schema
-  -> Notion or demo workspace stores Job Posting
-  -> side panel shows Capture Result
+```python
+ApplicationCapture.prepare(evidence)
+ApplicationCapture.confirm(draft)
 ```
 
-### Direct Capture
+Flow:
 
-Use direct capture when parsed fields are complete and confidence is high.
+1. The extension verifies its backend URL and Capture token.
+2. **Fill Form** collects normalized Capture Evidence from the active tab.
+3. `POST /api/v1/applications/prepare` canonicalizes the URL and returns safe review fields without writing.
+4. The operator reviews Company Name, Role, optional Location, Job URL, and a readable Job Content preview.
+5. **Create in Notion** calls `POST /api/v1/applications/confirm` with reviewed values and the in-memory Job Content.
+6. The backend returns `created`, `already_captured`, `needs_review`, or a safe blocked/failed result.
 
-Expected result types:
+Capture creates an Application with `Application Status = To Apply`, `Analyzed = false`, and no Match Score. Quick Capture is outside v1. Full Job Content is never persisted by the extension.
 
-- `created`
-- `already_captured`
-- `needs_review`
-- `failed`
+## 2. Application Analysis
 
-### Parse And Confirm
+Surface: Application Analysis section on React `/dashboard`.
 
-Use parse and confirm when the user wants to inspect or edit fields before writing.
+Module interface:
 
-```text
-POST /api/job-postings/parse
-  -> returns parsed fields without workspace writes
-
-POST /api/job-postings/confirm
-  -> validates reviewed fields
-  -> deduplicates by canonical Job URL
-  -> writes the Job Posting
+```python
+ApplicationAnalysis.get_queue(query)
+ApplicationAnalysis.run_batch(limit)
 ```
 
-The final app should preserve the current required creation fields:
-
-- Job Posting title
-- Job URL
-- Job Content
-- Company Name
-- Job Title
-- Location
-
-## Job Posting Analysis Workflow
-
-Surface: React `/analysis` page.
-
-Backend module: Job Posting Analysis.
-
-```text
-GET /api/job-postings/analysis/status
-  -> returns readiness, model, queue count, and blocking errors
-
-POST /api/job-postings/analysis/run
-  -> streams batch progress
-  -> processes each queued Job Posting independently
-  -> appends Job Posting Analysis before marking Analyzed true
-```
-
-### Eligibility
-
-A Job Posting is in the Analysis Queue when:
+Eligibility:
 
 - `Application Status = To Apply`
 - `Analyzed = false`
+- readable Job Content
 
-If the page already has a `Job Posting Analysis` section but `Analyzed` is false, the workflow repairs the checkbox instead of duplicating analysis.
+Flow:
 
-### React Page Behavior
+1. `GET /api/v1/applications/analysis/queue?limit=5` returns an eligible-only preview, total count, and opaque cursor.
+2. The operator chooses a batch limit from 1 through 10.
+3. `POST /api/v1/applications/analysis/run` selects the backend's next eligible batch independently of the visible cursor.
+4. Applications are processed sequentially with per-Application failure isolation.
+5. The backend validates evidence, calculates Match Score deterministically, writes the body first, then commits final properties.
+6. The route returns one final typed summary; there is no streamed dashboard transport.
+7. On success, the dashboard resets both queues to page one so analyzed Applications can move into Resume Creation.
 
-The `/analysis` page should show:
+## 3. Resume Creation
 
-- readiness state
-- queue count
-- selected model
-- batch limit input
-- run button
-- streaming progress
-- compact per-item result rows
+Surface: Resume Creation section on React `/dashboard`.
 
-The page should not show raw prompts, API keys, full private Job Content, or full model responses.
+Module interface:
 
-## Resume Creation Workflow
-
-Surface: React `/resumes` page.
-
-Backend module: Resume Creation.
-
-```text
-GET /api/resumes/status
-  -> returns readiness, queue items, and blocking errors
-
-POST /api/resumes/create
-  -> reads Job Content and Job Posting Analysis
-  -> reads the single Master Resume
-  -> runs Resume Fit Analysis
-  -> generates an Application-Ready Resume Draft
-  -> validates claim traces
-  -> writes Resume, Note, and PDF
-  -> attaches Resume to Job Posting last
+```python
+ResumeCreation.get_queue(query)
+ResumeCreation.create(application_id)
 ```
 
-### Eligibility
-
-A Job Posting appears in the Resume Creation Queue when:
+Eligibility:
 
 - `Application Status = To Apply`
 - `Analyzed = true`
-- `Resumes` relation is empty
-- Company Name and Job Title are present
+- no existing Resume Attachment
+- readable Company Name, Role, Job Content, and Application Analysis
 
-### Guardrails
+Flow:
 
-Resume Creation should fail before writing when:
+1. `GET /api/v1/resumes/queue?limit=5` returns an eligible-only, Match Score-ordered queue.
+2. The operator selects **Create Resume** on one Application.
+3. `POST /api/v1/resumes/create` revalidates eligibility and returns `already_created` when the completion relation exists.
+4. The workflow loads Master Resume evidence, extracts Fit Requirements, runs deterministic Matching, and blocks before writes when evidence is insufficient.
+5. A validated Resume Document and Resume Fit Analysis are produced from evidence-backed claims.
+6. The artifact committer creates the Resume, PDF, and Note, then attaches the final Application relation last.
+7. Partial failures are compensated in reverse order and cleanup results are explicit.
+8. The dashboard refreshes the queue but retains Resume, Note, and PDF output links.
 
-- Job Content is missing
-- Job Posting Analysis is missing
-- no Master Resume exists
-- more than one Master Resume exists
-- Master Resume evidence is empty
-- Master Resume evidence cannot support enough Fit Requirements
-- configured work-experience roles are missing
-- a configured role has fewer than five bullet evidence items
-- generated claims cannot be traced to supported evidence
+## Demo And Real Modes
 
-If a failure happens after writes begin, the backend should clean up draft records and local PDFs before returning the failure result.
+Demo mode exercises the same routes and workflow interfaces using deterministic local adapters and fictional data. It persists state in `app-data/demo/state.json` and PDFs in `app-data/export/`.
 
-### Successful Output
-
-On success, the React page should show:
-
-- created Job-Specific Resume link
-- related Resume Fit Analysis Note link
-- PDF export path
-- concise success summary
-
-The Job-Specific Resume remains employer-facing. Resume Fit Analysis remains in the related Note.
-
-## Demo Workflow
-
-Demo mode is required for a shareable GitHub and LinkedIn version.
-
-Demo mode should:
-
-- use sample Job Postings, Master Resume evidence, and Notes
-- avoid private Notion data
-- avoid requiring Notion tokens
-- avoid requiring a DeepSeek key for the basic walkthrough
-- optionally use recorded or deterministic analysis output
-- allow reset from the React app
-
-The demo path should exercise the same module interfaces as real mode. Only the adapters change.
-
-## Error And Recovery Workflow
-
-The final app should make errors actionable without exposing private data.
-
-| Failure area | User-facing recovery |
-| --- | --- |
-| Backend offline | Start backend and retry readiness check. |
-| Extension token invalid | Re-enter capture token in extension settings. |
-| Notion schema invalid | Show missing property or relation names. |
-| DeepSeek unavailable | Disable analysis and generation actions, keep capture available. |
-| Fit evidence insufficient | Show unsupported requirement summary and point user to Master Resume evidence. |
-| PDF export failed | Show local path/write permission hint and cleanup status. |
-
-## Workflow Boundaries To Preserve
-
-- Capture is not Job Posting Analysis.
-- Job Posting Analysis is not Resume Fit Analysis.
-- Resume Fit Analysis is not the employer-facing Job-Specific Resume.
-- Notes store supporting analysis; Resumes store application-ready resume content.
-- The Resume Attachment remains the durable proof that a Job-Specific Resume exists for a Job Posting.
+Real mode will use Notion and DeepSeek adapters behind the same workflow-owned interfaces. Until parity and cleanup suites pass, FastAPI reports real mode as blocked and the frozen Node prototype remains the real-workflow executable reference.

@@ -1,8 +1,8 @@
 # Routes - Proposed
 
-These are backend routes for the proposed FastAPI app. They do not include React page routes such as `/dashboard`.
+These are backend routes for the FastAPI app. They do not include React page routes such as `/dashboard`.
 
-Paths are shown without a global `/api` prefix. If the final FastAPI app is mounted under `/api`, apply that prefix to every route in this document.
+The locked v1 namespace is `/api/v1`. Paths below omit that prefix for readability, but callers use `/api/v1/...` exactly.
 
 ## Shared Route Rules
 
@@ -315,11 +315,10 @@ Capture sets new Applications to `Application Status = To Apply`. Analysis and R
 
 | HTTP verb | Route | Simple explanation |
 | --- | --- | --- |
-| `POST` | `/applications/parse` | Parses captured page evidence without writing to the workspace. |
-| `POST` | `/applications/capture` | Parses captured evidence and writes the Application when confidence is high enough. |
+| `POST` | `/applications/prepare` | Parses captured page evidence without writing to the workspace. |
 | `POST` | `/applications/confirm` | Writes a user-reviewed parsed Application to the workspace. |
 
-### `POST /applications/parse`
+### `POST /applications/prepare`
 
 Request body:
 
@@ -341,8 +340,8 @@ Success:
 ```json
 {
   "ok": true,
-  "result": "parsed",
-  "parsed": {
+  "result": "prepared",
+  "draft": {
     "jobUrl": "https://example.com/jobs/123",
     "companyName": "ExampleCo",
     "role": "Senior Software Engineer",
@@ -354,54 +353,13 @@ Success:
 }
 ```
 
-### `POST /applications/capture`
-
-Success:
-
-```json
-{
-  "ok": true,
-  "result": "created",
-  "application": {
-    "id": "app_123",
-    "title": "Senior Software Engineer at ExampleCo",
-    "companyName": "ExampleCo",
-    "role": "Senior Software Engineer",
-    "applicationStatus": "To Apply",
-    "url": "https://notion.so/example-application"
-  },
-  "errors": []
-}
-```
-
-Needs review:
-
-```json
-{
-  "ok": false,
-  "status": "needs_review",
-  "result": "needs_review",
-  "parsed": {
-    "jobUrl": "https://example.com/jobs/123",
-    "companyName": "ExampleCo",
-    "role": "",
-    "location": "Remote",
-    "jobContentPreview": "ExampleCo is hiring a Senior Software Engineer..."
-  },
-  "validationFailures": [],
-  "errors": [
-    "Role could not be parsed with enough confidence."
-  ]
-}
-```
-
 ### `POST /applications/confirm`
 
 Request body:
 
 ```json
 {
-  "parsed": {
+  "draft": {
     "jobUrl": "https://example.com/jobs/123",
     "companyName": "ExampleCo",
     "role": "Senior Software Engineer",

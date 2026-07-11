@@ -1,6 +1,33 @@
 # Proposed Final App
 
-This folder describes a portfolio-ready version of Merida built from the working prototype. The current prototype docs remain in the parent `docs/` folder; these docs describe the proposed target app.
+This folder describes the FastAPI and React target built from the working prototype. The current prototype docs remain in the parent `docs/` folder.
+
+## Implementation Status
+
+The first production-shaped vertical slice is implemented:
+
+- FastAPI application factory and versioned REST routes under `/api/v1`
+- persisted, resettable demo workspace with eligible-only queues
+- review-first Application Capture with `X-Capture-Token`
+- bounded Application Analysis with one final typed response
+- one-at-a-time, idempotent Resume Creation with Resume, Note, and PDF outputs
+- functional React `/dashboard` using the accepted Workflow Overview design
+- functional React MV3 side panel using the accepted Focused Flow design
+- OpenAPI schema, public-interface tests, production builds, and FastAPI static serving
+
+Demo mode is complete and is the default. The existing real Notion and DeepSeek implementation remains in the frozen Node prototype while its behavior is migrated behind the new workflow-owned Python interfaces. The FastAPI app reports real mode as blocked instead of silently writing through an incomplete adapter. See [Implementation Review](implementation-review.md) for the review findings and remaining cutover work.
+
+## Run The Implemented App
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -e 'apps/api[dev]'
+npm install
+npm run final:build
+npm run final:start
+```
+
+Open `http://127.0.0.1:8000/dashboard`. Load `apps/extension/dist` as an unpacked Chrome extension and set its Capture token to the backend `CAPTURE_TOKEN` value.
 
 The final app keeps the useful product shape that already works:
 
@@ -32,6 +59,7 @@ The main architectural move is not "add more layers." It is to keep each workflo
 - [Workflows](workflows.md): final operator workflows from Chrome capture through resume export.
 - [AI And ML Workflows](ai-workflows.md): LangGraph orchestration, DeepSeek calls, TOON prompt encoding, deterministic ML scoring, validation, and recovery contracts.
 - [Migration Plan](migration-plan.md): staged path from the prototype to the final app.
+- [Implementation Review](implementation-review.md): reconciled review, implemented seams, verification, and remaining real-mode cutover.
 
 ## Scope Assumptions
 

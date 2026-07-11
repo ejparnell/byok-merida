@@ -15,14 +15,15 @@ React operator app
   -> FastAPI backend
 
 FastAPI backend
-  -> Job Postings modules
+  -> Applications modules
+  -> Job Postings source module
   -> Resumes modules
   -> Notes modules
-  -> Notion workspace adapter
-  -> Demo workspace adapter
-  -> DeepSeek JSON module
-  -> Resume Fit Analysis module
-  -> PDF export module
+  -> deterministic Matching module
+  -> workflow-owned store and model interfaces
+    <- Notion and demo adapters
+    <- DeepSeek and deterministic model adapters
+    <- PDF and filesystem adapters
 
 Notion
   stores Job Postings, Resumes, and Notes
@@ -35,7 +36,7 @@ app-data/export/
 
 | Area | Proposed choice | Role |
 | --- | --- | --- |
-| Backend server | FastAPI | HTTP routing, request validation, OpenAPI schema, CORS, streaming, health checks. |
+| Backend server | FastAPI | HTTP routing, request validation, OpenAPI schema, CORS, final workflow responses, health checks. |
 | Backend schemas | Pydantic | Request and response contracts, config validation, Notion DTOs. |
 | Backend tests | pytest | Module tests, router tests, adapter tests, workflow regression tests. |
 | Main frontend | React + TypeScript | Operator app for readiness, analysis batches, resume creation, review links, demo mode. |
@@ -44,15 +45,15 @@ app-data/export/
 | Extension | Chrome MV3 + React side panel | Capture active-tab evidence, review parsed fields, confirm writes. |
 | Durable workspace | Notion | User-owned Job Postings, Resumes, and Notes databases. |
 | Demo workspace | Local fixtures | Portfolio-safe mode with no private Notion data or secrets. |
-| LLM provider | DeepSeek | Job Posting Analysis, Fit Requirement extraction, and resume generation. |
+| LLM provider | DeepSeek | Application Analysis, Fit Requirement extraction, and resume generation. |
 | Fit analysis | Python module | Local requirement/evidence matching, scoring, and normalization. |
 | PDF export | Backend module | Creates application-ready PDFs after successful resume generation. |
 
 ## Design Principles
 
-- **Workflow first**: preserve Capture, Job Posting Analysis, and Resume Creation as separate workflows.
+- **Workflow first**: preserve Application Capture, Application Analysis, and Resume Creation as separate workflows.
 - **Backend-owned secrets**: Notion and DeepSeek credentials never enter React state, extension storage, or browser logs.
-- **Feature ownership**: Job Postings, Resumes, and Notes keep their domain language and module ownership.
+- **Feature ownership**: Applications owns pursuit workflows, Job Postings owns source-opportunity behavior, Resumes owns resume generation, and Notes owns note documents.
 - **Deep modules**: workflow rules sit behind small interfaces; routes and screens stay thin.
 - **Evidence-backed output**: generated analysis and resumes must remain traceable to Job Content and Master Resume evidence.
 - **Demoable without private data**: the final app should run in demo mode from checked-in fixtures.
@@ -61,29 +62,20 @@ app-data/export/
 
 FastAPI should expose HTTP routes through feature routers, but routes should not contain workflow rules. A route validates input, calls one domain module, and serializes the result.
 
-Proposed top-level routers:
-
-| Router | Paths | Thin adapter over |
-| --- | --- | --- |
-| `health` | `GET /api/health`, `GET /api/readiness` | App settings, workspace readiness, provider readiness. |
-| `job_postings.capture` | `POST /api/job-postings/parse`, `POST /api/job-postings/capture`, `POST /api/job-postings/confirm` | Job Posting Capture module. |
-| `job_postings.analysis` | `GET /api/job-postings/analysis/status`, `POST /api/job-postings/analysis/run` | Job Posting Analysis module. |
-| `resumes` | `GET /api/resumes/status`, `POST /api/resumes/create` | Resume Creation module. |
-
-Streaming analysis should use Server-Sent Events or JSON Lines through a single route-level streaming adapter. The Analysis Batch Run module should emit domain events without knowing the HTTP transport.
+The top-level route adapters call the readiness, `ApplicationCapture`,
+`ApplicationAnalysis`, and `ResumeCreation` modules. Exact paths, DTOs, and
+generated-client names are owned by [Routes - Proposed](./routes.md) and the
+public API contract decision. Application Analysis returns one final typed
+summary; React owns the pending presentation and no streaming interface crosses
+the workflow seam.
 
 ## React Operator App
 
 The React app replaces backend-rendered local HTML pages. It should be a compact work surface, not a marketing dashboard.
 
-Proposed routes:
-
-| Route | Purpose |
-| --- | --- |
-| `/` | Workspace readiness and next actionable workflow. |
-| `/analysis` | Queue count, batch limit, run progress, compact per-posting results. |
-| `/resumes` | Resume Creation Queue, create action, links to created Resume, Note, and PDF. |
-| `/settings` | Local backend URL, demo mode status, non-secret readiness checks. |
+The production web surface is one `/dashboard` LLM process console containing
+readiness, Application Analysis, and Resume Creation. Editing and record
+management remain in Notion.
 
 React should own interaction state, progress rendering, retry buttons, and navigation. It should not own Notion schema rules, queue rules, evidence validation, generation guardrails, or cleanup behavior.
 
@@ -97,7 +89,7 @@ Extension modules:
 | --- | --- | --- |
 | Active Tab Evidence | `collectCaptureEvidence()` | `activeTab`, frame reads, selected text, visible text, semantic HTML. |
 | Extension Settings | `getExtensionSettings()`, `saveExtensionSettings()` | Chrome storage and local defaults. |
-| Capture Client | `parse(evidence)`, `capture(evidence)`, `confirm(parsed)` | Backend URL, capture token header, response normalization. |
+| Capture Client | `prepare(evidence)`, `confirm(draft)` | Backend URL, capture token header, response normalization. |
 
 The side panel should only store:
 
@@ -114,21 +106,24 @@ The final app should make these modules explicit.
 | Module | External interface | Important adapters |
 | --- | --- | --- |
 | Local Operator App | `create_app(settings, adapters)` | FastAPI app factory, CORS/auth policy, router composition. |
-| Job Posting Capture | `parse(evidence)`, `capture(evidence)`, `confirm(parsed)` | Workspace adapter, parser, Capture Evidence normalizer. |
+| Application Capture | `prepare(evidence)`, `confirm(draft)` | `CaptureStore`, Job Posting parser, real and demo model adapters. |
 | Capture Evidence | `create_capture_evidence(raw)` | Chrome extension payloads, future pasted text, demo fixtures. |
-| Job Posting Analysis | `status()`, `run_batch(limit, emit)` | Workspace adapter, DeepSeek JSON module. |
-| Job Posting Analysis Store | `get_status()`, `list_queue(limit)`, `load_input(id)`, `save_findings(id, findings)` | Notion adapter, demo adapter. |
-| Resume Creation | `status()`, `create_for_job_posting(id)` | Workspace adapter, Resume Fit Analysis, resume LLM, PDF exporter. |
-| Resume Fit Analysis | `health()`, `analyze(job_content, job_posting_analysis, master_evidence_items)` | Local scoring implementation, normalization dictionary. |
+| Application Analysis | `get_queue(query)`, `run_batch(limit)` | `ApplicationAnalysisStore`, task-specific model adapter, Matching. |
+| Resume Creation | `get_queue(query)`, `create(application_id)` | `ResumeCreationStore`, task-specific model adapters, Matching, Notes, artifact committer. |
+| Matching | `match(targets, evidence_items, scoring_policy)` | Deterministic Python implementation, normalization dictionary. |
 | Application-Ready Resume Draft | `create_draft(analysis, master_resume, generated_claims)` | Claim trace repair, role completion, template rendering. |
-| Workspace | semantic methods per workflow | Notion adapter and demo adapter. |
-| DeepSeek JSON | `request_json(prompt, schema, model)` | HTTP details, retry for empty content, model validation. |
+| Notes | `create_resume_fit_analysis_note(fit_analysis, claim_traces)` | Durable note structure and safe rendering. |
+| Resume Artifact Committer | `commit(validated_bundle)` | Ordered Notion, PDF, relation, and reverse-compensation effects. |
 
-The Workspace seam is justified because there are two real adapters: Notion for real use and demo fixtures for public demos and tests.
+There is no global `Workspace` interface. Capture, Application Analysis, and
+Resume Creation each own a narrow semantic store interface. The Notion and demo
+adapters may implement all three, but the composition root passes each workflow
+only the interface it is allowed to use. Model interfaces are likewise
+workflow-specific; shared DeepSeek infrastructure stays private to the adapter.
 
 ## Data And Storage
 
-The final app should keep Notion as the v1 durable workspace, with a demo adapter that mirrors the same semantic interface.
+The final app should keep Notion as the v1 durable workspace, with a demo adapter that mirrors the same workflow-owned interfaces.
 
 Real mode:
 

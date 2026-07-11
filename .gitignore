@@ -8,5 +8,10 @@ src/features/jobPostings/extension/local-config.js
 .venv/
 __pycache__/
 *.pyc
+*.egg-info/
 .pytest_cache/
-apps/
+apps/*-prototype/
+apps/web/dist/
+apps/extension/dist/
+app-data/demo/state.json
+app-data/export/*.pdf
