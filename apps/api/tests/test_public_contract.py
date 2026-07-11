@@ -262,6 +262,7 @@ def test_already_created_resume_allows_missing_historical_note_and_pdf(tmp_path)
 def test_real_mode_exposes_typed_blocked_health_queues_and_resume_outcome(tmp_path):
     settings = Settings(
         merida_mode="real",
+        capture_token="test-capture-token",
         demo_state_path=tmp_path / "state.json",
         export_path=tmp_path / "export",
     )
@@ -269,6 +270,22 @@ def test_real_mode_exposes_typed_blocked_health_queues_and_resume_outcome(tmp_pa
     with TestClient(create_app(settings)) as client:
         health = client.get("/api/v1/health")
         analysis_queue = client.get("/api/v1/applications/analysis/queue")
+        analysis_run = client.post(
+            "/api/v1/applications/analysis/run", json={"limit": 1}
+        )
+        confirm = client.post(
+            "/api/v1/applications/confirm",
+            headers={"X-Capture-Token": "test-capture-token"},
+            json={
+                "draft": {
+                    "jobUrl": "https://example.test/job",
+                    "companyName": "Example",
+                    "role": "Engineer",
+                    "location": None,
+                    "jobContent": "Build reliable Python services and React interfaces.",
+                }
+            },
+        )
         resume_queue = client.get("/api/v1/resumes/queue")
         resume = client.post(
             "/api/v1/resumes/create", json={"applicationId": "app-orbit"}
@@ -280,6 +297,11 @@ def test_real_mode_exposes_typed_blocked_health_queues_and_resume_outcome(tmp_pa
         assert queue.status_code == 200
         assert queue.json()["status"] == "blocked"
         assert queue.json()["items"] == []
+    assert analysis_run.status_code == 200
+    assert analysis_run.json()["result"] == "blocked"
+    assert analysis_run.json()["processed"] == 0
+    assert confirm.status_code == 200
+    assert confirm.json()["result"] == "blocked"
     assert resume.status_code == 200
     assert resume.json()["result"] == "blocked"
     assert resume.json()["cleanup"]["status"] == "not_required"
