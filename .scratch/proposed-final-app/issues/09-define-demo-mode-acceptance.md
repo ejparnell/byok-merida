@@ -20,7 +20,7 @@ Merida still needs deterministic, credential-free tests. Those tests do not requ
 
 ## Solution
 
-Ship one local-first final-app runtime composed with the real Notion compatibility adapter, real task-specific DeepSeek adapters, the real PDF adapter, and the recovery journal. Remove demo as a product concept rather than renaming it, hiding its controls, or leaving it as a dormant configuration option.
+Ship one local-first final-app runtime that targets the real Notion compatibility adapter, real task-specific DeepSeek adapters, the real PDF adapter, and the recovery journal. Remove demo as a product concept rather than renaming it, hiding its controls, or leaving it as a dormant configuration option. Until a real workflow adapter completes its separate migration and parity gate, that workflow reports blocked readiness; demo removal must not replace missing real behavior with a fake or prematurely enable it.
 
 The backend will no longer accept a mode selector, compose demo workspace or deterministic demo-model adapters, persist demo state, load demo fixtures, or expose demo reset. Public health and operator settings will describe readiness for the single real composition without `demo`/`real` or `demo`/`notion` discriminators. The dashboard and extension will consume that simplified contract and contain no demo labels, reset action, or demo-specific readiness branch. OpenAPI and the generated client will remove the demo-only operation and types.
 
@@ -83,7 +83,7 @@ The highest acceptance seam is the public FastAPI ASGI application and emitted O
 
 ### Product runtime and composition
 
-- The final app has exactly one product composition: the real Notion compatibility adapter, real task-specific DeepSeek adapters, real PDF artifact adapter, and local recovery journal behind the settled workflow-owned interfaces.
+- The final app has exactly one product composition target: the real Notion compatibility adapter, real task-specific DeepSeek adapters, real PDF artifact adapter, and local recovery journal behind the settled workflow-owned interfaces. This removal implements the real Notion composition and leaves Analysis or Resume Creation explicitly blocked until their real DeepSeek adapters complete the migration roadmap; implementing those model adapters is not smuggled into demo removal.
 - Remove startup adapter selection. There is no environment, command-line, request, cookie, query, browser-storage, or UI mechanism that selects a fictional workspace or deterministic product model.
 - Remove the mode configuration value and all demo fixture and mutable-state configuration. Invalid legacy mode variables are ignored only if the settings library already ignores unknown variables; they never influence behavior.
 - Missing credentials, unreachable providers, or incompatible Notion schema produce the existing safe readiness and workflow-blocked outcomes. The application never falls back to fake data or deterministic model results.
@@ -140,7 +140,7 @@ The highest acceptance seam is the public FastAPI ASGI application and emitted O
 - Dashboard tests prove no mode badge, demo copy, or reset control is rendered and that normal queue, run, result, model-display, and artifact interactions still work.
 - Extension tests prove readiness has no demo bypass and that review-first prepare and confirm behavior still uses the Capture token and real readiness contract.
 - Workflow tests retain existing Capture canonical-URL idempotency, Analysis body-first/property-second repair, Resume relation-last commit, evidence guardrails, compensation, and restart recovery scenarios through deterministic fakes.
-- Adapter conformance tests run the same semantic store assertions against test fakes and deterministic Notion transport recordings. Model contract tests compare deterministic fake outputs and recorded DeepSeek responses against the same evidence and schema requirements.
+- Adapter conformance tests run the same semantic store assertions against test fakes and deterministic Notion transport recordings. When each real DeepSeek adapter lands through its migration slice, its model contract tests must compare deterministic fake outputs and recorded DeepSeek responses against the same evidence and schema requirements; demo removal preserves the fake side of that seam but does not implement the real model migration.
 - Concurrency tests remove reset-specific cases but retain overlapping Analysis, Resume, Capture, per-Application exclusion, cancellation release, fixed lock ordering, and fail-fast conflict behavior.
 - Data tests prove ordinary product startup does not create demo fixture or mutable-state files. Test persistence and generated artifacts remain isolated in temporary roots.
 - Static contract checks search emitted OpenAPI, generated client exports, production browser bundles, and operator-facing copy for obsolete demo administration concepts. Neutral test fixture values are not failures merely because they are fictional.

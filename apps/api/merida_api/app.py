@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 import logging
 from pathlib import Path
 from typing import cast, get_args
@@ -40,6 +41,11 @@ from .shared.recovery import (
     RecoveryJournalError,
     UnavailableEffectJournal,
 )
+from .shared.workspace import (
+    WorkspaceProviderError,
+    WorkspaceReadiness,
+    workspace_validation_failures,
+)
 from .shared.schemas import (
     ApiErrorResponse,
     ApiErrorCode,
@@ -54,6 +60,13 @@ from .shared.schemas import (
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class RuntimeCapabilities:
+    workspace_configured: bool
+    analysis_model_available: bool
+    resume_builder_available: bool
+
+
 def _api_error_responses(*status_codes: int) -> dict[int, dict]:
     return {
         status_code: {"model": ApiErrorResponse, "description": "Technical error"}
@@ -63,21 +76,42 @@ def _api_error_responses(*status_codes: int) -> dict[int, dict]:
 
 def _health(
     settings: Settings,
+    capabilities: RuntimeCapabilities,
     recovery_error: str | None = None,
     *,
-    workspace_ready: bool = False,
-    analysis_model_ready: bool = False,
-    resume_builder_ready: bool = False,
+    workspace_readiness: WorkspaceReadiness | None = None,
+    workspace_provider_error: str | None = None,
 ) -> dict:
     errors = []
+    workspace_ready = bool(
+        capabilities.workspace_configured
+        and workspace_readiness
+        and workspace_readiness.ready
+        and not workspace_provider_error
+    )
     notion = "ready" if workspace_ready else "blocked"
-    analysis = "ready" if workspace_ready and analysis_model_ready else "blocked"
-    resumes = "ready" if workspace_ready and resume_builder_ready else "blocked"
+    analysis = (
+        "ready"
+        if workspace_ready and capabilities.analysis_model_available
+        else "blocked"
+    )
+    resumes = (
+        "ready"
+        if workspace_ready and capabilities.resume_builder_available
+        else "blocked"
+    )
     if not settings.notion_configured:
         errors.append("Notion configuration is incomplete.")
     if not settings.deepseek_configured:
         errors.append("DEEPSEEK_API_KEY is not configured.")
-    if not analysis_model_ready or not resume_builder_ready:
+    if workspace_provider_error:
+        errors.append(workspace_provider_error)
+    if workspace_readiness:
+        errors.extend(issue.message for issue in workspace_readiness.errors)
+    if (
+        not capabilities.analysis_model_available
+        or not capabilities.resume_builder_available
+    ):
         errors.append("Real DeepSeek workflow adapters are not enabled in this build.")
     if recovery_error:
         errors.append(recovery_error)
@@ -88,8 +122,48 @@ def _health(
         "status": "ready" if ready else "blocked",
         "service": "merida-api",
         "checks": {"settings": "ready", "notion": notion, "analysis": analysis, "resumes": resumes},
-        "validationFailures": [],
+        "validationFailures": [
+            failure.model_dump(by_alias=True)
+            for failure in workspace_validation_failures(
+                workspace_readiness or WorkspaceReadiness()
+            )
+        ],
         "errors": [] if ready else list(dict.fromkeys(errors)),
+    }
+
+
+async def _validate_workspace(workspace) -> WorkspaceReadiness:
+    readiness = (
+        await workspace.validate_capture_workspace(),
+        await workspace.validate_analysis_workspace(),
+        await workspace.validate_resume_workspace(),
+    )
+    errors = tuple(
+        dict.fromkeys(
+            issue
+            for result in readiness
+            for issue in result.errors
+        )
+    )
+    warnings = tuple(
+        dict.fromkeys(
+            issue
+            for result in readiness
+            for issue in result.warnings
+        )
+    )
+    return WorkspaceReadiness(errors=errors, warnings=warnings)
+
+
+def _blocked_queue(limit: int, message: str) -> dict:
+    return {
+        "ok": False,
+        "status": "blocked",
+        "queueCount": 0,
+        "items": [],
+        "pagination": {"limit": limit, "nextCursor": None, "hasMore": False},
+        "validationFailures": [],
+        "errors": [message],
     }
 
 
@@ -143,7 +217,11 @@ def create_app(
             resume_database_id=settings.notion_resume_database_id,
             notes_database_id=settings.notion_notes_database_id,
         )
-    workspace_ready = workspace_injected or settings.notion_configured
+    capabilities = RuntimeCapabilities(
+        workspace_configured=workspace_injected or settings.notion_configured,
+        analysis_model_available=analysis_model_ready,
+        resume_builder_available=resume_builder_ready,
+    )
     coordinator = coordinator or ExecutionCoordinator()
     recovery_path = settings.recovery_journal_path
     try:
@@ -349,12 +427,19 @@ def create_app(
         responses=_api_error_responses(500),
     )
     async def get_health():
+        workspace_provider_error = None
+        workspace_readiness = None
+        if capabilities.workspace_configured:
+            try:
+                workspace_readiness = await _validate_workspace(workspace)
+            except WorkspaceProviderError as error:
+                workspace_provider_error = str(error)
         return _health(
             settings,
+            capabilities,
             recovery_error,
-            workspace_ready=workspace_ready,
-            analysis_model_ready=analysis_model_ready,
-            resume_builder_ready=resume_builder_ready,
+            workspace_readiness=workspace_readiness,
+            workspace_provider_error=workspace_provider_error,
         )
 
     @app.get("/api/v1/health/notion", operation_id="getNotionHealth", response_model=NotionHealthResponse, responses=_api_error_responses(500))
@@ -408,31 +493,31 @@ def create_app(
         responses=_api_error_responses(400, 401, 413, 415, 500),
     )
     async def confirm_application(request: ConfirmApplicationRequest):
-        if not workspace_ready:
+        if not capabilities.workspace_configured:
             return {"ok": False, "status": "blocked", "result": "blocked", "validationFailures": [], "errors": ["Notion configuration is incomplete."]}
         return await capture.confirm(request.draft)
 
     @app.get("/api/v1/applications/analysis/queue", operation_id="getApplicationAnalysisQueue", response_model=GetApplicationAnalysisQueueResponse, responses=_api_error_responses(400, 500))
     async def get_analysis_queue(limit: int = Query(default=5, ge=1, le=10), cursor: str | None = None):
-        if not workspace_ready:
-            return {"ok": False, "status": "blocked", "queueCount": 0, "items": [], "pagination": {"limit": limit, "nextCursor": None, "hasMore": False}, "validationFailures": [], "errors": ["Notion configuration is incomplete."]}
+        if not capabilities.workspace_configured:
+            return _blocked_queue(limit, "Notion configuration is incomplete.")
         return await analysis.get_queue(limit, cursor)
 
     @app.post("/api/v1/applications/analysis/run", operation_id="runApplicationAnalysis", response_model=RunApplicationAnalysisResponse, responses=_api_error_responses(400, 409, 415, 500))
     async def run_application_analysis(request: RunApplicationAnalysisRequest):
-        if not analysis_model_ready:
+        if not capabilities.analysis_model_available:
             return {"ok": False, "status": "blocked", "result": "blocked", "processed": 0, "succeeded": 0, "failed": 0, "repaired": 0, "items": [], "validationFailures": [], "errors": ["Real Application Analysis is not enabled in this build."]}
         return await analysis.run_batch(request.limit)
 
     @app.get("/api/v1/resumes/queue", operation_id="getResumeCreationQueue", response_model=GetResumeCreationQueueResponse, responses=_api_error_responses(400, 500))
     async def get_resume_queue(limit: int = Query(default=5, ge=1, le=10), cursor: str | None = None):
-        if not workspace_ready:
-            return {"ok": False, "status": "blocked", "queueCount": 0, "items": [], "pagination": {"limit": limit, "nextCursor": None, "hasMore": False}, "validationFailures": [], "errors": ["Notion configuration is incomplete."]}
+        if not capabilities.workspace_configured:
+            return _blocked_queue(limit, "Notion configuration is incomplete.")
         return await resumes.get_queue(limit, cursor)
 
     @app.post("/api/v1/resumes/create", operation_id="createResume", response_model=CreateResumeResponse, responses=_api_error_responses(400, 409, 415, 500))
     async def create_resume(request: CreateResumeRequest):
-        if not resume_builder_ready:
+        if not capabilities.resume_builder_available:
             return {"ok": False, "status": "blocked", "result": "blocked", "cleanup": {"status": "not_required", "errors": []}, "validationFailures": [], "errors": ["Real Resume Creation is not enabled in this build."]}
         return await resumes.create(request.application_id)
 

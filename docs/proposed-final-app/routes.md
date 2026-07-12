@@ -135,7 +135,6 @@ Success:
   "ok": true,
   "status": "ready",
   "service": "merida-api",
-  "mode": "real",
   "checks": {
     "settings": "ready",
     "notion": "ready",
@@ -154,7 +153,6 @@ Failure:
   "ok": false,
   "status": "blocked",
   "service": "merida-api",
-  "mode": "real",
   "checks": {
     "settings": "ready",
     "notion": "blocked",
@@ -329,7 +327,7 @@ These routes support the React operator app without exposing secrets.
 
 ### `GET /operator/settings`
 
-Returns values the dashboard can safely display, such as current workspace mode, selected model names, and whether required dashboard providers are configured. It must not return capture tokens, Notion database IDs, Notion tokens, DeepSeek keys, prompts, export paths, or full private job content.
+Returns values the dashboard can safely display, such as selected model names and whether required dashboard providers are configured. It must not return capture tokens, Notion database IDs, Notion tokens, DeepSeek keys, prompts, export paths, or full private job content.
 
 Model names are read-only in the dashboard. Model selection remains backend configuration.
 
@@ -338,8 +336,6 @@ Success:
 ```json
 {
   "ok": true,
-  "mode": "real",
-  "workspace": "notion",
   "models": {
     "analysis": "deepseek-v4-flash",
     "resumes": "deepseek-v4-pro"

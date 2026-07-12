@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from merida_api.app import create_app
 from merida_api.core.settings import Settings
+from merida_api.shared.workspace import WorkspaceIssue, WorkspaceReadiness
 from fakes.app import create_test_app
 from fakes.workspace import FakeWorkspace, initial_test_state
 
@@ -92,6 +93,50 @@ def test_public_contract_has_one_real_runtime_and_no_demo_surface(tmp_path):
     ]["properties"]["code"]["enum"]
     assert removed_reset.status_code == 404
     assert removed_reset.json()["error"]["code"] == "not_found"
+
+
+def test_health_blocks_when_the_real_workspace_schema_is_incompatible(tmp_path):
+    class IncompatibleWorkspace(FakeWorkspace):
+        async def validate_resume_workspace(self):
+            return WorkspaceReadiness(
+                errors=(
+                    WorkspaceIssue(
+                        database="resumes",
+                        property="Job Posting",
+                        message="Required relation property is missing.",
+                    ),
+                )
+            )
+
+    settings = Settings(
+        notion_token="test-notion-token",
+        notion_database_id="applications-database",
+        notion_resume_database_id="resumes-database",
+        notion_notes_database_id="notes-database",
+        deepseek_api_key="test-deepseek-key",
+        export_path=tmp_path / "export",
+        recovery_journal_path=tmp_path / "recovery.json",
+    )
+    app = create_test_app(
+        settings,
+        workspace=IncompatibleWorkspace(tmp_path / "state.json"),
+    )
+
+    with TestClient(app) as client:
+        health = client.get("/api/v1/health").json()
+
+    assert health["status"] == "blocked"
+    assert health["checks"]["notion"] == "blocked"
+    assert health["checks"]["analysis"] == "blocked"
+    assert health["checks"]["resumes"] == "blocked"
+    assert health["validationFailures"] == [
+        {
+            "kind": "workspace_schema",
+            "database": "resumes",
+            "property": "Job Posting",
+            "message": "Required relation property is missing.",
+        }
+    ]
 
 
 def test_capture_is_review_first_protected_and_idempotent(tmp_path):

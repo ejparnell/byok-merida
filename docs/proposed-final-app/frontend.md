@@ -24,7 +24,7 @@ The Chrome extension remains responsible for capturing Applications. Notion rema
 | Route | Used by | Purpose |
 | --- | --- | --- |
 | `GET /health` | Health section and section readiness | Shows overall backend readiness and blocking errors. |
-| `GET /operator/settings` | Health section | Shows non-secret workspace mode, selected models, and configured provider flags. |
+| `GET /operator/settings` | Health section | Shows selected models and configured provider flags without a runtime-mode discriminator. |
 | `GET /applications/analysis/queue?limit=5` | Application Analysis section | Lists eligible Applications ready to analyze. |
 | `GET /resumes/queue?limit=5` | Resume Creation section | Lists eligible analyzed Applications that can create a resume. |
 
