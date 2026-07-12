@@ -10,7 +10,12 @@ from .schemas import (
 )
 from .workspace import ApplicationRecord
 from ...shared.schemas import Pagination
-from ...shared.workspace import WorkspaceReadiness, workspace_validation_failures
+from ...shared.workspace import (
+    WorkspaceDataError,
+    WorkspaceIssue,
+    WorkspaceReadiness,
+    workspace_validation_failures,
+)
 from ...shared.execution import ExecutionCoordinator
 from ...matching import EvidenceMatchingEngine
 
@@ -30,6 +35,28 @@ class ApplicationAnalysis:
         self._item_graph = ApplicationAnalysisGraph(
             self._store, self._model, self._matcher
         )
+
+    async def validate_readiness(self) -> WorkspaceReadiness:
+        readiness = await self._store.validate_analysis_workspace()
+        if not readiness.ready:
+            return readiness
+        try:
+            evidence = await self._store.load_analysis_evidence()
+            if not evidence:
+                raise WorkspaceDataError(
+                    "Master Resume must contain readable evidence."
+                )
+        except WorkspaceDataError as error:
+            return WorkspaceReadiness(
+                errors=(
+                    WorkspaceIssue(
+                        database="resumes",
+                        property="Master Resume",
+                        message=str(error),
+                    ),
+                )
+            )
+        return readiness
 
     async def get_queue(
         self, limit: int, cursor: str | None

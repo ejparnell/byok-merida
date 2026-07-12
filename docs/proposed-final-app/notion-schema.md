@@ -14,16 +14,18 @@ Merida expects existing Notion databases. It validates the configured databases 
 
 Required workflow properties:
 
-| Property | Type | Required behavior |
-| --- | --- | --- |
-| `Application` | title | Page title for a specific role, `{Role} at {Company Name}`. |
-| `Company Name` | rich text | Used for queue display and PDF file naming. |
-| `Role` | rich text | Used for queue display and Resume Name creation. |
-| `Job URL` | URL | Canonical URL used for duplicate detection. |
-| `Date Found` | date | When application was captured. |
-| `Application Status` | select | Workflow state. Capture sets new Applications to `To Apply`. |
-| `Analyzed` | checkbox | Marks whether Application Analysis has been completed. |
-| `Match Score` | number | High-level job/application fit score written by Application Analysis. Capture does not set it. |
+The final app keeps the existing physical property names. Canonical code/domain names are translated by the Notion compatibility adapter.
+
+| Physical property | Canonical name | Type | Required behavior |
+| --- | --- | --- | --- |
+| `Job Posting` | Application | title | Page title for a specific role, `{Role} at {Company Name}`. |
+| `Company Name` | Company Name | rich text | Used for queue display and PDF file naming. |
+| `Job Title` | Role | rich text | Used for queue display and Resume Name creation. |
+| `Job URL` | Job URL | URL | Canonical URL used for duplicate detection. |
+| `Application Date` | Date Found | date | When application was captured. |
+| `Application Status` | Application Status | select | Workflow state. Capture sets new Applications to `To Apply`. |
+| `Analyzed` | Analyzed | checkbox | Marks whether Application Analysis has been completed. |
+| `Match Score` | Match Score | number | High-level job/application fit score written by Application Analysis. Capture does not set it. |
 
 Optional Notion-managed properties:
 
@@ -99,7 +101,7 @@ Required properties:
 | Property | Type | Required behavior |
 | --- | --- | --- |
 | `Name` | title | `Master Resume` for the source resume, or `{Role} at {Company Name}` for generated resumes. |
-| `Application` | relation | Must target the Applications database. The Applications inverse relation must be named `Resumes`. |
+| `Job Posting` | relation | Must target the Applications database. The Applications inverse relation must be named `Resumes`. |
 
 Required relation for Notes:
 

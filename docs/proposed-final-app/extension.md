@@ -40,7 +40,7 @@ Use one compact vertical side panel that remains open while the user interacts w
 Suggested order:
 
 1. **Header And Readiness**: extension title, backend status, refresh action, and settings action.
-2. **Capture Actions**: primary review-first action and optional quick-capture action.
+2. **Capture Action**: the primary review-first action.
 3. **Capture Progress**: current page-reading, parsing, confirming, or writing state.
 4. **Review Form**: editable parsed fields and Job Content review.
 5. **Capture Result**: created, already captured, needs review, or failed result.
@@ -229,7 +229,7 @@ Do not silently replace an in-progress review when:
 - the side panel regains focus
 - readiness refreshes
 
-A new **Fill Form** or **Quick Capture** action may replace the current review only after the user intentionally starts a new capture. If the current form has edits, ask for confirmation before discarding them.
+A new **Fill Form** action may replace the current review only after the user intentionally starts a new capture. If the current form has edits, ask for confirmation before discarding them.
 
 ## Extension Settings
 
@@ -266,7 +266,7 @@ Use `chrome.storage.local` for extension settings. Never render the stored captu
 | State | Extension behavior |
 | --- | --- |
 | Initial loading | Show compact readiness loading state. |
-| Ready and idle | Enable **Fill Form** and the optional **Quick Capture** action. |
+| Ready and idle | Enable **Fill Form**. |
 | Restricted Chrome page | Explain that Chrome does not allow the page to be read and disable capture for that tab. |
 | Reading page | Disable capture actions and show collection progress. |
 | Parsing | Keep actions disabled and show parsing progress. |
@@ -284,7 +284,7 @@ The extension may share small UI primitives with the React web app, but extensio
 
 | Component | Used for |
 | --- | --- |
-| `Button` | Fill Form, Quick Capture, Create in Notion, retry, and reset actions. |
+| `Button` | Fill Form, Create in Notion, retry, and reset actions. |
 | `IconButton` | Refresh, settings, close, and external-link actions. |
 | `StatusDot` | Backend and capture readiness. |
 | `StatusBadge` | `ready`, `reading`, `parsing`, `review`, `creating`, `created`, `already_captured`, or `failed`. |

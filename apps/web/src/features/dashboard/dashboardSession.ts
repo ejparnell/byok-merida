@@ -72,6 +72,7 @@ export function createDashboardSession(
         analysisCursor,
         resumeCursor,
         loading: false,
+        errors: data.errors || [],
       })
       return data
     } catch (error) {

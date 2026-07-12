@@ -99,7 +99,7 @@ def test_public_contract_has_one_real_runtime_and_no_demo_surface(tmp_path):
     assert removed_reset.json()["error"]["code"] == "not_found"
 
 
-def test_health_blocks_when_the_real_workspace_schema_is_incompatible(tmp_path):
+def test_resume_schema_failure_does_not_block_capture_or_analysis(tmp_path):
     class IncompatibleWorkspace(FakeWorkspace):
         async def validate_resume_workspace(self):
             return WorkspaceReadiness(
@@ -130,8 +130,8 @@ def test_health_blocks_when_the_real_workspace_schema_is_incompatible(tmp_path):
         health = client.get("/api/v1/health").json()
 
     assert health["status"] == "blocked"
-    assert health["checks"]["notion"] == "blocked"
-    assert health["checks"]["analysis"] == "blocked"
+    assert health["checks"]["notion"] == "ready"
+    assert health["checks"]["analysis"] == "ready"
     assert health["checks"]["resumes"] == "blocked"
     assert health["validationFailures"] == [
         {
@@ -141,6 +141,38 @@ def test_health_blocks_when_the_real_workspace_schema_is_incompatible(tmp_path):
             "message": "Required relation property is missing.",
         }
     ]
+
+
+def test_runtime_rejects_non_loopback_api_hosts():
+    with pytest.raises(ValueError, match="loopback"):
+        Settings(api_host="0.0.0.0")
+
+
+def test_default_capture_token_is_not_treated_as_configured(tmp_path):
+    settings = Settings(
+        notion_token="test-notion-token",
+        notion_database_id="applications-database",
+        notion_resume_database_id="resumes-database",
+        notion_notes_database_id="notes-database",
+        deepseek_api_key="test-deepseek-key",
+        export_path=tmp_path / "export",
+        recovery_journal_path=tmp_path / "recovery.json",
+    )
+
+    with TestClient(create_test_app(settings, state_path=tmp_path / "state.json")) as client:
+        response = client.post(
+            "/api/v1/applications/prepare",
+            headers={"X-Capture-Token": "local-capture-token"},
+            json={
+                "evidence": {
+                    "url": "https://example.test/jobs/1",
+                    "visibleText": "Build reliable Python services and React interfaces.",
+                }
+            },
+        )
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "invalid_capture_token"
 
 
 def test_provider_outages_return_typed_workflow_blocks(tmp_path):
@@ -407,6 +439,52 @@ def test_already_created_resume_allows_missing_historical_note_and_pdf(tmp_path)
     assert existing["pdf"] is None
 
 
+def test_existing_resume_is_returned_before_schema_or_eligibility_checks(tmp_path):
+    class ExistingFirstWorkspace(FakeWorkspace):
+        async def validate_resume_workspace(self):
+            return WorkspaceReadiness(
+                errors=(
+                    WorkspaceIssue(
+                        database="notes",
+                        property="Resume",
+                        message="Unrelated Notes schema defect.",
+                    ),
+                )
+            )
+
+        async def load_resume_input(self, application_id):
+            raise AssertionError("eligibility must not run for an existing Resume")
+
+    state = initial_test_state()
+    application = next(item for item in state["applications"] if item["id"] == "app-orbit")
+    application["applicationStatus"] = "Applied"
+    application["resumeId"] = "resume-existing"
+    state["resumes"]["resume-existing"] = {
+        "id": "resume-existing",
+        "title": "Platform Engineer at Orbit Works",
+        "url": "https://www.notion.so/test/resume-existing",
+        "applicationId": "app-orbit",
+        "document": [],
+        "archived": False,
+    }
+    state_path = tmp_path / "state.json"
+    state_path.write_text(json.dumps(state))
+    workspace = ExistingFirstWorkspace(state_path)
+    settings = Settings(
+        export_path=tmp_path / "export",
+        recovery_journal_path=tmp_path / "recovery.json",
+    )
+
+    with TestClient(create_test_app(settings, workspace=workspace)) as client:
+        response = client.post(
+            "/api/v1/resumes/create", json={"applicationId": "app-orbit"}
+        )
+
+    assert response.status_code == 200
+    assert response.json()["result"] == "already_created"
+    assert response.json()["resume"]["id"] == "resume-existing"
+
+
 def test_unconfigured_real_runtime_exposes_typed_blocked_outcomes(tmp_path):
     settings = Settings(
         capture_token="test-capture-token",
@@ -479,6 +557,31 @@ def test_analysis_repairs_existing_findings_without_rerunning_work(tmp_path):
     assert response.status_code == 200
     assert response.json()["items"][0]["result"] == "repaired"
     assert response.json()["repaired"] == 1
+
+
+def test_analysis_recomputes_a_missing_legacy_match_score_deterministically(tmp_path):
+    state = initial_test_state()
+    application = next(item for item in state["applications"] if item["id"] == "app-northstar")
+    application["analysis"] = {
+        "summary": "Existing findings",
+        "skillSignals": ["REST APIs"],
+    }
+    application["matchScore"] = None
+    state_path = tmp_path / "state.json"
+    state_path.write_text(json.dumps(state))
+    settings = Settings(
+        export_path=tmp_path / "export",
+        recovery_journal_path=tmp_path / "recovery.json",
+    )
+
+    with TestClient(create_test_app(settings, state_path=state_path)) as client:
+        response = client.post(
+            "/api/v1/applications/analysis/run", json={"limit": 1}
+        ).json()
+
+    repaired = next(item for item in response["items"] if item["applicationId"] == "app-northstar")
+    assert repaired["result"] == "repaired"
+    assert isinstance(repaired["matchScore"], int)
 
 
 def test_public_seam_serializes_partial_analysis_and_failed_resume_outcomes(tmp_path):
@@ -760,6 +863,30 @@ def test_capture_can_prepare_readable_semantic_html_without_echoing_markup(tmp_p
         "Engineer Build reliable Python services."
     )
     assert "<article>" not in response.text
+
+
+def test_capture_prefers_structured_job_metadata_over_ambiguous_page_title(tmp_path):
+    headers = {"X-Capture-Token": "test-capture-token"}
+    request = {
+        "evidence": {
+            "url": "https://example.com/jobs/42",
+            "title": "Careers | Example",
+            "visibleText": "Build reliable Python services for customers.",
+            "structuredJobTitle": "Platform Engineer",
+            "structuredCompanyName": "Example",
+            "structuredLocation": "Remote",
+        }
+    }
+
+    with make_client(tmp_path) as client:
+        prepared = client.post(
+            "/api/v1/applications/prepare", json=request, headers=headers
+        ).json()
+
+    assert prepared["result"] == "prepared"
+    assert prepared["draft"]["role"] == "Platform Engineer"
+    assert prepared["draft"]["companyName"] == "Example"
+    assert prepared["draft"]["location"] == "Remote"
 
 
 def test_cors_allows_only_configured_browser_origins_and_headers(tmp_path):

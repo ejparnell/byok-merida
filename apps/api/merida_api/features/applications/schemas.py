@@ -13,6 +13,10 @@ class CaptureEvidence(ApiModel):
     selected_text: str = Field(default="", alias="selectedText", max_length=120_000)
     visible_text: str = Field(default="", alias="visibleText", max_length=120_000)
     semantic_html: str = Field(default="", alias="semanticHtml", max_length=120_000)
+    metadata_text: str = Field(default="", alias="metadataText", max_length=120_000)
+    structured_job_title: str = Field(default="", alias="structuredJobTitle", max_length=200)
+    structured_company_name: str = Field(default="", alias="structuredCompanyName", max_length=200)
+    structured_location: str = Field(default="", alias="structuredLocation", max_length=300)
 
     @field_validator("url")
     @classmethod
@@ -25,14 +29,24 @@ class CaptureEvidence(ApiModel):
 
     @model_validator(mode="after")
     def validate_evidence_size(self):
-        total = len(self.selected_text) + len(self.visible_text) + len(self.semantic_html)
+        total = (
+            len(self.selected_text)
+            + len(self.visible_text)
+            + len(self.semantic_html)
+            + len(self.metadata_text)
+        )
         if total > 240_000:
             raise PydanticCustomError(
                 "payload_too_large", "Combined Capture Evidence is too large."
             )
         if not any(
             value.strip()
-            for value in (self.selected_text, self.visible_text, self.semantic_html)
+            for value in (
+                self.selected_text,
+                self.visible_text,
+                self.semantic_html,
+                self.metadata_text,
+            )
         ):
             raise ValueError("Readable Capture Evidence is required.")
         return self

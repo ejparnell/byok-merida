@@ -87,3 +87,39 @@ test('dashboard adapter never retries a failed analysis POST automatically', asy
   )
   assert.equal(calls, 1)
 })
+
+test('dashboard load keeps healthy sections when one queue request fails', async () => {
+  const fetch = async (request) => {
+    const url = new URL(request.url)
+    if (url.pathname === '/api/v1/resumes/queue') {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: {
+            code: 'internal_error',
+            message: 'Resume Queue is unavailable.',
+            requestId: 'request-1',
+          },
+          validationFailures: [],
+          errors: ['Resume Queue is unavailable.'],
+        }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+    return new Response(JSON.stringify(payloads[url.pathname]), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+  const client = createDashboardClient({
+    baseUrl: 'http://merida.test',
+    fetch,
+  })
+
+  const result = await client.loadDashboard({})
+
+  assert.equal(result.health.ok, true)
+  assert.equal(result.analysisQueue.ok, true)
+  assert.equal(result.resumeQueue, null)
+  assert.deepEqual(result.errors, ['Resume Queue is unavailable.'])
+})

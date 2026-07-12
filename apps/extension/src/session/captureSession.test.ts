@@ -103,3 +103,39 @@ test('semantic-only evidence is converted to readable in-memory Job Content on c
 
   assert.equal(confirmed.jobContent, 'Engineer Build reliable systems.')
 })
+
+test('prepare review reasons and missing fields remain visible in session state', async () => {
+  const session = createCaptureSession({
+    prepare: async () => ({
+      ok: true,
+      result: 'needs_review',
+      needsReview: true,
+      reviewReasons: ['Company Name could not be parsed.'],
+      missingFields: ['companyName'],
+      validationFailures: [
+        { kind: 'request', field: 'companyName', message: 'Review required.' },
+      ],
+      errors: [],
+      draft: {
+        jobUrl: 'https://example.test/job',
+        companyName: null,
+        role: 'Engineer',
+        location: null,
+        jobContentPreview: 'Build reliable systems.',
+      },
+    }),
+  })
+
+  await session.prepare(
+    { url: 'https://example.test/job', visibleText: 'Build reliable systems.' },
+    { tabId: 1, url: 'https://example.test/job' },
+  )
+
+  const state = session.getState()
+  assert.deepEqual(state.reviewReasons, ['Company Name could not be parsed.'])
+  assert.deepEqual(state.missingFields, ['companyName'])
+  assert.deepEqual(state.errors, [
+    'Company Name could not be parsed.',
+    'Review required.',
+  ])
+})

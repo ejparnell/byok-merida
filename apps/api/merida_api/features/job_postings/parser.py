@@ -25,11 +25,19 @@ def prepare_capture(evidence: CaptureEvidence) -> tuple[dict, str, list[str]]:
         evidence.selected_text.strip()
         or evidence.visible_text.strip()
         or html.unescape(semantic_text).strip()
+        or evidence.metadata_text.strip()
     )
     title = evidence.title.strip()
-    match = re.match(r"^(.+?)\s+(?:at|[-|])\s+(.+)$", title, re.IGNORECASE)
-    role = match.group(1).strip() if match else title
-    company = match.group(2).strip() if match else ""
+    role = evidence.structured_job_title.strip()
+    company = evidence.structured_company_name.strip()
+    if not role or not company:
+        match = re.match(
+            r"^(.+?)\s+(?:at|@|[-|–—])\s+(.+?)(?:\s+[|–—-]\s+.+)?$",
+            title,
+            re.IGNORECASE,
+        )
+        role = role or (match.group(1).strip() if match else title)
+        company = company or (match.group(2).strip() if match else "")
     errors = []
     if not company:
         errors.append("Company Name could not be parsed with enough confidence.")
@@ -43,7 +51,7 @@ def prepare_capture(evidence: CaptureEvidence) -> tuple[dict, str, list[str]]:
         "jobUrl": canonicalize_url(evidence.url),
         "companyName": company or None,
         "role": role or None,
-        "location": None,
+        "location": evidence.structured_location.strip() or None,
         "jobContentPreview": preview,
     }
     return draft, source, errors

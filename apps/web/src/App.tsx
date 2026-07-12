@@ -177,16 +177,18 @@ function QueueIdentity({
 
 function QueuePagination({
   pagination,
+  currentCursor,
   onFirst,
   onNext,
   disabled,
 }: {
   pagination?: { hasMore: boolean; nextCursor: string | null }
+  currentCursor: string | null
   onFirst: () => void
   onNext: () => void
   disabled: boolean
 }) {
-  if (!pagination?.hasMore && !disabled) return null
+  if (!pagination?.hasMore && !currentCursor && !disabled) return null
   return (
     <div className="pagination">
       <button type="button" onClick={onFirst} disabled={disabled}>
@@ -243,11 +245,17 @@ function AnalysisResult({
                 {item.result}
                 {item.matchScore != null ? ` · ${item.matchScore}%` : ''}
               </b>
+              {'errors' in item && item.errors?.length > 0 && (
+                <small>{item.errors.join(' ')}</small>
+              )}
             </li>
           ))}
         </ul>
       )}
       <ErrorCallout errors={result.errors} />
+      <ErrorCallout
+        errors={result.validationFailures?.map((failure) => failure.message)}
+      />
     </div>
   )
 }
@@ -324,6 +332,7 @@ function AnalysisSection({
       </div>
       <QueuePagination
         pagination={queue?.pagination}
+        currentCursor={state.analysisCursor}
         disabled={state.analysisRunning}
         onFirst={() => {
           session.setCursors(null, state.resumeCursor)
@@ -341,6 +350,10 @@ function AnalysisSection({
         result={state.analysisResult}
         onDismiss={() => session.dismissAnalysisResult()}
       />
+      <ErrorCallout errors={queue?.errors} />
+      <ErrorCallout
+        errors={queue?.validationFailures?.map((failure) => failure.message)}
+      />
     </Section>
   )
 }
@@ -351,6 +364,9 @@ function ResultLinks({ result }: { result: CreateResumeResponse | null }) {
     return (
       <>
         <ErrorCallout errors={result.errors} />
+        <ErrorCallout
+          errors={result.validationFailures?.map((failure) => failure.message)}
+        />
         {result.cleanup && (
           <div className="cleanup-status">
             <span>Cleanup</span>
@@ -378,9 +394,11 @@ function ResultLinks({ result }: { result: CreateResumeResponse | null }) {
           Fit analysis <ArrowIcon />
         </a>
       )}
-      <a href={result.pdf?.downloadUrl} target="_blank" rel="noreferrer">
-        PDF <ArrowIcon />
-      </a>
+      {result.pdf?.downloadUrl && (
+        <a href={result.pdf.downloadUrl} target="_blank" rel="noreferrer">
+          PDF <ArrowIcon />
+        </a>
+      )}
     </div>
   )
 }
@@ -440,6 +458,7 @@ function ResumeSection({
       </div>
       <QueuePagination
         pagination={queue?.pagination}
+        currentCursor={state.resumeCursor}
         disabled={Boolean(state.activeResumeId)}
         onFirst={() => {
           session.setCursors(state.analysisCursor, null)
@@ -456,6 +475,10 @@ function ResumeSection({
       {Object.entries(state.resumeResults).map(([applicationId, result]) => (
         <ResultLinks key={applicationId} result={result} />
       ))}
+      <ErrorCallout errors={queue?.errors} />
+      <ErrorCallout
+        errors={queue?.validationFailures?.map((failure) => failure.message)}
+      />
     </Section>
   )
 }

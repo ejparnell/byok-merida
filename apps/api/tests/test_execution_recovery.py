@@ -7,6 +7,8 @@ from fastapi.testclient import TestClient
 from merida_api.core.settings import Settings
 from merida_api.integrations.pdf_export import LocalPdfArtifacts
 from merida_api.features.resumes.workspace import DocumentBlock
+from merida_api.features.resumes.commit import ResumeArtifactCommitter
+from merida_api.features.resumes.workspace import ResumeArtifactBundle
 from merida_api.shared.recovery import JsonEffectJournal
 from merida_api.cli import run_recovery_command
 from fakes.app import create_test_app
@@ -32,10 +34,43 @@ class BlockingResumeBuilder:
         self.release = threading.Event()
         self._delegate = FakeResumeDocumentBuilder()
 
-    async def build(self, application, master_resume):
+    async def build(self, application, master_resume, **context):
+        del context
         self.started.set()
         assert await asyncio.to_thread(self.release.wait, 5)
         return await self._delegate.build(application, master_resume)
+
+
+def test_ambiguous_resume_create_remains_blocked_for_manual_recovery(tmp_path):
+    class AcceptedWithoutIdentityWorkspace(FakeWorkspace):
+        async def create_resume_draft(
+            self, name, document, *, on_created=None
+        ):
+            del on_created
+            await super().create_resume_draft(name, document)
+            raise RuntimeError("simulated response loss")
+
+    workspace = AcceptedWithoutIdentityWorkspace(tmp_path / "state.json")
+    application = asyncio.run(workspace.load_resume_input("app-orbit"))
+    journal = JsonEffectJournal(tmp_path / "recovery.json")
+    committer = ResumeArtifactCommitter(
+        workspace, LocalPdfArtifacts(tmp_path / "export"), journal
+    )
+
+    result = asyncio.run(
+        committer.commit(
+            application,
+            ResumeArtifactBundle(
+                resume=(DocumentBlock(kind="heading_1", text="Candidate"),),
+                note=(DocumentBlock(kind="heading_2", text="Resume Fit Analysis"),),
+            ),
+            run_id="resume-ambiguous",
+        )
+    )
+
+    assert result.cleanup_status == "incomplete"
+    assert "ownership could not be confirmed" in result.cleanup_errors[0]
+    assert journal.get("resume-ambiguous").resolution == "active"
 
 
 def test_overlapping_analysis_run_fails_fast_with_conflict(tmp_path):
@@ -152,7 +187,10 @@ def test_restart_reconciles_unfinished_resume_effects_before_retry(tmp_path):
         return resume, note
 
     resume, note = asyncio.run(create_interrupted_effects())
-    LocalPdfArtifacts(export_path).save(resume.id, ("Interrupted PDF",))
+    LocalPdfArtifacts(export_path).save(
+        resume.id,
+        (DocumentBlock(kind="paragraph", text="Interrupted PDF"),),
+    )
     journal = JsonEffectJournal(journal_path)
     journal.start(
         workflow="resume_creation", domain_key="app-orbit", run_id="run-crashed"

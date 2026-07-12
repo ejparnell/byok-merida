@@ -1,4 +1,5 @@
 from pathlib import Path
+from collections.abc import Callable
 from typing import Protocol
 
 from ..applications.workspace import ApplicationRecord
@@ -20,6 +21,9 @@ class ResumeCreationStore(Protocol):
     async def list_resume_queue(
         self, *, limit: int, cursor: str | None
     ) -> QueuePage[ApplicationRecord]: ...
+    async def load_resume_application(
+        self, application_id: str
+    ) -> ApplicationRecord: ...
     async def load_resume_input(self, application_id: str) -> ApplicationRecord: ...
     async def find_completed_resume(
         self, application: ApplicationRecord
@@ -29,7 +33,11 @@ class ResumeCreationStore(Protocol):
     ) -> NoteRecord | None: ...
     async def load_master_resume(self) -> ResumeDocument: ...
     async def create_resume_draft(
-        self, name: str, document: tuple[DocumentBlock, ...]
+        self,
+        name: str,
+        document: tuple[DocumentBlock, ...],
+        *,
+        on_created: Callable[[ResumeRecord], None] | None = None,
     ) -> ResumeRecord: ...
     async def create_resume_fit_note(
         self,
@@ -38,6 +46,7 @@ class ResumeCreationStore(Protocol):
         application_id: str,
         resume_id: str,
         document: tuple[DocumentBlock, ...],
+        on_created: Callable[[NoteRecord], None] | None = None,
     ) -> NoteRecord: ...
     async def attach_resume_to_application(
         self, resume_id: str, application_id: str
@@ -56,11 +65,29 @@ class ResumeCreationStore(Protocol):
 
 class ResumeDocumentBuilder(Protocol):
     async def build(
-        self, application: ApplicationRecord, master_resume: ResumeDocument
+        self,
+        application: ApplicationRecord,
+        master_resume: ResumeDocument,
+        *,
+        run_id: str | None = None,
+        workflow: str = "resume_creation",
     ) -> ResumeArtifactBundle: ...
 
 
+class FitRequirementModel(Protocol):
+    async def extract(self, messages: list[tuple[str, str]]) -> dict: ...
+
+
+class ResumeDraftModel(Protocol):
+    async def generate(self, messages: list[tuple[str, str]]) -> dict: ...
+
+
 class ResumePdfArtifacts(Protocol):
-    def save(self, resume_id: str, lines: tuple[str, ...]) -> Path: ...
+    def stage(self, document: tuple[DocumentBlock, ...]) -> Path: ...
+    def publish(self, resume_id: str, staged: Path) -> Path: ...
+    def discard(self, staged: Path) -> None: ...
+    def save(
+        self, resume_id: str, document: tuple[DocumentBlock, ...]
+    ) -> Path: ...
     def remove(self, resume_id: str) -> None: ...
     def path(self, resume_id: str) -> Path | None: ...

@@ -56,7 +56,10 @@ class FakeApplicationAnalysisModel:
 
 class FakeResumeDocumentBuilder:
     async def build(
-        self, application: ApplicationRecord, master_resume: ResumeDocument
+        self,
+        application: ApplicationRecord,
+        master_resume: ResumeDocument,
+        **_context,
     ) -> ResumeArtifactBundle:
         signals = (
             tuple(signal.name for signal in application.analysis.skill_signals)
@@ -84,12 +87,5 @@ class FakeResumeDocumentBuilder:
                     kind="paragraph",
                     text=f"Compared against {master_resume.record.name} evidence.",
                 ),
-            ),
-            pdf_lines=(
-                "Elizabeth Parnell",
-                application.title,
-                "Evidence-backed application-ready test resume",
-                f"Match Score: {score}",
-                "Skills: " + ", ".join(signals),
             ),
         )

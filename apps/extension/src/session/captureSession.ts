@@ -19,6 +19,8 @@ export type CaptureState = {
   dirty: boolean
   result: ConfirmApplicationResponse | null
   errors: string[]
+  reviewReasons: string[]
+  missingFields: string[]
   sourceChanged: boolean
 }
 
@@ -30,6 +32,8 @@ const EMPTY_STATE = {
   dirty: false,
   result: null,
   errors: [],
+  reviewReasons: [],
+  missingFields: [],
   sourceChanged: false,
 } satisfies CaptureState
 
@@ -54,6 +58,7 @@ export function createCaptureSession(
   onChange: (state: CaptureState) => void = () => {},
 ): CaptureSession {
   let state: CaptureState = { ...EMPTY_STATE }
+  let activeClient = client
 
   const publish = (patch: Partial<CaptureState>) => {
     state = { ...state, ...patch }
@@ -67,14 +72,23 @@ export function createCaptureSession(
     publish({ phase: 'reading', errors: [], result: null })
     try {
       publish({ phase: 'parsing' })
-      const response = await client.prepare(evidence)
+      const response = await activeClient.prepare(evidence)
+      const validationErrors = (response.validationFailures || []).map(
+        (failure) => failure.message,
+      )
       publish({
         phase: 'reviewing',
         evidence,
         source,
         review: { ...response.draft },
         dirty: false,
-        errors: response.errors || [],
+        reviewReasons: response.reviewReasons || [],
+        missingFields: response.missingFields || [],
+        errors: [
+          ...(response.reviewReasons || []),
+          ...validationErrors,
+          ...(response.errors || []),
+        ],
       })
       return response.result
     } catch (error) {
@@ -83,6 +97,8 @@ export function createCaptureSession(
         errors: [
           operatorError(error).message || 'Application could not be prepared.',
         ],
+        reviewReasons: [],
+        missingFields: [],
       })
       return 'failed'
     }
@@ -90,6 +106,9 @@ export function createCaptureSession(
 
   return {
     getState: () => state,
+    setClient(nextClient: CaptureClient) {
+      activeClient = nextClient
+    },
     subscribe(next: (state: CaptureState) => void) {
       onChange = next
       next(state)
@@ -110,6 +129,8 @@ export function createCaptureSession(
         review: { ...state.review, [field]: value },
         dirty: true,
         errors: [],
+        reviewReasons: [],
+        missingFields: [],
       })
     },
     sourceChanged(source: CaptureSource) {
@@ -136,6 +157,7 @@ export function createCaptureSession(
       if (missing.length) {
         publish({
           errors: [`Required fields are missing: ${missing.join(', ')}.`],
+          missingFields: missing,
         })
         return { ok: false, result: 'needs_review', missing }
       }
@@ -148,14 +170,23 @@ export function createCaptureSession(
           jobUrl: review.jobUrl.trim(),
           jobContent,
         }
-        const result = await client.confirm(draft)
+        const result = await activeClient.confirm(draft)
         if (result.ok) {
           publish({ phase: 'complete', result, evidence: null, dirty: false })
         } else {
+          const validationErrors = (result.validationFailures || []).map(
+            (failure) => failure.message,
+          )
           publish({
             phase: 'reviewing',
             result,
-            errors: result.errors || ['Application could not be created.'],
+            errors: [
+              ...validationErrors,
+              ...(result.errors || ['Application could not be created.']),
+            ],
+            missingFields: (result.validationFailures || [])
+              .filter((failure) => failure.kind === 'request')
+              .map((failure) => failure.field),
           })
         }
         return result
@@ -177,6 +208,7 @@ export function createCaptureSession(
 
 export interface CaptureSession {
   getState(): CaptureState
+  setClient(client: CaptureClient): void
   subscribe(next: (state: CaptureState) => void): void
   prepare(
     evidence: PrepareApplicationRequest['evidence'],

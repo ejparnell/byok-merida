@@ -12,6 +12,7 @@ from .workspace import (
     ApplicationAnalysisDraft,
     ApplicationRecord,
     PersistedSkillSignal,
+    SkillSignal,
 )
 from ...matching import (
     MATCHING_V1,
@@ -181,6 +182,22 @@ class ApplicationAnalysisGraph:
             if analysis.match_score is not None
             else application.match_score
         )
+        if score is None:
+            evidence = await self._store.load_analysis_evidence()
+            legacy_signals = tuple(
+                SkillSignal(
+                    name=signal.name,
+                    category="other",
+                    importance="signal",
+                    evidence=signal.name,
+                )
+                for signal in analysis.skill_signals
+                if signal.name.strip()
+            )
+            if legacy_signals and evidence:
+                score = self._matcher.match(
+                    legacy_signals, evidence, MATCHING_V1
+                ).score
         await self._store.finalize_application_analysis(
             application.id, match_score=score
         )

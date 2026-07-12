@@ -919,6 +919,12 @@
       "CaptureEvidence": {
         "additionalProperties": false,
         "properties": {
+          "metadataText": {
+            "default": "",
+            "maxLength": 120000,
+            "title": "Metadatatext",
+            "type": "string"
+          },
           "selectedText": {
             "default": "",
             "maxLength": 120000,
@@ -929,6 +935,24 @@
             "default": "",
             "maxLength": 120000,
             "title": "Semantichtml",
+            "type": "string"
+          },
+          "structuredCompanyName": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Structuredcompanyname",
+            "type": "string"
+          },
+          "structuredJobTitle": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Structuredjobtitle",
+            "type": "string"
+          },
+          "structuredLocation": {
+            "default": "",
+            "maxLength": 300,
+            "title": "Structuredlocation",
             "type": "string"
           },
           "title": {

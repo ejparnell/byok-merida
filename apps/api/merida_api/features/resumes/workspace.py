@@ -51,4 +51,7 @@ class ResumeDocument:
 class ResumeArtifactBundle:
     resume: tuple[DocumentBlock, ...]
     note: tuple[DocumentBlock, ...]
-    pdf_lines: tuple[str, ...]
+
+    @property
+    def resume_document(self) -> tuple[DocumentBlock, ...]:
+        return self.resume

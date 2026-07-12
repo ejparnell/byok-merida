@@ -54,6 +54,23 @@ class ScoringPolicy:
     version: str
     strength_values: dict[EvidenceStrength, float]
     importance_weights: dict[str, float]
+    type_weights: dict[str, float]
+
+    def weight_for(self, target: MatchTarget) -> float:
+        target_type = getattr(target, "type", "")
+        if target.importance == "required" or target_type == "required skill":
+            return self.importance_weights["required"]
+        if target_type == "responsibility":
+            return self.type_weights[target_type]
+        if target.importance == "preferred" or target_type == "preferred skill":
+            return self.importance_weights["preferred"]
+        if target.importance == "signal" or target_type in {
+            "domain signal",
+            "seniority signal",
+            "work-style signal",
+        }:
+            return self.importance_weights["signal"]
+        return self.importance_weights["default"]
 
 
 @dataclass(frozen=True)
@@ -86,6 +103,14 @@ MATCHING_V1 = ScoringPolicy(
         "signal": 0.65,
         "default": 1.0,
     },
+    type_weights={
+        "required skill": 1.5,
+        "responsibility": 1.35,
+        "preferred skill": 0.8,
+        "domain signal": 0.65,
+        "seniority signal": 0.65,
+        "work-style signal": 0.65,
+    },
 )
 
 
@@ -101,12 +126,7 @@ class EvidenceMatchingEngine:
         matches = tuple(
             self._strongest_match(target, evidence_items) for target in targets
         )
-        weights = tuple(
-            scoring_policy.importance_weights.get(
-                target.importance, scoring_policy.importance_weights["default"]
-            )
-            for target in targets
-        )
+        weights = tuple(scoring_policy.weight_for(target) for target in targets)
         weighted_score = sum(
             weight * scoring_policy.strength_values[match.strength]
             for weight, match in zip(weights, matches, strict=True)
@@ -136,6 +156,35 @@ class EvidenceMatchingEngine:
             evidence_id=best.item.id if strength != "no evidence" else None,
             strength=strength,
             candidate_rank=round(best.rank, 4),
+        )
+
+    def ranked_matches(
+        self,
+        target: MatchTarget,
+        evidence_items: Sequence[EvidenceItem],
+        *,
+        limit: int = 5,
+    ) -> tuple[EvidenceMatch, ...]:
+        return tuple(
+            EvidenceMatch(
+                target_name=target.name,
+                evidence_id=(
+                    candidate.item.id
+                    if (
+                        strength := _classify(
+                            candidate.rank,
+                            bool(candidate.overlap),
+                            candidate.coverage,
+                            candidate.tfidf_cosine,
+                        )
+                    )
+                    != "no evidence"
+                    else None
+                ),
+                strength=strength,
+                candidate_rank=round(candidate.rank, 4),
+            )
+            for candidate in _ranked_candidates(target, evidence_items)[:limit]
         )
 
 

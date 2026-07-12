@@ -857,7 +857,6 @@ async def assert_artifact_compensation_contract(store, application, pdfs):
     bundle = ResumeArtifactBundle(
         resume=(DocumentBlock(kind="heading_1", text="Elizabeth Parnell"),),
         note=(DocumentBlock(kind="heading_2", text="Resume Fit Analysis"),),
-        pdf_lines=("Elizabeth Parnell", application.title),
     )
     result = await ResumeArtifactCommitter(store, pdfs).commit(application, bundle)
 
@@ -1709,3 +1708,51 @@ def test_notion_transport_normalizes_malformed_success_payloads():
         assert "secret-token-value" not in str(error)
     else:
         raise AssertionError("Expected malformed success payload normalization.")
+
+
+def test_notion_transport_retries_safe_reads_but_not_ambiguous_creates():
+    read_calls = 0
+
+    def read_handler(_request):
+        nonlocal read_calls
+        read_calls += 1
+        if read_calls == 1:
+            return httpx.Response(429, json={"code": "rate_limited"})
+        return httpx.Response(200, json={"object": "database"})
+
+    async def no_sleep(_delay):
+        return None
+
+    read_transport = HttpxNotionTransport(
+        "secret-token-value",
+        client_factory=lambda: httpx.AsyncClient(
+            base_url="https://api.notion.com/v1",
+            transport=httpx.MockTransport(read_handler),
+        ),
+        sleep=no_sleep,
+    )
+
+    assert asyncio.run(read_transport.request("GET", "/databases/example")) == {
+        "object": "database"
+    }
+    assert read_calls == 2
+
+    create_calls = 0
+
+    def create_handler(_request):
+        nonlocal create_calls
+        create_calls += 1
+        return httpx.Response(500, json={"code": "internal_error"})
+
+    create_transport = HttpxNotionTransport(
+        "secret-token-value",
+        client_factory=lambda: httpx.AsyncClient(
+            base_url="https://api.notion.com/v1",
+            transport=httpx.MockTransport(create_handler),
+        ),
+        sleep=no_sleep,
+    )
+
+    with pytest.raises(WorkspaceProviderError):
+        asyncio.run(create_transport.request("POST", "/pages", {"parent": {}}))
+    assert create_calls == 1

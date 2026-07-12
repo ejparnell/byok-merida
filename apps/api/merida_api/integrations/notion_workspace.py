@@ -1,4 +1,5 @@
-from collections.abc import Callable, Iterable
+import asyncio
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import replace
 from datetime import date, datetime
 import hashlib
@@ -77,13 +78,28 @@ class HttpxNotionTransport:
         token: str,
         *,
         client_factory: Callable[[], httpx.AsyncClient] | None = None,
+        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ):
         self._token = token
         self._client_factory = client_factory or (
             lambda: httpx.AsyncClient(base_url="https://api.notion.com/v1", timeout=30)
         )
+        self._sleep = sleep
 
     async def request(self, method: str, path: str, body: dict | None = None) -> dict:
+        retry_safe = _notion_retry_safe(method, path)
+        for attempt in range(3):
+            try:
+                return await self._request_once(method, path, body)
+            except WorkspaceProviderError as error:
+                if not retry_safe or not error.retryable or attempt == 2:
+                    raise
+                await self._sleep(0.2 * (2**attempt))
+        raise AssertionError("unreachable")
+
+    async def _request_once(
+        self, method: str, path: str, body: dict | None
+    ) -> dict:
         headers = {
             "Authorization": f"Bearer {self._token}",
             "Notion-Version": NOTION_VERSION,
@@ -116,6 +132,17 @@ class HttpxNotionTransport:
                 status=response.status_code,
             )
         return payload
+
+
+def _notion_retry_safe(method: str, path: str) -> bool:
+    normalized_method = method.upper()
+    if normalized_method == "GET":
+        return True
+    if normalized_method == "POST" and path.rstrip("/").endswith("/query"):
+        return True
+    if normalized_method == "PATCH" and path.startswith("/pages/"):
+        return True
+    return False
 
 
 class NotionWorkspace:
@@ -461,8 +488,13 @@ class NotionWorkspace:
         )
         return _queue_page(eligible, limit, cursor, "resume_creation")
 
+    async def load_resume_application(
+        self, application_id: str
+    ) -> ApplicationRecord:
+        return await self.load_analysis_input(application_id)
+
     async def load_resume_input(self, application_id: str) -> ApplicationRecord:
-        application = await self.load_analysis_input(application_id)
+        application = await self.load_resume_application(application_id)
         if (
             application.application_status != "To Apply"
             or not application.analyzed
@@ -555,12 +587,17 @@ class NotionWorkspace:
         return ResumeDocument(record=record, blocks=blocks)
 
     async def create_resume_draft(
-        self, name: str, document: tuple[DocumentBlock, ...]
+        self, name: str, document: tuple[DocumentBlock, ...], *, on_created=None
     ) -> ResumeRecord:
+        def page_created(page: dict) -> None:
+            if on_created:
+                on_created(_resume_record(page))
+
         page = await self._create_page_with_document(
             self._resume_database_id,
             {"Name": {"title": _rich_text(name)}},
             document,
+            on_created=page_created,
         )
         return _resume_record(page)
 
@@ -571,7 +608,12 @@ class NotionWorkspace:
         application_id: str,
         resume_id: str,
         document: tuple[DocumentBlock, ...],
+        on_created=None,
     ) -> NoteRecord:
+        def page_created(page: dict) -> None:
+            if on_created:
+                on_created(_note_record(page))
+
         page = await self._create_page_with_document(
             self._notes_database_id,
             {
@@ -580,6 +622,7 @@ class NotionWorkspace:
                 "Resume": {"relation": [{"id": resume_id}]},
             },
             document,
+            on_created=page_created,
         )
         return _note_record(page)
 
@@ -642,6 +685,8 @@ class NotionWorkspace:
         database_id: str,
         properties: dict,
         document: tuple[DocumentBlock, ...],
+        *,
+        on_created=None,
     ) -> dict:
         blocks = [_document_block(item) for item in document]
         page = await self._transport.request(
@@ -653,6 +698,8 @@ class NotionWorkspace:
                 "children": blocks[:80],
             },
         )
+        if on_created:
+            on_created(page)
         for batch in _chunks(blocks[80:], 90):
             await self._transport.request(
                 "PATCH", f"/blocks/{page['id']}/children", {"children": batch}

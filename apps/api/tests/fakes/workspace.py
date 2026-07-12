@@ -290,8 +290,13 @@ class FakeWorkspace:
             has_more=pagination["hasMore"],
         )
 
+    async def load_resume_application(
+        self, application_id: str
+    ) -> ApplicationRecord:
+        return await self.load_analysis_input(application_id)
+
     async def load_resume_input(self, application_id: str) -> ApplicationRecord:
-        application = await self.load_analysis_input(application_id)
+        application = await self.load_resume_application(application_id)
         if (
             application.application_status != "To Apply"
             or not application.analyzed
@@ -344,16 +349,21 @@ class FakeWorkspace:
         return ResumeDocument(
             record=record,
             blocks=(
-                DocumentBlock(kind="heading_2", text="Software Engineer"),
+                DocumentBlock(kind="heading_2", text="Software Engineer, Example"),
+                DocumentBlock(kind="paragraph", text="2022 - Present"),
                 DocumentBlock(
                     kind="bulleted_list_item",
                     text="Built reliable APIs and accessible product interfaces.",
                 ),
+                DocumentBlock(kind="bulleted_list_item", text="Built Python services."),
+                DocumentBlock(kind="bulleted_list_item", text="Designed React interfaces."),
+                DocumentBlock(kind="bulleted_list_item", text="Automated integration tests."),
+                DocumentBlock(kind="bulleted_list_item", text="Improved delivery workflows."),
             ),
         )
 
     async def create_resume_draft(
-        self, name: str, document: tuple[DocumentBlock, ...]
+        self, name: str, document: tuple[DocumentBlock, ...], *, on_created=None
     ) -> ResumeRecord:
         resume_id = f"resume-{uuid4().hex[:10]}"
         resume = {
@@ -366,7 +376,10 @@ class FakeWorkspace:
         }
         self._state["resumes"][resume_id] = resume
         self._save()
-        return self._resume_record(resume)
+        record = self._resume_record(resume)
+        if on_created:
+            on_created(record)
+        return record
 
     async def create_resume_fit_note(
         self,
@@ -375,6 +388,7 @@ class FakeWorkspace:
         application_id: str,
         resume_id: str,
         document: tuple[DocumentBlock, ...],
+        on_created=None,
     ) -> NoteRecord:
         note_id = f"note-{uuid4().hex[:10]}"
         note = {
@@ -388,7 +402,10 @@ class FakeWorkspace:
         }
         self._state["notes"][note_id] = note
         self._save()
-        return self._note_record(note)
+        record = self._note_record(note)
+        if on_created:
+            on_created(record)
+        return record
 
     async def attach_resume_to_application(
         self, resume_id: str, application_id: str

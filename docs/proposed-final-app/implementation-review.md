@@ -44,6 +44,9 @@ The implemented HTTP namespace is `/api/v1`.
 | Method | Path | Owner |
 | --- | --- | --- |
 | `GET` | `/api/v1/health` | app readiness |
+| `GET` | `/api/v1/health/notion` | Notion database readiness |
+| `GET` | `/api/v1/health/analysis` | Application Analysis readiness |
+| `GET` | `/api/v1/health/resumes` | Resume Creation readiness |
 | `GET` | `/api/v1/operator/settings` | safe read-only settings |
 | `POST` | `/api/v1/applications/prepare` | Application Capture |
 | `POST` | `/api/v1/applications/confirm` | Application Capture |
@@ -67,16 +70,22 @@ The product has no demo mode, fixture workspace, reset route, or runtime adapter
 - production builds complete for the React dashboard and MV3 extension.
 - live FastAPI checks confirm health, dashboard serving, eligible queue data, and all named OpenAPI operations.
 
-## Remaining Real-Runtime Cutover
+## Current Real-Runtime Status
 
-The FastAPI app always composes the real Notion workspace. When DeepSeek is configured, it now composes the real task-specific Application Analysis adapter, validates structured evidence with one bounded repair attempt, and calculates Match Score locally through the versioned deterministic Matching policy. It never falls back to deterministic product behavior. Resume Creation remains blocked until its real model and evidence pipeline are ported without weakening guardrails.
+The FastAPI app always composes the real Notion workspace. When DeepSeek is configured, it composes task-specific Application Analysis and Resume Creation adapters. Resume Creation now extracts Fit Requirements, validates Job Content evidence, applies versioned deterministic Matching, blocks unsupported generation, validates role-owned claim traces, preserves Master Resume chronology and non-work sections, and renders Notion and PDF from one canonical Resume Document. It never falls back to deterministic or fictional product behavior.
 
-The remaining migration should proceed in vertical slices:
+The real Notion adapter has recording-based conformance coverage for Capture, Analysis, Resume Creation, relation-last commit, compensation, pagination, legacy analysis recovery, and safe provider errors. This is automated adapter evidence, not a claim that the current private workspace has passed a live mutation run.
 
-1. implement Notion conformance for `CaptureStore`, then cut over real Capture;
-2. complete the remaining Application Analysis parity fixtures and bounded real-environment smoke evidence, then cut over Analysis;
-3. port Matching, evidence validation, Resume Draft generation, Notes rendering, and artifact compensation behind `ResumeCreationStore`, then cut over Resume Creation;
-4. run the versioned parity corpus against each real adapter before removing the Node route for that workflow;
-5. declare the single real runtime complete only when all readiness checks and cleanup fixtures pass.
+## Remaining Operator Acceptance
+
+1. run the complete automated final-app gate and frozen prototype gate from a clean checkout;
+2. use [Operations](operations.md) to perform one bounded real Capture, Analysis, and Resume Creation smoke path with explicitly selected safe records;
+3. record duplicate behavior, created/reused durable IDs, recovery status, revision, and fallback point using the [Cutover Evidence Template](cutover-evidence-template.md);
+4. change default commands and current-operations documentation only after that evidence is accepted;
+5. retain the prototype through the observation window before a separate retirement change.
+
+## Follow-up Architecture Cleanup
+
+The Fit Requirement and Resume Draft ports are task-specific, but their current Python signatures still exchange provider-ready message tuples and structured dictionaries. A later non-feature refactor should move prompt construction and initial Pydantic decoding fully into the DeepSeek adapters so the ports exchange only semantic workflow DTOs. The current workflow still validates every returned requirement, claim, role, and evidence ID before any artifact write; this cleanup does not block the implemented feature or cutover smoke path.
 
 This keeps the application manageable: each workflow can be migrated and verified independently while the prototype remains the executable reference.

@@ -170,8 +170,8 @@ Expected `blocked` results map to the `200` plus `ok: false` contract in `routes
 
 ```text
 DEEPSEEK_API_KEY=
-DEEPSEEK_ANALYSIS_MODEL=deepseek-v4-flash
-DEEPSEEK_RESUME_MODEL=deepseek-v4-pro
+ANALYSIS_MODEL=deepseek-v4-flash
+RESUME_MODEL=deepseek-v4-pro
 LLM_INPUT_FORMAT=json
 ```
 
@@ -780,14 +780,10 @@ All model, ML, validation, canonical-document, Notion-block, Note, and PDF rende
 
 Commit order:
 
-1. Create an unlinked draft Resume page.
-2. Write the employer-facing Resume body.
-3. Create an unlinked Resume Fit Analysis Note.
-4. Write the Note body.
-5. Save the staged PDF to its final backend-owned path.
-6. Attach the Note-to-Resume relation.
-7. Attach the Note-to-Application relation.
-8. Attach the Resume-to-Application relation last. Its inverse `Application.Resumes` value is the durable completion marker.
+1. Create an unlinked draft Resume page with the employer-facing canonical Resume Document.
+2. Save the PDF rendered from that same canonical Resume Document to its final backend-owned path.
+3. Create the Resume Fit Analysis Note with its Application and Resume relations.
+4. Attach the Resume-to-Application relation last. Its inverse `Application.Resumes` value is the durable completion marker.
 
 On failure, compensate in reverse order:
 
@@ -796,9 +792,9 @@ On failure, compensate in reverse order:
 3. archive the draft Note if created
 4. archive the draft Resume if created
 
-Every relation operation is idempotent. If the final Resume-to-Application relation succeeds but the HTTP response is lost, the next request detects that relation and returns `already_created`. If any earlier relation succeeds and a later one fails, compensation clears the earlier relations before archiving drafts.
+Every relation operation is idempotent. If the final Resume-to-Application relation succeeds but the HTTP response is lost, the next request detects that relation and returns `already_created`. If any earlier effect succeeds and a later one fails, compensation clears the relation, archives the Note, removes the PDF, and archives the Resume in reverse order.
 
-The route reports `relationsCleared`, `pdfDeleted`, `draftNoteArchived`, and `draftResumeArchived`. Notion's API archives pages rather than hard-deleting them, so cleanup fields must use `Archived` rather than `Deleted`. The result does not expose local paths. A process crash during the short commit window is not automatically resumed in v1; the operator may need to clean up an unlinked draft in Notion. Adding durable crash recovery requires the retention, checkpoint, and side-effect-journal design described in the Checkpoint Policy.
+The route returns a content-free cleanup status and safe cleanup errors. Notion archives pages rather than hard-deleting them. The result never exposes local paths. A durable JSON effect journal records owned IDs after each confirmed effect, startup reconciliation handles provable completed or clean states, and ambiguous provider outcomes remain blocked for explicit operator recovery through the CLI described in `operations.md`.
 
 ## Error Classification
 

@@ -31,6 +31,9 @@ class ApplicationCapture:
         self._journal = journal
         self._pending_metadata: dict[str, tuple[str, tuple[str, ...]]] = {}
 
+    async def validate_readiness(self):
+        return await self._store.validate_capture_workspace()
+
     async def prepare(
         self, evidence: CaptureEvidence
     ) -> PreparedApplicationResponse | ApplicationNeedsReviewResponse:

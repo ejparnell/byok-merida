@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 2,
+  "sourceContract": "test/parity/fixtures/prototype-parity.v1.json",
+  "executableHarness": "apps/api/tests/test_target_parity_manifest.py",
+  "observationPolicy": {
+    "consume": [
+      "initialState",
+      "dependencyOutputs",
+      "expectedOutcome",
+      "expectedEffects",
+      "expectedState",
+      "expectedCallCounts",
+      "forbiddenEffects",
+      "cleanupResidue"
+    ],
+    "targetProjection": "Execute the target workflow through its public or workflow-owned seam and assert normalized target outcomes.",
+    "prototypeDifferences": "Assertions use the reviewed target contract when transport or outcome names intentionally differ from the prototype."
+  }
+}

@@ -20,18 +20,21 @@ Completed:
 - evidence-validated Application Analysis drafts with one bounded repair attempt
 - deterministic `matching-v1` Match Score calculation against Master Resume evidence
 - one LangGraph invocation per Application Analysis item
+- task-specific DeepSeek Resume Fit Requirement and Resume Document generation
+- deterministic Resume Matching and pre-write evidence gates
+- role-owned claim traces, chronology preservation, and five-to-seven bullet policy
+- one canonical Resume Document for Notion and PDF
+- real Resume artifact commit, relation-last completion, reverse compensation, and durable recovery journal
+- workflow-scoped readiness, structured Capture metadata, and independently resilient dashboard sections
+- executable target-parity observations that feed every required frozen fixture through a final-app workflow or public seam
 
 Not yet cut over:
 
 - real-environment conformance and smoke acceptance for each Notion store
-- real DeepSeek Resume Creation model adapters
-- the full Resume Creation Matching and evidence-validation policies
-- real Resume artifact commit and compensation
+- default operator-command switch and observation window
 - parity-based retirement of Node workflow routes
 
-Application Analysis now has its real DeepSeek adapter and deterministic matching
-dependency, but it remains behind the workflow cutover gate until the full Analysis
-parity corpus and bounded real-environment smoke run pass.
+All three workflows now have their real repository-side implementations, but they remain behind the operational cutover gate until the target fixture manifest and bounded real-environment smoke run pass.
 
 ## Cutover Rule
 

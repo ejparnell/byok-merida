@@ -19,7 +19,7 @@ class DeepSeekStructuredOutputError(ValueError):
 
 class DeepSeekProviderError(RuntimeError):
     def __init__(self, code: str, *, retryable: bool):
-        super().__init__("DeepSeek Application Analysis is temporarily unavailable.")
+        super().__init__("DeepSeek workflow is temporarily unavailable.")
         self.code = code
         self.retryable = retryable
 
@@ -65,11 +65,20 @@ class DeepSeekJsonClient:
             )
         return payload
 
+    async def extract(self, messages: list[tuple[str, str]]) -> dict:
+        """Fulfill the Resume Fit Requirement model port."""
+        return await self.request_json(messages)
+
+    async def generate(self, messages: list[tuple[str, str]]) -> dict:
+        """Fulfill the Resume Draft model port."""
+        return await self.request_json(messages)
+
 
 class _LazyDeepSeekChatModel:
-    def __init__(self, *, api_key: str, model: str):
+    def __init__(self, *, api_key: str, model: str, max_tokens: int):
         self._api_key = api_key
         self._model = model
+        self._max_tokens = max_tokens
         self._chat = None
 
     def _configured_chat(self):
@@ -80,7 +89,7 @@ class _LazyDeepSeekChatModel:
                 api_key=self._api_key,
                 model=self._model,
                 temperature=0,
-                max_tokens=3000,
+                max_tokens=self._max_tokens,
                 timeout=30,
                 max_retries=0,
             ).bind(
@@ -93,8 +102,14 @@ class _LazyDeepSeekChatModel:
         return await self._configured_chat().ainvoke(messages)
 
 
-def create_deepseek_json_client(*, api_key: str, model: str) -> DeepSeekJsonClient:
-    return DeepSeekJsonClient(_LazyDeepSeekChatModel(api_key=api_key, model=model))
+def create_deepseek_json_client(
+    *, api_key: str, model: str, max_tokens: int = 3000
+) -> DeepSeekJsonClient:
+    return DeepSeekJsonClient(
+        _LazyDeepSeekChatModel(
+            api_key=api_key, model=model, max_tokens=max_tokens
+        )
+    )
 
 
 def _message_text(message) -> str:

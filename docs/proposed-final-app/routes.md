@@ -678,18 +678,15 @@ Request body:
 
 Resume Creation sequence:
 
-1. Verify the Application is eligible.
-2. If a related Resume already exists, return `already_created` without creating a duplicate.
-3. Read Application `Job Content` and `Application Analysis`.
-4. Read Master Resume evidence.
-5. Run fit analysis and evidence gating before creating any Notion or PDF artifacts.
-6. If fit analysis blocks generation, return a workflow block with no draft artifacts.
-7. Generate and validate resume content.
-8. Create a draft Resume page.
-9. Write employer-facing Resume body content.
-10. Create the Resume Fit Analysis Note.
-11. Export the PDF from the validated generated resume content object.
-12. Attach final relations between Application, Resume, and Note as the final commit.
+1. Load the Application identity and return one existing related Job-Specific Resume before schema, eligibility, model, or artifact work.
+2. Validate the Resume workflow schema and revalidate Application eligibility.
+3. Read Application `Job Content`, `Application Analysis`, and Master Resume evidence.
+4. Extract and validate Fit Requirements, run deterministic Matching, and apply the evidence gate before creating artifacts.
+5. Generate and validate role-owned claim traces, chronology, bullet counts, and the canonical Resume Document.
+6. Create an unlinked Resume page with the employer-facing canonical Resume Document.
+7. Export the PDF from that same canonical Resume Document.
+8. Create the Resume Fit Analysis Note with its Application and Resume relations.
+9. Attach the Resume-to-Application relation last as the durable completion marker.
 
 The generated Resume body contains employer-facing content only. Fit analysis, evidence traces, gaps, and guardrails live in the related Note.
 

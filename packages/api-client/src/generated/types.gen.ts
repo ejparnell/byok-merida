@@ -424,6 +424,10 @@ export type ApplicationNeedsReviewResponse = {
  */
 export type CaptureEvidence = {
     /**
+     * Metadatatext
+     */
+    metadataText?: string;
+    /**
      * Selectedtext
      */
     selectedText?: string;
@@ -431,6 +435,18 @@ export type CaptureEvidence = {
      * Semantichtml
      */
     semanticHtml?: string;
+    /**
+     * Structuredcompanyname
+     */
+    structuredCompanyName?: string;
+    /**
+     * Structuredjobtitle
+     */
+    structuredJobTitle?: string;
+    /**
+     * Structuredlocation
+     */
+    structuredLocation?: string;
     /**
      * Title
      */

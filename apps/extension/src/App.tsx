@@ -15,10 +15,11 @@ import type {
 import { collectCaptureEvidence } from './shared/activeTabEvidence.ts'
 import type { CollectedCaptureEvidence } from './shared/activeTabEvidence.ts'
 import { createCaptureClient } from './shared/captureClient.ts'
-import type {
-  CaptureClient,
-  ExtensionSettings,
-} from './shared/captureClient.ts'
+import type { ExtensionSettings } from './shared/captureClient.ts'
+import {
+  readCaptureHealth,
+  type ExtensionHealth,
+} from './shared/captureHealth.ts'
 import {
   getExtensionSettings,
   saveExtensionSettings,
@@ -32,33 +33,6 @@ function Brand() {
       <i>Application Capture</i>
     </div>
   )
-}
-
-type ExtensionHealth = {
-  phase: 'checking' | 'ready' | 'blocked' | 'offline'
-  errors: string[]
-}
-
-async function readCaptureHealth(
-  activeClient: CaptureClient,
-  captureToken: string,
-): Promise<ExtensionHealth> {
-  if (!captureToken) {
-    return {
-      phase: 'blocked',
-      errors: ['Add a Capture token in extension settings.'],
-    }
-  }
-  try {
-    const result = await activeClient.health()
-    const ready = result.checks.notion === 'ready'
-    return {
-      phase: ready ? 'ready' : 'blocked',
-      errors: ready ? [] : result.errors,
-    }
-  } catch (error) {
-    return { phase: 'offline', errors: [(error as Error).message] }
-  }
 }
 
 function SettingsSheet({
@@ -171,9 +145,11 @@ function ErrorCallout({ errors }: { errors?: string[] }) {
 
 function Idle({
   onFill,
+  errors,
   disabled = false,
 }: {
   onFill: () => void
+  errors?: string[]
   disabled?: boolean
 }) {
   return (
@@ -194,6 +170,7 @@ function Idle({
       >
         Fill form <span aria-hidden="true">→</span>
       </button>
+      <ErrorCallout errors={errors} />
       <div className="privacy-note">
         <span>Private by design</span>
         <p>
@@ -389,10 +366,13 @@ export function App() {
   const [discardOpen, setDiscardOpen] = useState(false)
   const firstField = useRef<HTMLInputElement>(null)
   const client = useMemo(() => createCaptureClient(settings), [settings])
-  const session = useMemo(
-    () => createCaptureSession(client, setSessionState),
-    [client],
+  const [session] = useState<CaptureSession>(() =>
+    createCaptureSession(client, setSessionState),
   )
+
+  useEffect(() => {
+    session.setClient(client)
+  }, [client, session])
 
   const refresh = async (
     activeClient = client,
@@ -466,6 +446,12 @@ export function App() {
       window.removeEventListener('focus', checkSource)
     }
   }, [state.phase, session])
+  useEffect(() => {
+    if (state.phase === 'reviewing' && state.missingFields.length) {
+      const field = state.missingFields[0]
+      document.querySelector<HTMLInputElement>(`[name="${field}"]`)?.focus()
+    }
+  }, [state.phase, state.missingFields])
   const readyLabel =
     health.phase === 'ready'
       ? 'Ready to capture'
@@ -527,7 +513,7 @@ export function App() {
           <Progress phase={state.phase} />
         )}
         {state.phase === 'idle' && health.phase === 'ready' && (
-          <Idle onFill={() => collectAndPrepare()} />
+          <Idle onFill={() => collectAndPrepare()} errors={state.errors} />
         )}
         {state.phase === 'reviewing' && (
           <ReviewForm

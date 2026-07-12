@@ -42,36 +42,54 @@ class ResumeArtifactCommitter:
         bundle: ResumeArtifactBundle,
         *,
         run_id: str | None = None,
+        staged_pdf: Path | None = None,
     ) -> ArtifactCommitResult:
         resume: ResumeRecord | None = None
         note: NoteRecord | None = None
         pdf_path: Path | None = None
+        resume_create_attempted = False
+        note_create_attempted = False
         attachment_attempted = False
-        if self._journal is not None and run_id is not None:
-            self._journal.start(
-                workflow="resume_creation",
-                domain_key=application.id,
-                run_id=run_id,
-            )
+        staged = staged_pdf or self.stage(bundle)
         try:
+            if self._journal is not None and run_id is not None:
+                self._journal.start(
+                    workflow="resume_creation",
+                    domain_key=application.id,
+                    run_id=run_id,
+                )
+
+            def resume_created(created: ResumeRecord) -> None:
+                nonlocal resume
+                resume = created
+                self._advance(
+                    run_id,
+                    phase="resume_created",
+                    resume_id=created.id,
+                    application_id=application.id,
+                )
+
+            resume_create_attempted = True
             resume = await self._store.create_resume_draft(
-                application.title, bundle.resume
+                application.title,
+                bundle.resume,
+                on_created=resume_created,
             )
-            self._advance(
-                run_id,
-                phase="resume_created",
-                resume_id=resume.id,
-                application_id=application.id,
-            )
-            pdf_path = self._pdfs.save(resume.id, bundle.pdf_lines)
+            pdf_path = self._pdfs.publish(resume.id, staged)
             self._advance(run_id, phase="pdf_published", pdf_id=resume.id)
+            def note_created(created: NoteRecord) -> None:
+                nonlocal note
+                note = created
+                self._advance(run_id, phase="note_created", note_id=created.id)
+
+            note_create_attempted = True
             note = await self._store.create_resume_fit_note(
                 f"Resume Fit Analysis - {application.title}",
                 application_id=application.id,
                 resume_id=resume.id,
                 document=bundle.note,
+                on_created=note_created,
             )
-            self._advance(run_id, phase="note_created", note_id=note.id)
             attachment_attempted = True
             resume = await self._store.attach_resume_to_application(
                 resume.id, application.id
@@ -85,12 +103,22 @@ class ResumeArtifactCommitter:
                 cleanup_status="not_required",
             )
         except Exception:
+            self._pdfs.discard(staged)
             cleanup_errors = await self._cleanup(
                 resume_id=resume.id if resume else None,
                 note_id=note.id if note else None,
                 pdf_id=resume.id if pdf_path is not None and resume else None,
                 clear_relation=attachment_attempted,
             )
+            cleanup_errors = list(cleanup_errors)
+            if resume_create_attempted and resume is None:
+                cleanup_errors.append(
+                    "Resume draft ownership could not be confirmed; manual recovery is required."
+                )
+            if note_create_attempted and note is None:
+                cleanup_errors.append(
+                    "Resume Fit Analysis Note ownership could not be confirmed; manual recovery is required."
+                )
             if self._journal is not None and run_id is not None:
                 self._journal.resolve(
                     run_id,
@@ -105,6 +133,9 @@ class ResumeArtifactCommitter:
                 cleanup_status="incomplete" if cleanup_errors else "completed",
                 cleanup_errors=tuple(cleanup_errors),
             )
+
+    def stage(self, bundle: ResumeArtifactBundle) -> Path:
+        return self._pdfs.stage(bundle.resume_document)
 
     def _advance(self, run_id: str | None, *, phase: str, **changes) -> None:
         if self._journal is not None and run_id is not None:

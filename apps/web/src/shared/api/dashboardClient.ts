@@ -18,10 +18,11 @@ import type {
 } from '@merida/api-client'
 
 export type DashboardSnapshot = {
-  health: HealthResponse
-  settings: OperatorSettingsResponse
-  analysisQueue: GetApplicationAnalysisQueueResponse
-  resumeQueue: GetResumeCreationQueueResponse
+  health: HealthResponse | null
+  settings: OperatorSettingsResponse | null
+  analysisQueue: GetApplicationAnalysisQueueResponse | null
+  resumeQueue: GetResumeCreationQueueResponse | null
+  errors: string[]
 }
 
 export interface DashboardClient {
@@ -56,7 +57,7 @@ export function createDashboardClient(
       analysisCursor?: string | null
       resumeCursor?: string | null
     }) {
-      const [health, settings, analysisQueue, resumeQueue] = await Promise.all([
+      const results = await Promise.allSettled([
         invokeApiData(
           getHealth<true>({ client: generatedClient, throwOnError: true }),
         ),
@@ -81,7 +82,32 @@ export function createDashboardClient(
           }),
         ),
       ])
-      return { health, settings, analysisQueue, resumeQueue }
+      const rejected = results.filter(
+        (result): result is PromiseRejectedResult =>
+          result.status === 'rejected',
+      )
+      const invalidCursor = rejected.find(
+        (result) =>
+          (result.reason as { code?: string })?.code === 'invalid_cursor',
+      )
+      if (invalidCursor) throw invalidCursor.reason
+      const value = <T>(index: number): T | null => {
+        const result = results[index]
+        return result?.status === 'fulfilled'
+          ? (result as PromiseFulfilledResult<T>).value
+          : null
+      }
+      return {
+        health: value<HealthResponse>(0),
+        settings: value<OperatorSettingsResponse>(1),
+        analysisQueue: value<GetApplicationAnalysisQueueResponse>(2),
+        resumeQueue: value<GetResumeCreationQueueResponse>(3),
+        errors: rejected.map(
+          (result) =>
+            (result.reason as Error)?.message ||
+            'A dashboard section could not be loaded.',
+        ),
+      }
     },
     runAnalysis(limit: number) {
       return invokeApiData(

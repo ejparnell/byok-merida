@@ -4,18 +4,22 @@ This folder describes the FastAPI and React target built from the working protot
 
 ## Implementation Status
 
-The first production-shaped vertical slice is implemented:
+The production-shaped application is implemented in code:
 
 - FastAPI application factory and versioned REST routes under `/api/v1`
 - one real Notion composition with eligible-only queues
 - review-first Application Capture with `X-Capture-Token`
 - bounded Application Analysis with one final typed response
 - one-at-a-time, idempotent Resume Creation with Resume, Note, and PDF outputs
+- task-specific real DeepSeek adapters for Application Analysis, Fit Requirement extraction, and Resume generation
+- deterministic Matching, evidence gates, claim traces, canonical Resume Document rendering, and durable recovery journaling
+- Python LangGraph `StateGraph` orchestration for both LLM workflows and JSON prompt DTO encoding through the shared encoder seam
 - functional React `/dashboard` using the accepted Workflow Overview design
 - functional React MV3 side panel using the accepted Focused Flow design
 - OpenAPI schema, public-interface tests, production builds, and FastAPI static serving
+- executable target observations for every required frozen parity fixture in `apps/api/tests/test_target_parity_manifest.py`
 
-The selectable demo runtime has been removed. The FastAPI app always targets the configured real Notion workspace and reports blocked readiness when real dependencies or workflow adapters are incomplete. Deterministic stores and models remain test-only dependencies injected behind workflow-owned interfaces. The existing real DeepSeek implementation remains in the frozen Node prototype while its behavior is migrated. See [Implementation Review](implementation-review.md) for the review findings and remaining cutover work.
+The selectable demo runtime has been removed. The FastAPI app always targets the configured real Notion workspace and reports workflow-scoped blocked readiness when real dependencies are incomplete. Deterministic stores and models remain test-only dependencies injected behind workflow-owned interfaces. Repository implementation is complete; bounded real Notion/DeepSeek smoke evidence and the explicit default-command cutover remain operator acceptance steps. See [Implementation Review](implementation-review.md) and [Operations](operations.md).
 
 ## Run The Implemented App
 
@@ -68,6 +72,8 @@ The main architectural move is not "add more layers." It is to keep each workflo
 - [AI And ML Workflows](ai-workflows.md): LangGraph orchestration, DeepSeek calls, TOON prompt encoding, deterministic ML scoring, validation, and recovery contracts.
 - [Migration Plan](migration-plan.md): staged path from the prototype to the final app.
 - [Implementation Review](implementation-review.md): reconciled review, implemented seams, verification, and remaining real-mode cutover.
+- [Operations](operations.md): setup, readiness, recovery, bounded smoke acceptance, and fallback.
+- [Cutover Evidence Template](cutover-evidence-template.md): content-safe record for real workflow acceptance.
 
 ## Scope Assumptions
 

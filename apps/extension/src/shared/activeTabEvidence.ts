@@ -1,10 +1,80 @@
 function collectFromPage() {
+  const metadata: Record<string, string> = {}
+  document.querySelectorAll('meta[name], meta[property]').forEach((element) => {
+    const meta = element as HTMLMetaElement
+    const key = meta.getAttribute('property') || meta.getAttribute('name') || ''
+    if (key && meta.content) metadata[key.toLowerCase()] = meta.content
+  })
+  const jsonLd: unknown[] = []
+  document
+    .querySelectorAll('script[type="application/ld+json"]')
+    .forEach((script) => {
+      try {
+        jsonLd.push(JSON.parse(script.textContent || ''))
+      } catch {
+        // Ignore malformed page-owned metadata.
+      }
+    })
+  const flatten = (value: unknown): Record<string, unknown>[] => {
+    if (Array.isArray(value)) return value.flatMap(flatten)
+    if (!value || typeof value !== 'object') return []
+    const item = value as Record<string, unknown>
+    return [item, ...flatten(item['@graph'])]
+  }
+  const posting = jsonLd.flatMap(flatten).find((item) => {
+    const types = Array.isArray(item['@type']) ? item['@type'] : [item['@type']]
+    return types.some(
+      (type) => String(type || '').toLowerCase() === 'jobposting',
+    )
+  })
+  const organization = posting?.hiringOrganization as
+    Record<string, unknown> | undefined
+  const locations = Array.isArray(posting?.jobLocation)
+    ? posting?.jobLocation
+    : [posting?.jobLocation].filter(Boolean)
+  const structuredLocation =
+    posting?.jobLocationType === 'TELECOMMUTE'
+      ? 'Remote'
+      : locations
+          .map((location) => {
+            const value = location as Record<string, unknown>
+            const address = (value.address || value) as Record<string, unknown>
+            return [
+              address.addressLocality,
+              address.addressRegion,
+              address.addressCountry,
+            ]
+              .filter(Boolean)
+              .join(', ')
+          })
+          .filter(Boolean)
+          .join('; ')
+  const shadowText: string[] = []
+  document.querySelectorAll('*').forEach((element) => {
+    const root = element.shadowRoot
+    const text = root?.textContent?.replace(/\s+/g, ' ').trim()
+    if (text) shadowText.push(text)
+  })
   const selectedText = (window.getSelection()?.toString().trim() || '').slice(
     0,
     120000,
   )
-  const visibleText =
-    document.body?.innerText?.replace(/\n{3,}/g, '\n\n').trim() || ''
+  const visibleText = [
+    document.body?.innerText?.replace(/\n{3,}/g, '\n\n').trim() || '',
+    ...shadowText,
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+  const metadataText = [
+    posting?.description,
+    posting?.responsibilities,
+    posting?.qualifications,
+    posting?.skills,
+    metadata['description'],
+    metadata['og:description'],
+  ]
+    .filter(Boolean)
+    .join('\n\n')
   return {
     url: window.location.href,
     title: document.title,
@@ -14,25 +84,20 @@ function collectFromPage() {
       document
         .querySelector('main, article, [role="main"]')
         ?.innerHTML?.slice(0, 120000) || '',
+    metadataText: metadataText.slice(0, 120000),
+    structuredJobTitle: String(posting?.title || metadata['og:title'] || ''),
+    structuredCompanyName: String(
+      organization?.name || metadata['og:site_name'] || '',
+    ),
+    structuredLocation,
   }
 }
 
 export async function collectCaptureEvidence(): Promise<CollectedCaptureEvidence> {
   if (!globalThis.chrome?.tabs || !globalThis.chrome?.scripting) {
-    return {
-      evidence: {
-        url: 'https://jobs.example.test/test/frontend-engineer',
-        title: 'Senior Frontend Engineer at Northstar Labs',
-        selectedText: '',
-        visibleText:
-          'Northstar Labs is hiring a Senior Frontend Engineer to build accessible React interfaces, REST APIs, design systems, and reliable automated tests.',
-        semanticHtml: '',
-      },
-      source: {
-        tabId: 0,
-        url: 'https://jobs.example.test/test/frontend-engineer',
-      },
-    }
+    throw new Error(
+      'Chrome page access is unavailable. Open the installed Merida side panel on a job posting page.',
+    )
   }
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
   if (
@@ -69,11 +134,18 @@ export async function collectCaptureEvidence(): Promise<CollectedCaptureEvidence
     .filter(Boolean)
     .join('\n')
     .slice(0, Math.min(120000, remaining))
+  remaining -= semanticHtml.length
+  const metadataText = frames
+    .map((frame) => frame.metadataText || '')
+    .filter(Boolean)
+    .join('\n\n')
+    .slice(0, Math.min(120000, Math.max(0, remaining)))
   const evidence = {
     ...main,
     selectedText,
     visibleText,
     semanticHtml,
+    metadataText,
   }
   return { evidence, source: { tabId: tab.id, url: tab.url } }
 }
