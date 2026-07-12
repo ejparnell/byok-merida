@@ -18,6 +18,7 @@ from ..applications.workspace import ApplicationRecord
 from ...shared.schemas import Pagination
 from ...shared.workspace import (
     WorkspaceDataError,
+    WorkspaceProviderError,
     WorkspaceReadiness,
     workspace_validation_failures,
 )
@@ -120,7 +121,7 @@ class ResumeCreation:
                 )
             master_resume = await self._store.load_master_resume()
             bundle = await self._builder.build(application, master_resume)
-        except WorkspaceDataError as exc:
+        except (WorkspaceDataError, WorkspaceProviderError) as exc:
             return ResumeCreationBlockedResponse(
                 ok=False,
                 status="blocked",

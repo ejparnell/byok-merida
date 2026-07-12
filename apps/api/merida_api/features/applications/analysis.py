@@ -9,7 +9,11 @@ from .schemas import (
 )
 from .workspace import ApplicationRecord
 from ...shared.schemas import Pagination
-from ...shared.workspace import WorkspaceReadiness, workspace_validation_failures
+from ...shared.workspace import (
+    WorkspaceProviderError,
+    WorkspaceReadiness,
+    workspace_validation_failures,
+)
 from ...shared.execution import ExecutionCoordinator
 
 
@@ -122,6 +126,8 @@ class ApplicationAnalysis:
                         score = document.match_score
                     succeeded += 1
                     results.append(_result_item(application, result, score, []))
+            except WorkspaceProviderError:
+                raise
             except Exception:
                 failed += 1
                 results.append(

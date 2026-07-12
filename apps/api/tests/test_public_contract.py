@@ -7,7 +7,11 @@ from fastapi.testclient import TestClient
 
 from merida_api.app import create_app
 from merida_api.core.settings import Settings
-from merida_api.shared.workspace import WorkspaceIssue, WorkspaceReadiness
+from merida_api.shared.workspace import (
+    WorkspaceIssue,
+    WorkspaceProviderError,
+    WorkspaceReadiness,
+)
 from fakes.app import create_test_app
 from fakes.workspace import FakeWorkspace, initial_test_state
 
@@ -137,6 +141,61 @@ def test_health_blocks_when_the_real_workspace_schema_is_incompatible(tmp_path):
             "message": "Required relation property is missing.",
         }
     ]
+
+
+def test_provider_outages_return_typed_workflow_blocks(tmp_path):
+    class UnavailableWorkspace(FakeWorkspace):
+        async def validate_capture_workspace(self):
+            raise WorkspaceProviderError("Notion could not be reached.")
+
+        async def validate_analysis_workspace(self):
+            raise WorkspaceProviderError("Notion could not be reached.")
+
+        async def validate_resume_workspace(self):
+            raise WorkspaceProviderError("Notion could not be reached.")
+
+    settings = Settings(
+        capture_token="test-capture-token",
+        notion_token="test-notion-token",
+        notion_database_id="applications-database",
+        notion_resume_database_id="resumes-database",
+        notion_notes_database_id="notes-database",
+        deepseek_api_key="test-deepseek-key",
+        export_path=tmp_path / "export",
+        recovery_journal_path=tmp_path / "recovery.json",
+    )
+    app = create_test_app(
+        settings,
+        workspace=UnavailableWorkspace(tmp_path / "state.json"),
+    )
+
+    with TestClient(app) as client:
+        responses = (
+            client.post(
+                "/api/v1/applications/confirm",
+                headers={"X-Capture-Token": "test-capture-token"},
+                json={
+                    "draft": {
+                        "jobUrl": "https://example.test/jobs/unavailable",
+                        "companyName": "Example",
+                        "role": "Engineer",
+                        "location": None,
+                        "jobContent": "Build reliable Python services and React interfaces.",
+                    }
+                },
+            ),
+            client.get("/api/v1/applications/analysis/queue"),
+            client.post("/api/v1/applications/analysis/run", json={"limit": 1}),
+            client.get("/api/v1/resumes/queue"),
+            client.post(
+                "/api/v1/resumes/create", json={"applicationId": "app-orbit"}
+            ),
+        )
+
+    for response in responses:
+        assert response.status_code == 200
+        assert response.json()["status"] == "blocked"
+        assert response.json()["errors"] == ["Notion could not be reached."]
 
 
 def test_capture_is_review_first_protected_and_idempotent(tmp_path):
