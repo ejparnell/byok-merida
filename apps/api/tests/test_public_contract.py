@@ -332,54 +332,16 @@ def test_analysis_repairs_existing_findings_without_rerunning_work(tmp_path):
 
 def test_public_seam_serializes_partial_analysis_and_failed_resume_outcomes(tmp_path):
     class OutcomeWorkspace(DemoWorkspace):
-        async def run_analysis(self, limit):
-            return {
-                "ok": True,
-                "result": "completed",
-                "processed": 2,
-                "succeeded": 1,
-                "failed": 1,
-                "repaired": 0,
-                "items": [
-                    {
-                        "applicationId": "app-1",
-                        "title": "Engineer at Example",
-                        "companyName": "Example",
-                        "role": "Engineer",
-                        "applicationStatus": "To Apply",
-                        "jobUrl": "https://example.test/job-1",
-                        "result": "analyzed",
-                        "matchScore": 80,
-                        "errors": [],
-                    },
-                    {
-                        "applicationId": "app-2",
-                        "title": "Developer at Example",
-                        "companyName": "Example",
-                        "role": "Developer",
-                        "applicationStatus": "To Apply",
-                        "jobUrl": "https://example.test/job-2",
-                        "result": "failed",
-                        "matchScore": None,
-                        "errors": ["Application Analysis failed for this item."],
-                    },
-                ],
-                "validationFailures": [],
-                "errors": [],
-            }
+        async def append_application_analysis(self, application_id, document):
+            if application_id == "app-lantern":
+                raise RuntimeError("injected item failure")
+            await super().append_application_analysis(application_id, document)
 
-        async def create_resume(self, application_id):
-            return {
-                "ok": False,
-                "status": "failed",
-                "result": "failed",
-                "cleanup": {
-                    "status": "incomplete",
-                    "errors": ["Generated PDF could not be removed."],
-                },
-                "validationFailures": [],
-                "errors": ["Resume artifacts could not be committed."],
-            }
+        async def create_resume_fit_note(self, *args, **kwargs):
+            raise RuntimeError("injected Note failure")
+
+        async def archive_resume(self, resume_id):
+            raise RuntimeError("injected cleanup failure")
 
     settings = Settings(
         merida_mode="demo",
@@ -393,7 +355,7 @@ def test_public_seam_serializes_partial_analysis_and_failed_resume_outcomes(tmp_
             "/api/v1/applications/analysis/run", json={"limit": 2}
         )
         resume = client.post(
-            "/api/v1/resumes/create", json={"applicationId": "app-1"}
+            "/api/v1/resumes/create", json={"applicationId": "app-orbit"}
         )
 
     assert analysis.status_code == 200
@@ -409,7 +371,7 @@ def test_public_seam_serializes_partial_analysis_and_failed_resume_outcomes(tmp_
 
 def test_invalid_json_and_conflict_use_the_locked_technical_envelope(tmp_path):
     class ConflictWorkspace(DemoWorkspace):
-        async def run_analysis(self, limit):
+        async def list_analysis_queue(self, *, limit, cursor):
             raise HTTPException(
                 status_code=409,
                 detail={
@@ -677,9 +639,9 @@ def test_cors_allows_only_configured_browser_origins_and_headers(tmp_path):
     assert "access-control-allow-origin" not in rejected.headers
 
 
-def test_unexpected_failures_are_sanitized_and_correlated(tmp_path):
+def test_unexpected_failures_are_sanitized_and_correlated(tmp_path, caplog):
     class ExplodingWorkspace(DemoWorkspace):
-        async def run_analysis(self, limit):
+        async def validate_analysis_workspace(self):
             raise RuntimeError("private provider response must not escape")
 
     settings = Settings(
@@ -702,6 +664,7 @@ def test_unexpected_failures_are_sanitized_and_correlated(tmp_path):
     assert response.json()["error"]["requestId"]
     assert response.json()["validationFailures"] == []
     assert "private provider response" not in response.text
+    assert "private provider response" not in caplog.text
 
 
 def test_demo_reset_is_stable_but_unavailable_in_real_mode(tmp_path):

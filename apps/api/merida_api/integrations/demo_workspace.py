@@ -1,15 +1,29 @@
 import asyncio
 from copy import deepcopy
-from datetime import date
+from datetime import date, datetime
 import hashlib
 import json
 from pathlib import Path
-import re
 from uuid import uuid4
 
 from ..features.applications.schemas import ConfirmedApplicationDraft
+from ..features.applications.workspace import (
+    ApplicationAnalysisDocument,
+    ApplicationRecord,
+)
+from ..features.resumes.workspace import (
+    DocumentBlock,
+    NoteRecord,
+    ResumeDocument,
+    ResumeRecord,
+)
 from ..shared.pagination import InvalidCursor, decode_cursor, encode_cursor
-from .pdf_export import write_simple_pdf
+from ..shared.workspace import (
+    QueuePage,
+    WorkspaceDataConflict,
+    WorkspaceDataError,
+    WorkspaceReadiness,
+)
 
 
 def initial_demo_state() -> dict:
@@ -66,9 +80,7 @@ def initial_demo_state() -> dict:
 class DemoWorkspace:
     def __init__(self, state_path: Path, export_path: Path):
         self._state_path = state_path
-        self._export_path = export_path
         self._lock = asyncio.Lock()
-        self._resume_locks: dict[str, asyncio.Lock] = {}
         self._state = self._load()
 
     def _load(self) -> dict:
@@ -88,30 +100,6 @@ class DemoWorkspace:
         async with self._lock:
             self._save(initial_demo_state())
         return {"ok": True, "result": "reset", "validationFailures": [], "errors": []}
-
-    @staticmethod
-    def _application_ref(application: dict) -> dict:
-        return {
-            "id": application["id"],
-            "title": f'{application["role"]} at {application["companyName"]}',
-            "companyName": application["companyName"],
-            "role": application["role"],
-            "location": application.get("location") or None,
-            "jobUrl": application["jobUrl"],
-            "applicationStatus": application["applicationStatus"],
-            "url": f'https://www.notion.so/demo/{application["id"]}',
-        }
-
-    @staticmethod
-    def _queue_ref(application: dict) -> dict:
-        return {
-            "applicationId": application["id"],
-            "title": f'{application["role"]} at {application["companyName"]}',
-            "companyName": application["companyName"],
-            "role": application["role"],
-            "applicationStatus": application["applicationStatus"],
-            "jobUrl": application["jobUrl"],
-        }
 
     @staticmethod
     def _page(
@@ -134,26 +122,41 @@ class DemoWorkspace:
             "hasMore": has_more,
         }
 
-    async def confirm_capture(self, draft: ConfirmedApplicationDraft) -> dict:
+    async def validate_capture_workspace(self) -> WorkspaceReadiness:
+        return WorkspaceReadiness()
+
+    async def find_application_by_job_url(
+        self, job_url: str
+    ) -> ApplicationRecord | None:
+        matches = [
+            item for item in self._state["applications"] if item["jobUrl"] == job_url
+        ]
+        if len(matches) > 1:
+            raise WorkspaceDataConflict(
+                "Multiple Applications use the same canonical Job URL."
+            )
+        return self._application_record(matches[0]) if matches else None
+
+    async def create_application(
+        self,
+        draft: ConfirmedApplicationDraft,
+        *,
+        captured_at: datetime,
+        captured_url: str | None = None,
+        parsing_notes: tuple[str, ...] = (),
+    ) -> ApplicationRecord:
         async with self._lock:
-            for application in self._state["applications"]:
-                if application["jobUrl"] == draft.job_url:
-                    return {
-                        "ok": True,
-                        "result": "already_captured",
-                        "application": self._application_ref(application),
-                        "validationFailures": [],
-                        "errors": [],
-                    }
             application = {
                 "id": f"app-{uuid4().hex[:10]}",
                 "companyName": draft.company_name.strip(),
                 "role": draft.role.strip(),
                 "jobUrl": draft.job_url,
+                "capturedUrl": captured_url,
+                "parsingNotes": list(parsing_notes),
                 "location": draft.location,
                 "jobContent": draft.job_content.strip(),
                 "applicationStatus": "To Apply",
-                "dateFound": date.today().isoformat(),
+                "dateFound": captured_at.date().isoformat(),
                 "analyzed": False,
                 "matchScore": None,
                 "analysis": None,
@@ -161,13 +164,88 @@ class DemoWorkspace:
             }
             self._state["applications"].append(application)
             self._save()
-        return {
-            "ok": True,
-            "result": "created",
-            "application": self._application_ref(application),
-            "validationFailures": [],
-            "errors": [],
+        return self._application_record(application)
+
+    @staticmethod
+    def _application_record(application: dict) -> ApplicationRecord:
+        analysis = application.get("analysis")
+        analysis_document = None
+        if analysis:
+            analysis_document = ApplicationAnalysisDocument(
+                summary=str(analysis.get("summary") or ""),
+                match_score=analysis.get("matchScore", application.get("matchScore")),
+                skill_signals=tuple(analysis.get("skillSignals") or ()),
+                heading=analysis.get("heading", "Application Analysis"),
+            )
+        return ApplicationRecord(
+            id=application["id"],
+            url=f'https://www.notion.so/demo/{application["id"]}',
+            company_name=application["companyName"],
+            role=application["role"],
+            job_url=application["jobUrl"],
+            captured_url=application.get("capturedUrl"),
+            location=application.get("location") or None,
+            date_found=date.fromisoformat(application["dateFound"]),
+            application_status=application["applicationStatus"],
+            analyzed=bool(application["analyzed"]),
+            match_score=application.get("matchScore"),
+            resume_ids=(application["resumeId"],) if application.get("resumeId") else (),
+            job_content=application.get("jobContent"),
+            analysis=analysis_document,
+        )
+
+    async def validate_analysis_workspace(self) -> WorkspaceReadiness:
+        return WorkspaceReadiness()
+
+    async def list_analysis_queue(
+        self, *, limit: int, cursor: str | None
+    ) -> QueuePage[ApplicationRecord]:
+        candidates = self._analysis_candidates()
+        page, pagination = self._page(candidates, limit, cursor, "application_analysis")
+        return QueuePage(
+            items=tuple(self._application_record(item) for item in page),
+            total=len(candidates),
+            limit=limit,
+            next_cursor=pagination["nextCursor"],
+            has_more=pagination["hasMore"],
+        )
+
+    async def load_analysis_input(self, application_id: str) -> ApplicationRecord:
+        application = next(
+            (item for item in self._state["applications"] if item["id"] == application_id),
+            None,
+        )
+        if application is None:
+            raise WorkspaceDataError("Application was not found.")
+        return self._application_record(application)
+
+    async def append_application_analysis(
+        self, application_id: str, document: ApplicationAnalysisDocument
+    ) -> None:
+        application = await self._mutable_application(application_id)
+        application["analysis"] = {
+            "summary": document.summary,
+            "matchScore": document.match_score,
+            "skillSignals": list(document.skill_signals),
         }
+        self._save()
+
+    async def finalize_application_analysis(
+        self, application_id: str, *, match_score: int | None
+    ) -> None:
+        application = await self._mutable_application(application_id)
+        application["matchScore"] = match_score
+        application["analyzed"] = True
+        self._save()
+
+    async def _mutable_application(self, application_id: str) -> dict:
+        application = next(
+            (item for item in self._state["applications"] if item["id"] == application_id),
+            None,
+        )
+        if application is None:
+            raise WorkspaceDataError("Application was not found.")
+        return application
 
     def _analysis_candidates(self) -> list[dict]:
         return sorted(
@@ -181,229 +259,207 @@ class DemoWorkspace:
             key=lambda item: (item["dateFound"], item["id"]),
         )
 
-    async def analysis_queue(self, limit: int, cursor: str | None) -> dict:
-        candidates = self._analysis_candidates()
-        page, pagination = self._page(candidates, limit, cursor, "application_analysis")
-        return {
-            "ok": True,
-            "queueCount": len(candidates),
-            "items": [self._queue_ref(item) for item in page],
-            "pagination": pagination,
-            "validationFailures": [],
-            "errors": [],
-        }
+    async def validate_resume_workspace(self) -> WorkspaceReadiness:
+        return WorkspaceReadiness()
 
-    @staticmethod
-    def _analyze(application: dict) -> tuple[list[str], int]:
-        vocabulary = {
-            "React": "react",
-            "Python": "python",
-            "REST APIs": "rest api",
-            "PostgreSQL": "postgres",
-            "Testing": "test",
-            "CI": "ci",
-            "Accessibility": "accessib",
-            "Observability": "observab",
-        }
-        content = application["jobContent"].lower()
-        signals = [name for name, token in vocabulary.items() if token in content]
-        score = min(96, 58 + len(signals) * 6)
-        return signals, score
-
-    async def run_analysis(self, limit: int) -> dict:
-        async with self._lock:
-            candidates = self._analysis_candidates()[:limit]
-            results = []
-            failed = 0
-            repaired = 0
-            for application in candidates:
-                try:
-                    if application["analysis"]:
-                        application["analyzed"] = True
-                        repaired += 1
-                        results.append({**self._queue_ref(application), "result": "repaired", "matchScore": application["matchScore"], "errors": []})
-                        continue
-                    signals, score = self._analyze(application)
-                    application["analysis"] = {
-                        "summary": (
-                            f'{application["role"]} at {application["companyName"]} emphasizes '
-                            f'{", ".join(signals) if signals else "transferable engineering experience"}. '
-                            "The analysis uses only readable Job Content and deterministic demo evidence. "
-                            "Review the durable record in Notion before applying."
-                        ),
-                        "skillSignals": signals,
-                    }
-                    application["matchScore"] = score
-                    application["analyzed"] = True
-                    results.append({**self._queue_ref(application), "result": "analyzed", "matchScore": score, "errors": []})
-                except Exception:
-                    failed += 1
-                    results.append({**self._queue_ref(application), "result": "failed", "matchScore": None, "errors": ["Application Analysis failed for this item."]})
-            self._save()
-        return {
-            "ok": True,
-            "result": "completed",
-            "processed": len(results),
-            "succeeded": len(results) - failed,
-            "failed": failed,
-            "repaired": repaired,
-            "items": results,
-            "validationFailures": [],
-            "errors": [],
-        }
-
-    def _resume_candidates(self) -> list[dict]:
-        return sorted(
-            [
-                item
-                for item in self._state["applications"]
-                if item["applicationStatus"] == "To Apply"
-                and item["analyzed"]
-                and item["resumeId"] is None
-                and item["analysis"]
-                and len(item["jobContent"].strip()) >= 20
-            ],
-            key=lambda item: (-(item["matchScore"] or 0), item["dateFound"], item["id"]),
+    async def list_resume_queue(
+        self, *, limit: int, cursor: str | None
+    ) -> QueuePage[ApplicationRecord]:
+        candidates = []
+        for item in self._state["applications"]:
+            if (
+                item["applicationStatus"] != "To Apply"
+                or not item["analyzed"]
+                or not item["analysis"]
+                or item.get("matchScore") is None
+                or len(item["jobContent"].strip()) < 20
+            ):
+                continue
+            application = self._application_record(item)
+            if await self.find_completed_resume(application) is None:
+                candidates.append(item)
+        candidates.sort(
+            key=lambda item: (
+                -(item["matchScore"] or 0),
+                item["dateFound"],
+                item["id"],
+            )
+        )
+        page, pagination = self._page(candidates, limit, cursor, "resume_creation")
+        return QueuePage(
+            items=tuple(self._application_record(item) for item in page),
+            total=len(candidates),
+            limit=limit,
+            next_cursor=pagination["nextCursor"],
+            has_more=pagination["hasMore"],
         )
 
-    async def resume_queue(self, limit: int, cursor: str | None) -> dict:
-        candidates = self._resume_candidates()
-        page, pagination = self._page(candidates, limit, cursor, "resume_creation")
-        items = []
-        for application in page:
-            items.append(
-                {
-                    **self._queue_ref(application),
-                    "matchScore": application["matchScore"],
-                    "analyzed": True,
-                    "hasResume": False,
-                }
+    async def load_resume_input(self, application_id: str) -> ApplicationRecord:
+        application = await self.load_analysis_input(application_id)
+        if (
+            application.application_status != "To Apply"
+            or not application.analyzed
+            or application.match_score is None
+            or len(application.job_content or "") < 20
+            or application.analysis is None
+        ):
+            raise WorkspaceDataError(
+                "Application is not eligible for Resume Creation."
             )
-        return {
-            "ok": True,
-            "queueCount": len(candidates),
-            "items": items,
-            "pagination": pagination,
-            "validationFailures": [],
-            "errors": [],
+        return application
+
+    async def find_completed_resume(
+        self, application: ApplicationRecord
+    ) -> ResumeRecord | None:
+        active = [
+            self._resume_record(resume)
+            for resume_id in application.resume_ids
+            if (resume := self._state["resumes"].get(resume_id))
+            and not resume.get("archived")
+        ]
+        if len(active) > 1:
+            raise WorkspaceDataConflict(
+                "Application has multiple related Job-Specific Resumes."
+            )
+        return active[0] if active else None
+
+    async def find_resume_fit_note(
+        self, application_id: str, resume_id: str
+    ) -> NoteRecord | None:
+        active = [
+            self._note_record(note)
+            for note in self._state["notes"].values()
+            if note.get("applicationId") == application_id
+            and note.get("resumeId") == resume_id
+            and not note.get("archived")
+        ]
+        if len(active) > 1:
+            raise WorkspaceDataConflict(
+                "Resume has multiple active Resume Fit Analysis Notes."
+            )
+        return active[0] if active else None
+
+    async def load_master_resume(self) -> ResumeDocument:
+        record = ResumeRecord(
+            id="demo-master-resume",
+            url="https://www.notion.so/demo/master-resume",
+            name="Master Resume",
+        )
+        return ResumeDocument(
+            record=record,
+            blocks=(
+                DocumentBlock(kind="heading_2", text="Software Engineer"),
+                DocumentBlock(
+                    kind="bulleted_list_item",
+                    text="Built reliable APIs and accessible product interfaces.",
+                ),
+            ),
+        )
+
+    async def create_resume_draft(
+        self, name: str, document: tuple[DocumentBlock, ...]
+    ) -> ResumeRecord:
+        resume_id = f"resume-{uuid4().hex[:10]}"
+        resume = {
+            "id": resume_id,
+            "title": name,
+            "url": f"https://www.notion.so/demo/{resume_id}",
+            "applicationId": None,
+            "document": [block.__dict__ for block in document],
+            "archived": False,
         }
+        self._state["resumes"][resume_id] = resume
+        self._save()
+        return self._resume_record(resume)
 
-    def _existing_resume_result(self, application: dict) -> dict:
-        resume = self._state["resumes"][application["resumeId"]]
-        note_id = resume.get("noteId")
-        note = self._state["notes"].get(note_id) if note_id else None
-        result = self._resume_result("already_created", application, resume, note)
-        if self.pdf_path(resume["id"]) is None:
-            result["pdf"] = None
-        return result
-
-    @staticmethod
-    def _resume_result(result: str, application: dict, resume: dict, note: dict | None) -> dict:
-        payload = {
-            "ok": True,
-            "result": result,
-            "application": {
-                "id": application["id"],
-                "title": f'{application["role"]} at {application["companyName"]}',
-                "companyName": application["companyName"],
-                "role": application["role"],
-            },
-            "resume": {
-                "id": resume["id"],
-                "title": resume["title"],
-                "companyName": application["companyName"],
-                "role": application["role"],
-                "url": resume["url"],
-            },
-            "pdf": {
-                "filename": resume["filename"],
-                "downloadUrl": f'/api/v1/resumes/{resume["id"]}/pdf',
-            },
-            "validationFailures": [],
-            "errors": [],
+    async def create_resume_fit_note(
+        self,
+        name: str,
+        *,
+        application_id: str,
+        resume_id: str,
+        document: tuple[DocumentBlock, ...],
+    ) -> NoteRecord:
+        note_id = f"note-{uuid4().hex[:10]}"
+        note = {
+            "id": note_id,
+            "title": name,
+            "url": f"https://www.notion.so/demo/{note_id}",
+            "applicationId": application_id,
+            "resumeId": resume_id,
+            "document": [block.__dict__ for block in document],
+            "archived": False,
         }
-        if note:
-            payload["note"] = {
-                "id": note["id"],
-                "title": note["title"],
-                "companyName": application["companyName"],
-                "role": application["role"],
-                "url": note["url"],
-            }
-        else:
-            payload["note"] = None
-        return payload
+        self._state["notes"][note_id] = note
+        self._save()
+        return self._note_record(note)
 
-    async def create_resume(self, application_id: str) -> dict:
-        lock = self._resume_locks.setdefault(application_id, asyncio.Lock())
-        async with lock:
+    async def attach_resume_to_application(
+        self, resume_id: str, application_id: str
+    ) -> ResumeRecord:
+        resume = self._state["resumes"].get(resume_id)
+        if resume is None:
+            raise WorkspaceDataError("Resume was not found.")
+        application = await self._mutable_application(application_id)
+        resume["applicationId"] = application_id
+        application["resumeId"] = resume_id
+        self._save()
+        return self._resume_record(resume)
+
+    async def clear_resume_application(self, resume_id: str) -> None:
+        resume = self._state["resumes"].get(resume_id)
+        if resume is None:
+            return
+        application_id = resume.get("applicationId")
+        resume["applicationId"] = None
+        if application_id:
             application = next(
-                (item for item in self._state["applications"] if item["id"] == application_id),
+                (
+                    item
+                    for item in self._state["applications"]
+                    if item["id"] == application_id
+                ),
                 None,
             )
-            if not application:
-                return {"ok": False, "status": "blocked", "result": "blocked", "cleanup": {"status": "not_required", "errors": []}, "validationFailures": [], "errors": ["Application was not found."]}
-            if application["resumeId"]:
-                return self._existing_resume_result(application)
-            if application not in self._resume_candidates():
-                return {"ok": False, "status": "blocked", "result": "blocked", "cleanup": {"status": "not_required", "errors": []}, "validationFailures": [], "errors": ["Application is not eligible for Resume Creation."]}
+            if application and application.get("resumeId") == resume_id:
+                application["resumeId"] = None
+        self._save()
 
-            resume_id = f"resume-{uuid4().hex[:10]}"
-            note_id = f"note-{uuid4().hex[:10]}"
-            slug = re.sub(r"[^a-z0-9]+", "-", f'{application["companyName"]}-{application["role"]}'.lower()).strip("-")
-            filename = f"{slug}.pdf"
-            title = f'{application["role"]} at {application["companyName"]}'
-            resume = {
-                "id": resume_id,
-                "title": title,
-                "url": f"https://www.notion.so/demo/{resume_id}",
-                "filename": filename,
-                "noteId": note_id,
-            }
-            note = {
-                "id": note_id,
-                "title": f"Resume Fit Analysis - {title}",
-                "url": f"https://www.notion.so/demo/{note_id}",
-            }
-            pdf_path = self._export_path / filename
-            try:
-                write_simple_pdf(
-                    pdf_path,
-                    [
-                        "Elizabeth Parnell",
-                        title,
-                        "Evidence-backed application-ready demo resume",
-                        f'Match Score: {application["matchScore"]}',
-                        "Skills: " + ", ".join(application["analysis"]["skillSignals"]),
-                    ],
-                )
-                async with self._lock:
-                    self._state["resumes"][resume_id] = resume
-                    self._state["notes"][note_id] = note
-                    application["resumeId"] = resume_id
-                    self._save()
-            except Exception:
-                if pdf_path.exists():
-                    pdf_path.unlink()
-                return {
-                    "ok": False,
-                    "status": "failed",
-                    "result": "failed",
-                    "cleanup": {
-                        "status": "completed" if not pdf_path.exists() else "incomplete",
-                        "errors": [] if not pdf_path.exists() else ["Generated PDF could not be removed."],
-                    },
-                    "validationFailures": [],
-                    "errors": ["Resume artifacts could not be committed."],
-                }
-            return self._resume_result("created", application, resume, note)
+    async def archive_note(self, note_id: str) -> None:
+        note = self._state["notes"].get(note_id)
+        if note is not None:
+            note["archived"] = True
+            self._save()
 
-    def pdf_path(self, resume_id: str) -> Path | None:
+    async def archive_resume(self, resume_id: str) -> None:
         resume = self._state["resumes"].get(resume_id)
-        if not resume:
-            return None
-        path = self._export_path / resume["filename"]
-        return path if path.exists() else None
+        if resume is not None:
+            resume["archived"] = True
+            self._save()
+
+    @staticmethod
+    def _resume_record(resume: dict) -> ResumeRecord:
+        application_id = resume.get("applicationId")
+        return ResumeRecord(
+            id=resume["id"],
+            url=resume["url"],
+            name=resume.get("name") or resume.get("title") or "",
+            application_ids=(application_id,) if application_id else (),
+            archived=bool(resume.get("archived")),
+        )
+
+    @staticmethod
+    def _note_record(note: dict) -> NoteRecord:
+        return NoteRecord(
+            id=note["id"],
+            url=note["url"],
+            name=note.get("name") or note.get("title") or "",
+            application_ids=(note["applicationId"],)
+            if note.get("applicationId")
+            else (),
+            resume_ids=(note["resumeId"],) if note.get("resumeId") else (),
+            archived=bool(note.get("archived")),
+        )
 
     def snapshot(self) -> dict:
         return deepcopy(self._state)

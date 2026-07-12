@@ -25,12 +25,19 @@ from .features.applications.schemas import (
     RunApplicationAnalysisResponse,
 )
 from .features.resumes import ResumeCreation
+from .features.resumes.commit import ResumeArtifactCommitter
 from .features.resumes.schemas import (
     CreateResumeRequest,
     CreateResumeResponse,
     GetResumeCreationQueueResponse,
 )
 from .integrations.demo_workspace import DemoWorkspace
+from .integrations.demo_models import (
+    DemoApplicationAnalysisModel,
+    DemoResumeDocumentBuilder,
+)
+from .integrations.notion_workspace import NotionWorkspace
+from .integrations.pdf_export import LocalPdfArtifacts
 from .shared.pagination import InvalidCursor
 from .shared.schemas import (
     ApiErrorResponse,
@@ -113,15 +120,28 @@ def _public_error_code(value: object, status_code: int) -> ApiErrorCode:
 def create_app(
     settings: Settings | None = None,
     *,
-    workspace: DemoWorkspace | None = None,
+    workspace=None,
 ) -> FastAPI:
     settings = settings or Settings()
-    workspace = workspace or DemoWorkspace(
-        settings.demo_state_path, settings.export_path
-    )
+    if workspace is None:
+        workspace = (
+            DemoWorkspace(settings.demo_state_path, settings.export_path)
+            if settings.merida_mode == "demo"
+            else NotionWorkspace(
+                token=settings.notion_token,
+                application_database_id=settings.notion_database_id,
+                resume_database_id=settings.notion_resume_database_id,
+                notes_database_id=settings.notion_notes_database_id,
+            )
+        )
     capture = ApplicationCapture(workspace)
-    analysis = ApplicationAnalysis(workspace)
-    resumes = ResumeCreation(workspace)
+    analysis = ApplicationAnalysis(workspace, DemoApplicationAnalysisModel())
+    pdf_artifacts = LocalPdfArtifacts(settings.export_path)
+    resumes = ResumeCreation(
+        workspace,
+        DemoResumeDocumentBuilder(),
+        ResumeArtifactCommitter(workspace, pdf_artifacts),
+    )
     require_capture_token = capture_token_dependency(settings)
 
     @asynccontextmanager
@@ -275,9 +295,9 @@ def create_app(
     async def unexpected_error_handler(_request: Request, exc: Exception):
         request_id = uuid4().hex
         logger.error(
-            "Unhandled API failure request_id=%s",
+            "Unhandled API failure request_id=%s error_type=%s",
             request_id,
-            exc_info=(type(exc), exc, exc.__traceback__),
+            type(exc).__name__,
         )
         return _error_response(
             500,

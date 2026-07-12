@@ -37,3 +37,29 @@ def write_simple_pdf(path: Path, lines: list[str]) -> None:
         f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
     )
     path.write_bytes(content)
+
+
+class LocalPdfArtifacts:
+    def __init__(self, export_path: Path):
+        self._export_path = export_path
+
+    def save(self, resume_id: str, lines: tuple[str, ...]) -> Path:
+        path = self._path(resume_id)
+        write_simple_pdf(path, list(lines))
+        return path
+
+    def remove(self, resume_id: str) -> None:
+        path = self._path(resume_id)
+        if path.exists():
+            path.unlink()
+
+    def path(self, resume_id: str) -> Path | None:
+        path = self._path(resume_id)
+        return path if path.exists() else None
+
+    def _path(self, resume_id: str) -> Path:
+        safe_id = "".join(
+            character if character.isalnum() or character in {"-", "_"} else "-"
+            for character in resume_id
+        ).strip("-")
+        return self._export_path / f"{safe_id or 'resume'}.pdf"

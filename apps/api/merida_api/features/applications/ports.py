@@ -1,12 +1,44 @@
+from datetime import datetime
 from typing import Protocol
 
 from .schemas import ConfirmedApplicationDraft
+from .workspace import ApplicationAnalysisDocument, ApplicationRecord
+from ...shared.workspace import (
+    QueuePage,
+    WorkspaceReadiness,
+)
 
 
 class CaptureStore(Protocol):
-    async def confirm_capture(self, draft: ConfirmedApplicationDraft) -> dict: ...
+    async def validate_capture_workspace(self) -> WorkspaceReadiness: ...
+    async def find_application_by_job_url(
+        self, job_url: str
+    ) -> ApplicationRecord | None: ...
+    async def create_application(
+        self,
+        draft: ConfirmedApplicationDraft,
+        *,
+        captured_at: datetime,
+        captured_url: str | None = None,
+        parsing_notes: tuple[str, ...] = (),
+    ) -> ApplicationRecord: ...
 
 
 class ApplicationAnalysisStore(Protocol):
-    async def analysis_queue(self, limit: int, cursor: str | None) -> dict: ...
-    async def run_analysis(self, limit: int) -> dict: ...
+    async def validate_analysis_workspace(self) -> WorkspaceReadiness: ...
+    async def list_analysis_queue(
+        self, *, limit: int, cursor: str | None
+    ) -> QueuePage[ApplicationRecord]: ...
+    async def load_analysis_input(self, application_id: str) -> ApplicationRecord: ...
+    async def append_application_analysis(
+        self, application_id: str, document: ApplicationAnalysisDocument
+    ) -> None: ...
+    async def finalize_application_analysis(
+        self, application_id: str, *, match_score: int | None
+    ) -> None: ...
+
+
+class ApplicationAnalysisModel(Protocol):
+    async def analyze(
+        self, application: ApplicationRecord
+    ) -> ApplicationAnalysisDocument: ...
