@@ -115,7 +115,11 @@ def _health(
     )
     resumes = (
         "ready"
-        if resume_workspace_ready and capabilities.resume_builder_available
+        if (
+            resume_workspace_ready
+            and capabilities.resume_builder_available
+            and settings.user_name_configured
+        )
         else "blocked"
     )
     if not capabilities.capture_workspace_configured:
@@ -126,6 +130,8 @@ def _health(
         errors.append("CAPTURE_TOKEN is not configured.")
     if not settings.deepseek_configured:
         errors.append("DEEPSEEK_API_KEY is not configured.")
+    if not settings.user_name_configured:
+        errors.append("USER_NAME is not configured.")
     errors.extend(workflow_provider_errors.values())
     for readiness in workflow_readiness.values():
         errors.extend(issue.message for issue in readiness.errors)
@@ -322,7 +328,9 @@ def create_app(
         journal = UnavailableEffectJournal(recovery_error)
     capture = ApplicationCapture(workspace, coordinator, journal)
     analysis = ApplicationAnalysis(workspace, analysis_model, coordinator)
-    pdf_artifacts = LocalPdfArtifacts(settings.export_path)
+    pdf_artifacts = LocalPdfArtifacts(
+        settings.export_path, user_name=settings.user_name
+    )
     resumes = ResumeCreation(
         workspace,
         resume_builder,
@@ -634,6 +642,8 @@ def create_app(
             return _blocked_resume_creation(
                 "Real Resume Creation is not enabled in this build."
             )
+        if not settings.user_name_configured:
+            return _blocked_resume_creation("USER_NAME is not configured.")
         return await _block_provider_error(
             resumes.create(request.application_id), _blocked_resume_creation
         )

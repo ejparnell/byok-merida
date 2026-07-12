@@ -54,7 +54,9 @@ def test_ambiguous_resume_create_remains_blocked_for_manual_recovery(tmp_path):
     application = asyncio.run(workspace.load_resume_input("app-orbit"))
     journal = JsonEffectJournal(tmp_path / "recovery.json")
     committer = ResumeArtifactCommitter(
-        workspace, LocalPdfArtifacts(tmp_path / "export"), journal
+        workspace,
+        LocalPdfArtifacts(tmp_path / "export", user_name="Test User"),
+        journal,
     )
 
     result = asyncio.run(
@@ -187,11 +189,11 @@ def test_restart_reconciles_unfinished_resume_effects_before_retry(tmp_path):
         return resume, note
 
     resume, note = asyncio.run(create_interrupted_effects())
-    pdfs = LocalPdfArtifacts(export_path)
+    pdfs = LocalPdfArtifacts(export_path, user_name="Test User")
     staged_pdf = pdfs.stage(
         (DocumentBlock(kind="paragraph", text="Interrupted PDF"),)
     )
-    pdfs.publish(resume.id, staged_pdf)
+    pdfs.publish(resume.id, "Orbit Works", staged_pdf)
     journal = JsonEffectJournal(journal_path)
     journal.start(
         workflow="resume_creation", domain_key="app-orbit", run_id="run-crashed"
@@ -220,7 +222,9 @@ def test_restart_reconciles_unfinished_resume_effects_before_retry(tmp_path):
     assert not JsonEffectJournal(journal_path).unresolved(
         workflow="resume_creation", domain_key="app-orbit"
     )
-    assert LocalPdfArtifacts(export_path).path(resume.id) is None
+    assert LocalPdfArtifacts(
+        export_path, user_name="Test User"
+    ).path(resume.id) is None
 
 
 def test_retry_after_uncertain_capture_result_returns_existing_application(tmp_path):

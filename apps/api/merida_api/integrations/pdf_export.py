@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 import textwrap
 import uuid
@@ -107,18 +108,39 @@ def write_resume_pdf(path: Path, document: tuple[DocumentBlock, ...]) -> None:
 
 
 class LocalPdfArtifacts:
-    def __init__(self, export_path: Path):
+    def __init__(self, export_path: Path, *, user_name: str):
         self._export_path = export_path
+        self._user_name = user_name
+        self._index_path = export_path / ".resume-artifacts.json"
 
     def stage(self, document: tuple[DocumentBlock, ...]) -> Path:
         staged = self._export_path / f".resume-{uuid.uuid4().hex}.pdf.stage"
         write_resume_pdf(staged, document)
         return staged
 
-    def publish(self, resume_id: str, staged: Path) -> Path:
-        path = self._path(resume_id)
+    def publish(self, resume_id: str, company_name: str, staged: Path) -> Path:
+        path = self._export_path / self._filename(company_name)
         path.parent.mkdir(parents=True, exist_ok=True)
-        staged.replace(path)
+        previous_index = self._load_index()
+        existing_owners = {
+            key for key, value in previous_index.items() if value == path.name
+        }
+        if path.exists() and resume_id not in existing_owners:
+            raise FileExistsError(
+                f"A resume PDF already exists at {path.name}."
+            )
+        index = {
+            key: value
+            for key, value in previous_index.items()
+            if value != path.name or key == resume_id
+        }
+        index[resume_id] = path.name
+        self._save_index(index)
+        try:
+            staged.replace(path)
+        except Exception:
+            self._save_index(previous_index)
+            raise
         return path
 
     def discard(self, staged: Path) -> None:
@@ -129,14 +151,68 @@ class LocalPdfArtifacts:
         path = self._path(resume_id)
         if path.exists():
             path.unlink()
+        index = self._load_index()
+        if resume_id in index:
+            del index[resume_id]
+            self._save_index(index)
 
     def path(self, resume_id: str) -> Path | None:
         path = self._path(resume_id)
         return path if path.exists() else None
 
     def _path(self, resume_id: str) -> Path:
+        filename = self._load_index().get(resume_id)
+        if filename and Path(filename).name == filename:
+            return self._export_path / filename
+        return self._legacy_path(resume_id)
+
+    def _legacy_path(self, resume_id: str) -> Path:
         safe_id = "".join(
             character if character.isalnum() or character in {"-", "_"} else "-"
             for character in resume_id
         ).strip("-")
         return self._export_path / f"{safe_id or 'resume'}.pdf"
+
+    def _filename(self, company_name: str) -> str:
+        company = _filename_component(company_name) or "Company"
+        user = _filename_component(self._user_name)
+        if not user:
+            raise ValueError("USER_NAME must be configured before exporting resumes.")
+        return f"{company}-{user}.pdf"
+
+    def _load_index(self) -> dict[str, str]:
+        if not self._index_path.is_file():
+            return {}
+        payload = json.loads(self._index_path.read_text())
+        if not isinstance(payload, dict):
+            raise ValueError("Resume PDF index must contain a JSON object.")
+        if not all(
+            isinstance(key, str) and isinstance(value, str)
+            for key, value in payload.items()
+        ):
+            raise ValueError("Resume PDF index contains an invalid entry.")
+        return payload
+
+    def _save_index(self, index: dict[str, str]) -> None:
+        self._export_path.mkdir(parents=True, exist_ok=True)
+        temporary = self._export_path / f".resume-artifacts-{uuid.uuid4().hex}.tmp"
+        try:
+            temporary.write_text(json.dumps(index, indent=2, sort_keys=True) + "\n")
+            temporary.replace(self._index_path)
+        finally:
+            if temporary.exists():
+                temporary.unlink()
+
+
+def _filename_component(value: str) -> str:
+    output = []
+    pending_separator = False
+    for character in value.strip():
+        if character.isalnum():
+            if pending_separator and output:
+                output.append("-")
+            output.append(character)
+            pending_separator = False
+        else:
+            pending_separator = True
+    return "".join(output)

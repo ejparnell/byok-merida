@@ -68,7 +68,7 @@ Notion is the only durable product workspace. The compatibility adapter translat
 
 The backend also writes only two supported local artifact classes:
 
-- generated PDFs under `app-data/export/`;
+- generated PDFs and their hidden resume-ID lookup metadata under `app-data/export/`;
 - incomplete-effect recovery entries under `app-data/recovery/`.
 
 Job content and Master Resume content are processed in memory and at provider boundaries required by the workflows. Browser clients never receive Notion tokens, database IDs, DeepSeek keys, prompts, filesystem paths, or recovery payloads.

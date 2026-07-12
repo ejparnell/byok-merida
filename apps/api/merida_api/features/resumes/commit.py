@@ -75,7 +75,9 @@ class ResumeArtifactCommitter:
                 bundle.resume,
                 on_created=resume_created,
             )
-            pdf_path = self._pdfs.publish(resume.id, staged)
+            pdf_path = self._pdfs.publish(
+                resume.id, application.company_name, staged
+            )
             self._advance(run_id, phase="pdf_published", pdf_id=resume.id)
             def note_created(created: NoteRecord) -> None:
                 nonlocal note

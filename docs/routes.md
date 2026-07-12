@@ -703,7 +703,7 @@ Success:
     "url": "https://notion.so/example-note"
   },
   "pdf": {
-    "filename": "exampleco-senior-software-engineer.pdf",
+    "filename": "ExampleCo-Elizabeth-Parnell.pdf",
     "downloadUrl": "/api/v1/resumes/resume_123/pdf"
   },
   "errors": []

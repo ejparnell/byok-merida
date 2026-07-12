@@ -60,6 +60,20 @@ def test_health_and_operator_settings_are_safe_and_ready(tmp_path):
     assert "notionToken" not in settings
 
 
+@pytest.mark.parametrize("user_name", ["", "YourName", "!!!"])
+def test_missing_user_name_blocks_resume_creation_readiness(tmp_path, user_name):
+    with make_client(tmp_path, user_name=user_name) as client:
+        health = client.get("/api/v1/health").json()
+        created = client.post(
+            "/api/v1/resumes/create", json={"applicationId": "app-orbit"}
+        ).json()
+
+    assert health["checks"]["resumes"] == "blocked"
+    assert "USER_NAME is not configured." in health["errors"]
+    assert created["result"] == "blocked"
+    assert created["errors"] == ["USER_NAME is not configured."]
+
+
 def test_health_openapi_uses_a_named_discriminated_response(tmp_path):
     with make_client(tmp_path) as client:
         schema = client.get("/openapi.json").json()
@@ -419,6 +433,27 @@ def test_already_created_resume_reports_a_missing_historical_pdf_as_null(tmp_pat
     assert download.content.startswith(b"%PDF")
     assert missing_download.status_code == 404
     assert missing_download.json()["error"]["code"] == "pdf_not_found"
+
+
+def test_created_resume_pdf_is_named_for_company_and_configured_user(tmp_path):
+    with make_client(tmp_path, user_name="Elizabeth Parnell") as client:
+        queue = client.get("/api/v1/resumes/queue", params={"limit": 10}).json()
+        application = next(
+            item for item in queue["items"] if item["companyName"] == "Orbit Works"
+        )
+
+        created = client.post(
+            "/api/v1/resumes/create",
+            json={"applicationId": application["applicationId"]},
+        ).json()
+        download = client.get(created["pdf"]["downloadUrl"])
+
+    assert created["pdf"]["filename"] == "Orbit-Works-Elizabeth-Parnell.pdf"
+    assert (tmp_path / "export" / created["pdf"]["filename"]).is_file()
+    assert "Orbit-Works-Elizabeth-Parnell.pdf" in download.headers[
+        "content-disposition"
+    ]
+    assert download.content.startswith(b"%PDF")
 
 
 def test_already_created_resume_allows_missing_historical_note_and_pdf(tmp_path):

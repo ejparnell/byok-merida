@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     analysis_model: str = "deepseek-v4-flash"
     resume_model: str = "deepseek-v4-pro"
+    user_name: str = ""
     export_path: Path = REPOSITORY_ROOT / "app-data/export"
     recovery_journal_path: Path = REPOSITORY_ROOT / "app-data/recovery/effects.json"
 
@@ -65,6 +66,15 @@ class Settings(BaseSettings):
                 "your-capture-token",
             }
         )
+
+    @property
+    def user_name_configured(self) -> bool:
+        user_name = "".join(
+            character.lower()
+            for character in self.user_name
+            if character.isalnum()
+        )
+        return bool(user_name and user_name not in {"username", "yourname"})
 
     @property
     def notion_applications_configured(self) -> bool:

@@ -2,6 +2,10 @@
 
 This guide operates the supported FastAPI backend, React dashboard, React Chrome extension, Notion, DeepSeek, PDF, and recovery runtime.
 
+Set `USER_NAME` in `.env` to the name that should appear in exported resume
+filenames. New PDFs are saved under `app-data/export` as
+`CompanyName-UserName.pdf`, with spaces and punctuation converted to hyphens.
+
 ## Setup
 
 Requirements:

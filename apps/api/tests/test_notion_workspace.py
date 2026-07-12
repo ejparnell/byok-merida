@@ -858,7 +858,7 @@ def test_artifact_committer_clears_a_relation_when_final_attach_response_fails(t
         tmp_path / "state.json", tmp_path / "export"
     )
     application = asyncio.run(store.load_resume_input("app-orbit"))
-    pdfs = LocalPdfArtifacts(tmp_path / "export")
+    pdfs = LocalPdfArtifacts(tmp_path / "export", user_name="Test User")
     result = asyncio.run(
         assert_artifact_compensation_contract(store, application, pdfs)
     )
@@ -934,7 +934,7 @@ def test_notion_artifact_compensation_conformance(tmp_path):
             {},
         ]
     )
-    pdfs = LocalPdfArtifacts(tmp_path / "export")
+    pdfs = LocalPdfArtifacts(tmp_path / "export", user_name="Test User")
 
     asyncio.run(
         assert_artifact_compensation_contract(

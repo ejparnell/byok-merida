@@ -160,13 +160,15 @@ async def _observe_cleanup(fixture: dict, tmp_path: Path) -> dict:
                 )
 
         class FailurePdfs(LocalPdfArtifacts):
-            def publish(self, resume_id, staged):
+            def publish(self, resume_id, company_name, staged):
                 if name == "pdfFailure":
                     raise RuntimeError("injected PDF failure")
-                return super().publish(resume_id, staged)
+                return super().publish(resume_id, company_name, staged)
 
         workspace = FailureWorkspace(tmp_path / f"{name}-state.json")
-        pdfs = FailurePdfs(tmp_path / f"{name}-export")
+        pdfs = FailurePdfs(
+            tmp_path / f"{name}-export", user_name="Test User"
+        )
         application = await workspace.load_resume_input("app-orbit")
         result = await ResumeArtifactCommitter(workspace, pdfs).commit(
             application, bundle, staged_pdf=pdfs.stage(bundle.resume_document)
@@ -243,7 +245,9 @@ async def _observe_resume_guarantees(fixture: dict, tmp_path: Path) -> dict:
         if block.text in {"Example University", "B.S. Computer Science"}
     }
     rendered = {(block.kind, block.text) for block in bundle.resume_document}
-    pdfs = LocalPdfArtifacts(tmp_path / "target-pdf")
+    pdfs = LocalPdfArtifacts(
+        tmp_path / "target-pdf", user_name="Test User"
+    )
     staged = pdfs.stage(bundle.resume_document)
     same_source = staged.read_bytes().startswith(b"%PDF") and bundle.resume_document == bundle.resume
     pdfs.discard(staged)

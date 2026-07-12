@@ -16,6 +16,7 @@ def main() -> None:
     with TemporaryDirectory() as temporary_directory:
         temporary_path = Path(temporary_directory)
         settings = Settings(
+            user_name="OpenAPI User",
             export_path=temporary_path / "export",
             recovery_journal_path=temporary_path / "recovery.json",
         )
