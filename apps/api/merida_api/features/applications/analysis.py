@@ -10,6 +10,7 @@ from .schemas import (
 from .workspace import ApplicationRecord
 from ...shared.schemas import Pagination
 from ...shared.workspace import WorkspaceReadiness, workspace_validation_failures
+from ...shared.execution import ExecutionCoordinator
 
 
 class ApplicationAnalysis:
@@ -17,9 +18,11 @@ class ApplicationAnalysis:
         self,
         store: ApplicationAnalysisStore,
         model: ApplicationAnalysisModel,
+        coordinator: ExecutionCoordinator,
     ):
         self._store = store
         self._model = model
+        self._coordinator = coordinator
 
     async def get_queue(
         self, limit: int, cursor: str | None
@@ -44,6 +47,16 @@ class ApplicationAnalysis:
     async def run_batch(
         self, limit: int
     ) -> ApplicationAnalysisCompletedResponse | ApplicationAnalysisBlockedResponse:
+        async with self._coordinator.exclusive(
+            "workflow:application-analysis",
+            "Job Posting Analysis is already in progress.",
+            conflict_keys=("workflow:demo-reset",),
+        ):
+            return await self._run_batch(limit)
+
+    async def _run_batch(
+        self, limit: int
+    ) -> ApplicationAnalysisCompletedResponse | ApplicationAnalysisBlockedResponse:
         readiness = await self._store.validate_analysis_workspace()
         if not readiness.ready:
             return ApplicationAnalysisBlockedResponse(
@@ -62,34 +75,54 @@ class ApplicationAnalysis:
         results = []
         repaired = 0
         failed = 0
+        succeeded = 0
         for queued in queue.items:
             application = queued
             try:
-                application = await self._store.load_analysis_input(queued.id)
-                if application.analysis is not None:
-                    repair_score = (
-                        application.analysis.match_score
-                        if application.analysis.match_score is not None
-                        else application.match_score
-                    )
-                    await self._store.finalize_application_analysis(
-                        application.id,
-                        match_score=repair_score,
-                    )
-                    result = "repaired"
-                    score = repair_score
-                    repaired += 1
-                else:
-                    document = await self._model.analyze(application)
-                    await self._store.append_application_analysis(
-                        application.id, document
-                    )
-                    await self._store.finalize_application_analysis(
-                        application.id, match_score=document.match_score
-                    )
-                    result = "analyzed"
-                    score = document.match_score
-                results.append(_result_item(application, result, score, []))
+                async with self._coordinator.exclusive(
+                    f"application:{queued.id}",
+                    "This Application is already being updated.",
+                ):
+                    application = await self._store.load_analysis_input(queued.id)
+                    if (
+                        application.application_status != "To Apply"
+                        or application.analyzed
+                        or len((application.job_content or "").strip()) < 20
+                    ):
+                        results.append(
+                            _result_item(
+                                application,
+                                "skipped",
+                                application.match_score,
+                                ["Job Posting is no longer eligible for Analysis."],
+                            )
+                        )
+                        continue
+                    if application.analysis is not None:
+                        repair_score = (
+                            application.analysis.match_score
+                            if application.analysis.match_score is not None
+                            else application.match_score
+                        )
+                        await self._store.finalize_application_analysis(
+                            application.id,
+                            match_score=repair_score,
+                        )
+                        result = "repaired"
+                        score = repair_score
+                        repaired += 1
+                    else:
+                        document = await self._model.analyze(application)
+                        await self._store.append_application_analysis(
+                            application.id, document
+                        )
+                        await self._store.finalize_application_analysis(
+                            application.id, match_score=document.match_score
+                        )
+                        result = "analyzed"
+                        score = document.match_score
+                    succeeded += 1
+                    results.append(_result_item(application, result, score, []))
             except Exception:
                 failed += 1
                 results.append(
@@ -104,7 +137,7 @@ class ApplicationAnalysis:
             ok=True,
             result="completed",
             processed=len(results),
-            succeeded=len(results) - failed,
+            succeeded=succeeded,
             failed=failed,
             repaired=repaired,
             items=results,

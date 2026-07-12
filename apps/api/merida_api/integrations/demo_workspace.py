@@ -4,6 +4,7 @@ from datetime import date, datetime
 import hashlib
 import json
 from pathlib import Path
+from typing import Callable
 from uuid import uuid4
 
 from ..features.applications.schemas import ConfirmedApplicationDraft
@@ -99,7 +100,9 @@ class DemoWorkspace:
         self, job_url: str
     ) -> ApplicationRecord | None:
         matches = [
-            item for item in self._state["applications"] if item["jobUrl"] == job_url
+            item
+            for item in self._state["applications"]
+            if item["jobUrl"] == job_url and not item.get("archived")
         ]
         if len(matches) > 1:
             raise WorkspaceDataConflict(
@@ -114,6 +117,7 @@ class DemoWorkspace:
         captured_at: datetime,
         captured_url: str | None = None,
         parsing_notes: tuple[str, ...] = (),
+        on_created: Callable[[ApplicationRecord], None] | None = None,
     ) -> ApplicationRecord:
         async with self._lock:
             application = {
@@ -134,7 +138,23 @@ class DemoWorkspace:
             }
             self._state["applications"].append(application)
             self._save()
-        return self._application_record(application)
+        record = self._application_record(application)
+        if on_created:
+            on_created(record)
+        return record
+
+    async def capture_is_complete(self, application_id: str) -> bool:
+        application = await self._mutable_application(application_id)
+        return bool(
+            application.get("companyName")
+            and application.get("role")
+            and len((application.get("jobContent") or "").strip()) >= 20
+        )
+
+    async def archive_application(self, application_id: str) -> None:
+        application = await self._mutable_application(application_id)
+        application["archived"] = True
+        self._save()
 
     @staticmethod
     def _application_record(application: dict) -> ApplicationRecord:
@@ -222,7 +242,8 @@ class DemoWorkspace:
             [
                 item
                 for item in self._state["applications"]
-                if item["applicationStatus"] == "To Apply"
+                if not item.get("archived")
+                and item["applicationStatus"] == "To Apply"
                 and not item["analyzed"]
                 and len(item["jobContent"].strip()) >= 20
             ],
@@ -406,6 +427,28 @@ class DemoWorkspace:
         if resume is not None:
             resume["archived"] = True
             self._save()
+
+    async def verify_recovery_artifacts(
+        self,
+        *,
+        application_id: str,
+        resume_id: str | None,
+        note_id: str | None,
+    ) -> bool:
+        if resume_id:
+            resume = self._state["resumes"].get(resume_id)
+            if resume and resume.get("applicationId") not in {None, application_id}:
+                return False
+            if resume and (resume.get("name") or resume.get("title")) == "Master Resume":
+                return False
+        if note_id:
+            note = self._state["notes"].get(note_id)
+            if note and (
+                note.get("applicationId") != application_id
+                or note.get("resumeId") != resume_id
+            ):
+                return False
+        return True
 
     @staticmethod
     def _resume_record(resume: dict) -> ResumeRecord:

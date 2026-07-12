@@ -39,6 +39,12 @@ from .integrations.demo_models import (
 from .integrations.notion_workspace import NotionWorkspace
 from .integrations.pdf_export import LocalPdfArtifacts
 from .shared.pagination import InvalidCursor
+from .shared.execution import ExecutionCoordinator, OperationConflict
+from .shared.recovery import (
+    JsonEffectJournal,
+    RecoveryJournalError,
+    UnavailableEffectJournal,
+)
 from .shared.schemas import (
     ApiErrorResponse,
     ApiErrorCode,
@@ -61,10 +67,23 @@ def _api_error_responses(*status_codes: int) -> dict[int, dict]:
     }
 
 
-def _health(settings: Settings) -> dict:
+def _health(settings: Settings, recovery_error: str | None = None) -> dict:
     if settings.merida_mode == "demo":
-        checks = {"settings": "ready", "notion": "ready", "analysis": "ready", "resumes": "ready"}
-        return {"ok": True, "status": "ready", "service": "merida-api", "mode": "demo", "checks": checks, "validationFailures": [], "errors": []}
+        checks = {
+            "settings": "ready",
+            "notion": "blocked" if recovery_error else "ready",
+            "analysis": "ready",
+            "resumes": "blocked" if recovery_error else "ready",
+        }
+        return {
+            "ok": not recovery_error,
+            "status": "blocked" if recovery_error else "ready",
+            "service": "merida-api",
+            "mode": "demo",
+            "checks": checks,
+            "validationFailures": [],
+            "errors": [recovery_error] if recovery_error else [],
+        }
 
     errors = []
     notion = "ready" if settings.notion_configured else "blocked"
@@ -77,6 +96,9 @@ def _health(settings: Settings) -> dict:
     if settings.notion_configured:
         errors.append("The real Notion adapter has not been enabled in this build; use MERIDA_MODE=demo.")
         notion = analysis = resumes = "blocked"
+    if recovery_error:
+        errors.append(recovery_error)
+        notion = resumes = "blocked"
     return {
         "ok": False,
         "status": "blocked",
@@ -123,6 +145,9 @@ def create_app(
     workspace=None,
     dashboard_dist: Path | None = None,
     require_dashboard: bool = False,
+    analysis_model=None,
+    resume_builder=None,
+    coordinator: ExecutionCoordinator | None = None,
 ) -> FastAPI:
     settings = settings or Settings()
     if workspace is None:
@@ -140,19 +165,41 @@ def create_app(
                 notes_database_id=settings.notion_notes_database_id,
             )
         )
-    capture = ApplicationCapture(workspace)
-    analysis = ApplicationAnalysis(workspace, DemoApplicationAnalysisModel())
+    coordinator = coordinator or ExecutionCoordinator()
+    recovery_path = settings.recovery_journal_path
+    if (
+        recovery_path == Settings().recovery_journal_path
+        and settings.demo_state_path != Settings().demo_state_path
+    ):
+        recovery_path = settings.demo_state_path.parent / "recovery-effects.json"
+    try:
+        journal = JsonEffectJournal(recovery_path)
+        recovery_error = None
+    except RecoveryJournalError:
+        recovery_error = (
+            "Recovery journal requires operator inspection before mutations."
+        )
+        journal = UnavailableEffectJournal(recovery_error)
+    capture = ApplicationCapture(workspace, coordinator, journal)
+    analysis = ApplicationAnalysis(
+        workspace, analysis_model or DemoApplicationAnalysisModel(), coordinator
+    )
     pdf_artifacts = LocalPdfArtifacts(settings.export_path)
     resumes = ResumeCreation(
         workspace,
-        DemoResumeDocumentBuilder(),
-        ResumeArtifactCommitter(workspace, pdf_artifacts),
+        resume_builder or DemoResumeDocumentBuilder(),
+        ResumeArtifactCommitter(workspace, pdf_artifacts, journal),
+        coordinator,
+        journal,
     )
     require_capture_token = capture_token_dependency(settings)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         settings.export_path.mkdir(parents=True, exist_ok=True)
+        await capture.reconcile()
+        await resumes.reconcile()
+        journal.compact()
         yield
 
     app = FastAPI(
@@ -181,6 +228,8 @@ def create_app(
     app.openapi = locked_openapi
     app.state.settings = settings
     app.state.workspace = workspace
+    app.state.capture = capture
+    app.state.resumes = resumes
     origins = [settings.web_origin, "http://localhost:5173", "http://127.0.0.1:5173"]
     if settings.extension_origin:
         origins.append(settings.extension_origin)
@@ -234,6 +283,15 @@ def create_app(
     @app.exception_handler(InvalidCursor)
     async def invalid_cursor_handler(_request: Request, exc: InvalidCursor):
         return _error_response(400, "invalid_cursor", str(exc))
+
+    @app.exception_handler(OperationConflict)
+    async def operation_conflict_handler(_request: Request, exc: OperationConflict):
+        return _error_response(
+            409,
+            "conflict",
+            str(exc),
+            request_id=uuid4().hex,
+        )
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(_request: Request, exc: HTTPException):
@@ -319,24 +377,24 @@ def create_app(
         responses=_api_error_responses(500),
     )
     async def get_health():
-        return _health(settings)
+        return _health(settings, recovery_error)
 
     @app.get("/api/v1/health/notion", operation_id="getNotionHealth", response_model=NotionHealthResponse, responses=_api_error_responses(500))
     async def get_notion_health():
-        health = _health(settings)
+        health = _health(settings, recovery_error)
         ready = health["checks"]["notion"] == "ready"
         return {"ok": ready, "status": "ready" if ready else "blocked", "workspace": "demo" if settings.merida_mode == "demo" else "notion", "databases": {"applications": health["checks"]["notion"], "resumes": health["checks"]["notion"], "notes": health["checks"]["notion"]}, "validationFailures": health["validationFailures"], "errors": [] if ready else health["errors"]}
 
     @app.get("/api/v1/health/analysis", operation_id="getApplicationAnalysisHealth", response_model=ApplicationAnalysisHealthResponse, responses=_api_error_responses(500))
     async def get_analysis_health():
-        health = _health(settings)
+        health = _health(settings, recovery_error)
         ready = health["checks"]["analysis"] == "ready"
         state = "ready" if ready else "blocked"
         return {"ok": ready, "status": state, "workflow": "application_analysis", "checks": {"deepseek": state, "applicationsDatabase": health["checks"]["notion"], "jobContentAccess": health["checks"]["notion"], "masterResumeEvidence": state, "evidenceMatcher": state}, "validationFailures": health["validationFailures"], "errors": [] if ready else health["errors"]}
 
     @app.get("/api/v1/health/resumes", operation_id="getResumeCreationHealth", response_model=ResumeCreationHealthResponse, responses=_api_error_responses(500))
     async def get_resume_health():
-        health = _health(settings)
+        health = _health(settings, recovery_error)
         ready = health["checks"]["resumes"] == "ready"
         state = "ready" if ready else "blocked"
         return {"ok": ready, "status": state, "workflow": "resume_creation", "checks": {"deepseek": state, "notion": health["checks"]["notion"], "fitAnalysis": state, "masterResume": state, "pdfExport": state}, "validationFailures": health["validationFailures"], "errors": [] if ready else health["errors"]}
@@ -424,7 +482,16 @@ def create_app(
     async def reset_demo():
         if settings.merida_mode != "demo":
             raise HTTPException(status_code=404, detail={"code": "demo_not_active", "message": "Demo mode is not active."})
-        return await workspace.reset()
+        async with coordinator.exclusive(
+            "workflow:demo-reset",
+            "A workflow mutation is already in progress.",
+            conflict_prefixes=(
+                "workflow:application-analysis",
+                "workflow:resume-creation",
+                "capture:",
+            ),
+        ):
+            return await workspace.reset()
 
     web_dist = dashboard_dist or Path(__file__).resolve().parents[2] / "web" / "dist"
     dashboard_index = web_dist / "index.html"

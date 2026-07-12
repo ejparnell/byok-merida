@@ -18,4 +18,7 @@ packages/api-client/dist/
 app-data/demo/state.json
 app-data/demo/state.json.tmp
 app-data/export/*.pdf
+app-data/export/*.tmp
+app-data/recovery/*.json
+app-data/recovery/*.tmp
 *.tsbuildinfo

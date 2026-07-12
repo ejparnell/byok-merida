@@ -45,6 +45,13 @@ class ResumeCreationStore(Protocol):
     async def clear_resume_application(self, resume_id: str) -> None: ...
     async def archive_note(self, note_id: str) -> None: ...
     async def archive_resume(self, resume_id: str) -> None: ...
+    async def verify_recovery_artifacts(
+        self,
+        *,
+        application_id: str,
+        resume_id: str | None,
+        note_id: str | None,
+    ) -> bool: ...
 
 
 class ResumeDocumentBuilder(Protocol):

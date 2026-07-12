@@ -15,11 +15,20 @@ from .schemas import (
 from .workspace import ApplicationRecord
 from ..job_postings.parser import canonicalize_url, prepare_capture
 from ...shared.workspace import workspace_validation_failures
+from ...shared.execution import ExecutionCoordinator, OperationConflict
+from ...shared.recovery import EffectJournal
 
 
 class ApplicationCapture:
-    def __init__(self, store: CaptureStore):
+    def __init__(
+        self,
+        store: CaptureStore,
+        coordinator: ExecutionCoordinator | None = None,
+        journal: EffectJournal | None = None,
+    ):
         self._store = store
+        self._coordinator = coordinator or ExecutionCoordinator()
+        self._journal = journal
         self._pending_metadata: dict[str, tuple[str, tuple[str, ...]]] = {}
 
     async def prepare(
@@ -59,6 +68,14 @@ class ApplicationCapture:
         | ApplicationAlreadyCapturedResponse
         | ApplicationCaptureBlockedResponse
     ):
+        if self._journal is not None and not self._journal.available:
+            return ApplicationCaptureBlockedResponse(
+                ok=False,
+                status="blocked",
+                result="blocked",
+                validation_failures=[],
+                errors=[self._journal.error or "Recovery journal is unavailable."],
+            )
         normalized = ConfirmedApplicationDraft(
             jobUrl=canonicalize_url(draft.job_url),
             companyName=draft.company_name.strip(),
@@ -66,29 +83,123 @@ class ApplicationCapture:
             location=(draft.location or "").strip(),
             jobContent=draft.job_content.strip(),
         )
-        readiness = await self._store.validate_capture_workspace()
-        if not readiness.ready:
-            return ApplicationCaptureBlockedResponse(
-                ok=False,
-                status="blocked",
-                result="blocked",
-                validation_failures=workspace_validation_failures(readiness),
-                errors=[issue.message for issue in readiness.errors],
+        async with self._coordinator.exclusive(
+            f"capture:{normalized.job_url}",
+            "Application Capture is already in progress for this Job URL.",
+            conflict_keys=("workflow:demo-reset",),
+        ) as run:
+            readiness = await self._store.validate_capture_workspace()
+            if not readiness.ready:
+                return ApplicationCaptureBlockedResponse(
+                    ok=False,
+                    status="blocked",
+                    result="blocked",
+                    validation_failures=workspace_validation_failures(readiness),
+                    errors=[issue.message for issue in readiness.errors],
+                )
+            existing = await self._store.find_application_by_job_url(normalized.job_url)
+            unresolved = (
+                self._journal.unresolved(
+                    workflow="capture", domain_key=normalized.job_url
+                )
+                if self._journal
+                else ()
             )
-        existing = await self._store.find_application_by_job_url(normalized.job_url)
-        if existing is not None:
-            self._pending_metadata.pop(normalized.job_url, None)
-            return _capture_result("already_captured", existing)
-        captured_url, parsing_notes = self._pending_metadata.pop(
-            normalized.job_url, (normalized.job_url, ())
-        )
-        created = await self._store.create_application(
-            normalized,
-            captured_at=datetime.now(timezone.utc),
-            captured_url=captured_url,
-            parsing_notes=parsing_notes,
-        )
-        return _capture_result("created", created)
+            if existing is not None:
+                complete = await self._store.capture_is_complete(existing.id)
+                if complete:
+                    for entry in unresolved:
+                        self._journal.resolve(entry.run_id, resolution="completed")
+                    self._pending_metadata.pop(normalized.job_url, None)
+                    return _capture_result("already_captured", existing)
+                owned = any(
+                    entry.application_id == existing.id for entry in unresolved
+                )
+                if not owned:
+                    raise OperationConflict(
+                        "An incomplete Application requires manual recovery."
+                    )
+                await self._store.archive_application(existing.id)
+                for entry in unresolved:
+                    self._journal.resolve(
+                        entry.run_id,
+                        resolution="cleaned",
+                        cleanup_status="completed",
+                    )
+            for entry in unresolved:
+                self._journal.resolve(
+                    entry.run_id,
+                    resolution="cleaned",
+                    cleanup_status="completed",
+                )
+            captured_url, parsing_notes = self._pending_metadata.pop(
+                normalized.job_url, (normalized.job_url, ())
+            )
+            if self._journal:
+                self._journal.start(
+                    workflow="capture",
+                    domain_key=normalized.job_url,
+                    run_id=run.run_id,
+                )
+
+            def record_created(application: ApplicationRecord) -> None:
+                if self._journal:
+                    self._journal.advance(
+                        run.run_id,
+                        phase="application_created",
+                        application_id=application.id,
+                    )
+
+            created = await self._store.create_application(
+                normalized,
+                captured_at=datetime.now(timezone.utc),
+                captured_url=captured_url,
+                parsing_notes=parsing_notes,
+                on_created=record_created,
+            )
+            if self._journal:
+                self._journal.resolve(run.run_id, resolution="completed")
+            return _capture_result("created", created)
+
+    async def reconcile(self, run_id: str | None = None) -> None:
+        if self._journal is None:
+            return
+        entries = self._journal.unresolved(workflow="capture")
+        for entry in entries:
+            if run_id is not None and entry.run_id != run_id:
+                continue
+            try:
+                existing = await self._store.find_application_by_job_url(
+                    entry.domain_key
+                )
+                if existing is None:
+                    self._journal.resolve(
+                        entry.run_id,
+                        resolution="cleaned",
+                        cleanup_status="completed",
+                    )
+                    continue
+                if await self._store.capture_is_complete(existing.id):
+                    self._journal.resolve(entry.run_id, resolution="completed")
+                    continue
+                if entry.application_id == existing.id:
+                    await self._store.archive_application(existing.id)
+                    self._journal.resolve(
+                        entry.run_id,
+                        resolution="cleaned",
+                        cleanup_status="completed",
+                    )
+                    continue
+                self._journal.resolve(
+                    entry.run_id,
+                    resolution="active",
+                    cleanup_status="incomplete",
+                    cleanup_errors=(
+                        "Incomplete Application ownership requires manual recovery.",
+                    ),
+                )
+            except Exception:
+                continue
 
 
 def _capture_result(

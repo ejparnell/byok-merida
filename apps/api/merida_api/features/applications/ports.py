@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Protocol
+from typing import Callable, Protocol
 
 from .schemas import ConfirmedApplicationDraft
 from .workspace import ApplicationAnalysisDocument, ApplicationRecord
@@ -21,7 +21,10 @@ class CaptureStore(Protocol):
         captured_at: datetime,
         captured_url: str | None = None,
         parsing_notes: tuple[str, ...] = (),
+        on_created: Callable[[ApplicationRecord], None] | None = None,
     ) -> ApplicationRecord: ...
+    async def capture_is_complete(self, application_id: str) -> bool: ...
+    async def archive_application(self, application_id: str) -> None: ...
 
 
 class ApplicationAnalysisStore(Protocol):

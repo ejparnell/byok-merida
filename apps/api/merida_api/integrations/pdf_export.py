@@ -45,7 +45,13 @@ class LocalPdfArtifacts:
 
     def save(self, resume_id: str, lines: tuple[str, ...]) -> Path:
         path = self._path(resume_id)
-        write_simple_pdf(path, list(lines))
+        temporary = path.with_suffix(f"{path.suffix}.tmp")
+        try:
+            write_simple_pdf(temporary, list(lines))
+            temporary.replace(path)
+        finally:
+            if temporary.exists():
+                temporary.unlink()
         return path
 
     def remove(self, resume_id: str) -> None:

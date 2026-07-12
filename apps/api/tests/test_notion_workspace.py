@@ -4,6 +4,7 @@ from datetime import date, datetime, timezone
 import json
 
 import httpx
+import pytest
 
 from merida_api.features.applications.capture import ApplicationCapture
 from merida_api.features.applications.schemas import CaptureEvidence, ConfirmedApplicationDraft
@@ -1120,6 +1121,38 @@ def test_notion_capture_partial_failure_conformance():
             workspace(transport), "https://example.test/jobs/failing-role"
         )
     )
+
+
+def test_notion_capture_reports_created_page_before_later_block_append_failure():
+    created_page = application_page()
+    transport = RecordingTransport(
+        [
+            application_schema(),
+            created_page,
+            WorkspaceProviderError("Safe injected append failure."),
+        ]
+    )
+    recorded = []
+    draft = ConfirmedApplicationDraft(
+        jobUrl="https://example.test/jobs/append-failure",
+        companyName="Failure Co",
+        role="Engineer",
+        location=None,
+        jobContent="Build reliable Python services and React interfaces.",
+    )
+
+    async def create():
+        await workspace(transport).create_application(
+            draft,
+            captured_at=datetime(2026, 7, 11, tzinfo=timezone.utc),
+            parsing_notes=tuple(f"Parsing note {index}" for index in range(90)),
+            on_created=recorded.append,
+        )
+
+    with pytest.raises(WorkspaceProviderError):
+        asyncio.run(create())
+
+    assert [record.id for record in recorded] == ["application-1"]
 
 
 async def assert_analysis_store_contract(store):

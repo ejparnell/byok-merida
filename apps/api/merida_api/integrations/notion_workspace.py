@@ -166,6 +166,7 @@ class NotionWorkspace:
         captured_at: datetime,
         captured_url: str | None = None,
         parsing_notes: tuple[str, ...] = (),
+        on_created: Callable[[ApplicationRecord], None] | None = None,
     ) -> ApplicationRecord:
         database = await self._transport.request(
             "GET", f"/databases/{self._application_database_id}"
@@ -195,11 +196,26 @@ class NotionWorkspace:
                 "children": blocks[:80],
             },
         )
+        record = _application_record(page)
+        if on_created:
+            on_created(record)
         for batch in _chunks(blocks[80:], 90):
             await self._transport.request(
                 "PATCH", f"/blocks/{page['id']}/children", {"children": batch}
             )
-        return _application_record(page)
+        return record
+
+    async def capture_is_complete(self, application_id: str) -> bool:
+        blocks = await self._get_page_children(application_id)
+        return bool(
+            _read_top_level_section(blocks, "Capture Summary")
+            and len(_read_top_level_section(blocks, "Job Content").strip()) >= 20
+        )
+
+    async def archive_application(self, application_id: str) -> None:
+        await self._transport.request(
+            "PATCH", f"/pages/{application_id}", {"archived": True}
+        )
 
     async def validate_analysis_workspace(self) -> WorkspaceReadiness:
         database = await self._transport.request(
@@ -590,6 +606,29 @@ class NotionWorkspace:
         await self._transport.request(
             "PATCH", f"/pages/{resume_id}", {"archived": True}
         )
+
+    async def verify_recovery_artifacts(
+        self,
+        *,
+        application_id: str,
+        resume_id: str | None,
+        note_id: str | None,
+    ) -> bool:
+        if resume_id:
+            resume_page = await self._transport.request("GET", f"/pages/{resume_id}")
+            resume = _resume_record(resume_page)
+            if resume.name == "Master Resume" or any(
+                related_id != application_id for related_id in resume.application_ids
+            ):
+                return False
+        if note_id:
+            note_page = await self._transport.request("GET", f"/pages/{note_id}")
+            note = _note_record(note_page)
+            if note.application_ids != (application_id,) or (
+                resume_id is not None and note.resume_ids != (resume_id,)
+            ):
+                return False
+        return True
 
     async def _create_page_with_document(
         self,
