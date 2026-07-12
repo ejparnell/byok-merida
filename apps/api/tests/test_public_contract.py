@@ -198,6 +198,28 @@ def test_provider_outages_return_typed_workflow_blocks(tmp_path):
         assert response.json()["errors"] == ["Notion could not be reached."]
 
 
+def test_legacy_demo_settings_cannot_create_product_state(tmp_path):
+    legacy_state_path = tmp_path / "demo" / "state.json"
+    settings = Settings(
+        merida_mode="demo",
+        demo_state_path=legacy_state_path,
+        demo_fixture_path=tmp_path / "demo" / "fixture.json",
+        notion_token="",
+        notion_database_id="",
+        notion_resume_database_id="",
+        notion_notes_database_id="",
+        deepseek_api_key="",
+        export_path=tmp_path / "export",
+        recovery_journal_path=tmp_path / "recovery.json",
+    )
+
+    with TestClient(create_app(settings)) as client:
+        assert client.get("/api/v1/health").json()["status"] == "blocked"
+
+    assert not legacy_state_path.exists()
+    assert not legacy_state_path.parent.exists()
+
+
 def test_capture_is_review_first_protected_and_idempotent(tmp_path):
     headers = {"X-Capture-Token": "test-capture-token"}
     evidence = {
@@ -463,7 +485,7 @@ def test_public_seam_serializes_partial_analysis_and_failed_resume_outcomes(tmp_
     class OutcomeWorkspace(FakeWorkspace):
         async def append_application_analysis(self, application_id, document):
             if application_id == "app-lantern":
-                raise RuntimeError("injected item failure")
+                raise WorkspaceProviderError("Notion could not be reached.")
             await super().append_application_analysis(application_id, document)
 
         async def create_resume_fit_note(self, *args, **kwargs):

@@ -167,6 +167,49 @@ def _blocked_queue(limit: int, message: str) -> dict:
     }
 
 
+def _blocked_capture(message: str) -> dict:
+    return {
+        "ok": False,
+        "status": "blocked",
+        "result": "blocked",
+        "validationFailures": [],
+        "errors": [message],
+    }
+
+
+def _blocked_analysis_run(message: str) -> dict:
+    return {
+        "ok": False,
+        "status": "blocked",
+        "result": "blocked",
+        "processed": 0,
+        "succeeded": 0,
+        "failed": 0,
+        "repaired": 0,
+        "items": [],
+        "validationFailures": [],
+        "errors": [message],
+    }
+
+
+def _blocked_resume_creation(message: str) -> dict:
+    return {
+        "ok": False,
+        "status": "blocked",
+        "result": "blocked",
+        "cleanup": {"status": "not_required", "errors": []},
+        "validationFailures": [],
+        "errors": [message],
+    }
+
+
+async def _block_provider_error(operation, blocked_response):
+    try:
+        return await operation
+    except WorkspaceProviderError as error:
+        return blocked_response(str(error))
+
+
 def _error_response(
     status_code: int,
     code: ApiErrorCode,
@@ -494,44 +537,48 @@ def create_app(
     )
     async def confirm_application(request: ConfirmApplicationRequest):
         if not capabilities.workspace_configured:
-            return {"ok": False, "status": "blocked", "result": "blocked", "validationFailures": [], "errors": ["Notion configuration is incomplete."]}
-        try:
-            return await capture.confirm(request.draft)
-        except WorkspaceProviderError as error:
-            return {"ok": False, "status": "blocked", "result": "blocked", "validationFailures": [], "errors": [str(error)]}
+            return _blocked_capture("Notion configuration is incomplete.")
+        return await _block_provider_error(
+            capture.confirm(request.draft), _blocked_capture
+        )
 
     @app.get("/api/v1/applications/analysis/queue", operation_id="getApplicationAnalysisQueue", response_model=GetApplicationAnalysisQueueResponse, responses=_api_error_responses(400, 500))
     async def get_analysis_queue(limit: int = Query(default=5, ge=1, le=10), cursor: str | None = None):
         if not capabilities.workspace_configured:
             return _blocked_queue(limit, "Notion configuration is incomplete.")
-        try:
-            return await analysis.get_queue(limit, cursor)
-        except WorkspaceProviderError as error:
-            return _blocked_queue(limit, str(error))
+        return await _block_provider_error(
+            analysis.get_queue(limit, cursor),
+            lambda message: _blocked_queue(limit, message),
+        )
 
     @app.post("/api/v1/applications/analysis/run", operation_id="runApplicationAnalysis", response_model=RunApplicationAnalysisResponse, responses=_api_error_responses(400, 409, 415, 500))
     async def run_application_analysis(request: RunApplicationAnalysisRequest):
         if not capabilities.analysis_model_available:
-            return {"ok": False, "status": "blocked", "result": "blocked", "processed": 0, "succeeded": 0, "failed": 0, "repaired": 0, "items": [], "validationFailures": [], "errors": ["Real Application Analysis is not enabled in this build."]}
-        try:
-            return await analysis.run_batch(request.limit)
-        except WorkspaceProviderError as error:
-            return {"ok": False, "status": "blocked", "result": "blocked", "processed": 0, "succeeded": 0, "failed": 0, "repaired": 0, "items": [], "validationFailures": [], "errors": [str(error)]}
+            return _blocked_analysis_run(
+                "Real Application Analysis is not enabled in this build."
+            )
+        return await _block_provider_error(
+            analysis.run_batch(request.limit), _blocked_analysis_run
+        )
 
     @app.get("/api/v1/resumes/queue", operation_id="getResumeCreationQueue", response_model=GetResumeCreationQueueResponse, responses=_api_error_responses(400, 500))
     async def get_resume_queue(limit: int = Query(default=5, ge=1, le=10), cursor: str | None = None):
         if not capabilities.workspace_configured:
             return _blocked_queue(limit, "Notion configuration is incomplete.")
-        try:
-            return await resumes.get_queue(limit, cursor)
-        except WorkspaceProviderError as error:
-            return _blocked_queue(limit, str(error))
+        return await _block_provider_error(
+            resumes.get_queue(limit, cursor),
+            lambda message: _blocked_queue(limit, message),
+        )
 
     @app.post("/api/v1/resumes/create", operation_id="createResume", response_model=CreateResumeResponse, responses=_api_error_responses(400, 409, 415, 500))
     async def create_resume(request: CreateResumeRequest):
         if not capabilities.resume_builder_available:
-            return {"ok": False, "status": "blocked", "result": "blocked", "cleanup": {"status": "not_required", "errors": []}, "validationFailures": [], "errors": ["Real Resume Creation is not enabled in this build."]}
-        return await resumes.create(request.application_id)
+            return _blocked_resume_creation(
+                "Real Resume Creation is not enabled in this build."
+            )
+        return await _block_provider_error(
+            resumes.create(request.application_id), _blocked_resume_creation
+        )
 
     @app.get(
         "/api/v1/resumes/{resumeId}/pdf",
