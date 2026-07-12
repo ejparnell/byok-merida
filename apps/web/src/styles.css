@@ -1,4 +1,17 @@
 :root {
+  /*
+   * Keep the dashboard readable at every viewport size while respecting the
+   * browser's font-size preference. The display steps are fluid, but their
+   * rem-based bounds keep 200% zoom effective.
+   */
+  --type-meta: 0.75rem;
+  --type-label: 0.8125rem;
+  --type-body: 1rem;
+  --type-base: 1rem;
+  --type-navigation: 1.125rem;
+  --type-title: 1.5rem;
+  --type-display: clamp(2.125rem, 1.5rem + 2.6vw, 3.5rem);
+  --type-heading: clamp(1.75rem, 1.45rem + 1.2vw, 2.25rem);
   font-family:
     Inter,
     ui-sans-serif,
@@ -8,6 +21,7 @@
     sans-serif;
   color: #1a1d19;
   background: #e8e7e0;
+  font-size: 100%;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -19,6 +33,7 @@ body {
   min-width: 320px;
   min-height: 100vh;
   margin: 0;
+  line-height: 1.5;
 }
 button,
 input {
@@ -93,7 +108,7 @@ a {
   gap: 10px;
 }
 .brand strong {
-  font-size: 18px;
+  font-size: var(--type-navigation);
   letter-spacing: -0.04em;
 }
 .brand-mark {
@@ -113,13 +128,14 @@ a {
   align-items: center;
   gap: 24px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--type-navigation);
   font-weight: 700;
 }
 .topbar nav span,
 .topbar nav a {
   padding: 25px 0 21px;
   text-decoration: none;
+  font-size: inherit;
 }
 .topbar nav .is-active {
   border-bottom: 3px solid var(--accent);
@@ -137,7 +153,7 @@ a {
   border-radius: 7px;
   background: transparent;
   color: var(--ink);
-  font-size: 10px;
+  font-size: var(--type-label);
   font-weight: 750;
 }
 
@@ -165,7 +181,7 @@ main {
 }
 .eyebrow {
   color: var(--muted);
-  font-size: 9px;
+  font-size: var(--type-meta);
   font-weight: 850;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -178,17 +194,17 @@ h2 {
   letter-spacing: -0.045em;
 }
 h1 {
-  font-size: clamp(34px, 5vw, 57px);
+  font-size: var(--type-display);
 }
 h2 {
-  font-size: clamp(25px, 3vw, 36px);
+  font-size: var(--type-heading);
 }
 .readiness-heading p,
 .section-description > p {
   max-width: 580px;
   margin: 11px 0 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--type-base);
   line-height: 1.65;
 }
 .status-track {
@@ -227,12 +243,12 @@ h2 {
 }
 .status-segment span {
   color: var(--muted);
-  font-size: 9px;
+  font-size: var(--type-meta);
   font-weight: 800;
   text-transform: uppercase;
 }
 .status-segment strong {
-  font-size: 12px;
+  font-size: var(--type-body);
 }
 
 .model-grid {
@@ -249,7 +265,7 @@ h2 {
 .model-card > span,
 .provider-card > span {
   color: var(--muted);
-  font-size: 9px;
+  font-size: var(--type-meta);
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -257,13 +273,13 @@ h2 {
   display: block;
   margin-top: 8px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 14px;
+  font-size: var(--type-body);
 }
 .model-card small {
   display: block;
   margin-top: 7px;
   color: var(--muted);
-  font-size: 9px;
+  font-size: var(--type-label);
 }
 .provider-card {
   display: grid;
@@ -279,7 +295,7 @@ h2 {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 11px;
+  font-size: var(--type-body);
   font-weight: 700;
 }
 
@@ -300,7 +316,7 @@ h2 {
   align-items: center;
   gap: 15px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--type-label);
   font-weight: 750;
 }
 .status-badge {
@@ -312,7 +328,7 @@ h2 {
   border: 1px solid var(--line);
   border-radius: 15px;
   color: var(--ink);
-  font-size: 9px;
+  font-size: var(--type-meta);
   font-weight: 800;
   text-transform: uppercase;
   white-space: nowrap;
@@ -352,7 +368,7 @@ h2 {
   flex-direction: column;
   gap: 5px;
   color: var(--muted);
-  font-size: 8px;
+  font-size: var(--type-meta);
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -364,6 +380,7 @@ h2 {
   border-radius: 5px;
   background: var(--paper-strong);
   color: var(--ink);
+  font-size: var(--type-base);
 }
 .primary-button,
 .row-button {
@@ -376,7 +393,7 @@ h2 {
   border-radius: 4px;
   background: var(--ink);
   color: var(--paper);
-  font-size: 10px;
+  font-size: var(--type-body);
   font-weight: 800;
 }
 .primary-button {
@@ -407,7 +424,7 @@ h2 {
   min-height: 36px;
   border-bottom: 1px solid var(--soft-line);
   color: var(--muted);
-  font-size: 8px;
+  font-size: var(--type-meta);
   font-weight: 850;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -433,13 +450,13 @@ h2 {
 }
 .queue-identity strong {
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--type-base);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .queue-identity small {
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--type-label);
 }
 .company-avatar {
   display: grid;
@@ -452,7 +469,7 @@ h2 {
   background: var(--paper-strong);
   color: var(--muted);
   font-family: Georgia, serif;
-  font-size: 10px;
+  font-size: var(--type-label);
 }
 .resume-table .queue-head,
 .resume-table .queue-row {
@@ -460,7 +477,7 @@ h2 {
 }
 .score {
   font-family: Georgia, serif;
-  font-size: 18px;
+  font-size: 1.25rem;
   font-weight: 500;
 }
 .row-button {
@@ -480,7 +497,7 @@ h2 {
   border-radius: 4px;
   background: transparent;
   color: var(--ink);
-  font-size: 9px;
+  font-size: var(--type-label);
   font-weight: 750;
 }
 
@@ -490,7 +507,7 @@ h2 {
 }
 .empty-state span {
   color: var(--green);
-  font-size: 9px;
+  font-size: var(--type-meta);
   font-weight: 850;
   text-transform: uppercase;
 }
@@ -498,14 +515,14 @@ h2 {
   display: block;
   margin-top: 7px;
   font-family: Georgia, serif;
-  font-size: 22px;
+  font-size: var(--type-title);
   font-weight: 500;
 }
 .empty-state p {
   max-width: 460px;
   margin: 8px auto 0;
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--type-base);
   line-height: 1.6;
 }
 .result-panel,
@@ -528,7 +545,7 @@ h2 {
   border: 0;
   background: transparent;
   color: var(--muted);
-  font-size: 18px;
+  font-size: 1.5rem;
 }
 .result-panel.is-success {
   border-left: 4px solid var(--green);
@@ -539,12 +556,12 @@ h2 {
 .result-panel strong {
   display: block;
   margin-top: 5px;
-  font-size: 12px;
+  font-size: var(--type-base);
 }
 .result-panel p {
   margin: 5px 0 0;
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--type-body);
 }
 .result-panel ul {
   margin: 14px 0 0;
@@ -557,7 +574,7 @@ h2 {
   gap: 12px;
   padding: 8px 0;
   border-top: 1px solid var(--soft-line);
-  font-size: 10px;
+  font-size: var(--type-body);
 }
 .output-links {
   display: flex;
@@ -568,7 +585,7 @@ h2 {
 .output-links > span {
   margin-right: auto;
   color: var(--muted);
-  font-size: 9px;
+  font-size: var(--type-meta);
   font-weight: 850;
   text-transform: uppercase;
 }
@@ -576,7 +593,7 @@ h2 {
   padding: 7px 10px;
   border: 1px solid var(--line);
   border-radius: 4px;
-  font-size: 9px;
+  font-size: var(--type-label);
   font-weight: 800;
   text-decoration: none;
 }
@@ -587,7 +604,7 @@ h2 {
 }
 .error-callout p {
   margin: 0 0 5px;
-  font-size: 10px;
+  font-size: var(--type-body);
   line-height: 1.5;
 }
 .error-callout p:last-child {
@@ -601,13 +618,13 @@ h2 {
 }
 .cleanup-status span {
   width: 100%;
-  font-size: 9px;
+  font-size: var(--type-meta);
   font-weight: 850;
   text-transform: uppercase;
 }
 .cleanup-status small {
   color: var(--muted);
-  font-size: 9px;
+  font-size: var(--type-label);
 }
 .spinner {
   display: inline-block;
@@ -633,7 +650,7 @@ footer {
   padding: 22px 0 38px;
   border-top: 1px solid var(--line);
   color: var(--muted);
-  font-size: 9px;
+  font-size: var(--type-label);
 }
 
 @media (max-width: 760px) {
