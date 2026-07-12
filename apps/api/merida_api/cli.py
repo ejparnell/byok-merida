@@ -86,7 +86,7 @@ def run_recovery_command(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the Merida final-app API.")
+    parser = argparse.ArgumentParser(description="Run the Merida API.")
     parser.add_argument("--reload", action="store_true")
     subparsers = parser.add_subparsers(dest="command")
     recovery = subparsers.add_parser(

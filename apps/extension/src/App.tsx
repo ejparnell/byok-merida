@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import type { RefObject } from 'react'
-import { cx, Spinner, StatusDot } from '@merida/ui'
+import { useEffect, useMemo, useState } from 'react'
+import { Spinner, StatusDot } from '@merida/ui'
 import type {
   ConfirmApplicationResponse,
   PreparedApplicationDraft,
@@ -143,15 +142,7 @@ function ErrorCallout({ errors }: { errors?: string[] }) {
   )
 }
 
-function Idle({
-  onFill,
-  errors,
-  disabled = false,
-}: {
-  onFill: () => void
-  errors?: string[]
-  disabled?: boolean
-}) {
+function Idle({ onFill, errors }: { onFill: () => void; errors?: string[] }) {
   return (
     <div className="idle-view">
       <div className="source-card">
@@ -162,12 +153,7 @@ function Idle({
           Notion.
         </p>
       </div>
-      <button
-        className="primary large"
-        type="button"
-        onClick={onFill}
-        disabled={disabled}
-      >
+      <button className="primary large" type="button" onClick={onFill}>
         Fill form <span aria-hidden="true">→</span>
       </button>
       <ErrorCallout errors={errors} />
@@ -186,12 +172,10 @@ function ReviewForm({
   state,
   session,
   onNewCapture,
-  fieldRef,
 }: {
   state: CaptureState
   session: CaptureSession
   onNewCapture: () => void
-  fieldRef: RefObject<HTMLInputElement | null>
 }) {
   const review = state.review
   if (!review) return null
@@ -228,7 +212,6 @@ function ReviewForm({
           Company Name <em>Required</em>
         </span>
         <input
-          ref={fieldRef}
           name="companyName"
           value={review.companyName || ''}
           onChange={update}
@@ -364,7 +347,6 @@ export function App() {
   const [pendingEvidence, setPendingEvidence] =
     useState<CollectedCaptureEvidence | null>(null)
   const [discardOpen, setDiscardOpen] = useState(false)
-  const firstField = useRef<HTMLInputElement>(null)
   const client = useMemo(() => createCaptureClient(settings), [settings])
   const [session] = useState<CaptureSession>(() =>
     createCaptureSession(client, setSessionState),
@@ -393,6 +375,7 @@ export function App() {
   const collectAndPrepare = async ({ discard = false } = {}) => {
     if (health.phase !== 'ready') return
     try {
+      if (!pendingEvidence) session.beginReading()
       const collected = pendingEvidence || (await collectCaptureEvidence())
       const outcome = await session.prepare(
         collected.evidence,
@@ -406,6 +389,7 @@ export function App() {
         setPendingEvidence(null)
       }
     } catch (error) {
+      session.clear()
       setHealth({ phase: 'blocked', errors: [(error as Error).message] })
     }
   }
@@ -481,7 +465,7 @@ export function App() {
           </button>
         </div>
       </header>
-      <div className={cx('readiness', `is-${health.phase}`)}>
+      <div className="readiness">
         <StatusDot
           status={
             health.phase === 'ready'
@@ -519,7 +503,6 @@ export function App() {
           <ReviewForm
             state={state}
             session={session}
-            fieldRef={firstField}
             onNewCapture={() => collectAndPrepare()}
           />
         )}

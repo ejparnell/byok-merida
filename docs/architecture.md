@@ -1,233 +1,92 @@
 # Architecture
 
-Merida is a local operator application. It is built around a small Node HTTP backend, a Chrome side-panel extension, Notion as the durable workspace, DeepSeek for language analysis and generation, and a Python service for local Resume Fit Analysis scoring.
+Merida is a local-first application with one FastAPI backend and two React clients: the operator dashboard and the Chrome side-panel extension. Notion is the durable record-management surface. DeepSeek supplies structured model output, and the backend owns all provider credentials and workflow policy.
 
-## Design Principles
-
-- **Local operator first**: the UI is intentionally compact and runs on localhost.
-- **Feature ownership**: Job Postings, Resumes, and Notes each own their own vocabulary, Notion adapters, and workflow code.
-- **Notion as durable store**: Merida validates existing Notion database schemas but does not create or rewrite database properties.
-- **Backend-owned secrets**: Notion and DeepSeek credentials stay in `.env` and are never entered into browser pages.
-- **Evidence-backed output**: generated analysis and resumes are checked against source content and Master Resume evidence before writing.
-
-## Runtime Components
+## Runtime shape
 
 ```text
-Chrome side panel
-  captures current tab evidence
-  sends /capture, /parse, /confirm with X-Capture-Token
+Chrome job page
+  -> React side-panel extension
+    -> FastAPI /api/v1 capture routes
 
-Node backend
-  serves /health, /analysis, /resumes
-  validates config, CORS, and tokens
-  owns Notion reads/writes
-  owns DeepSeek calls
-  calls the Python fit runtime
+React /dashboard
+  -> FastAPI /api/v1 analysis, resume, readiness, and recovery routes
 
-Python fit runtime
-  serves /health, /fit/candidates, /fit/score
-  loads src/features/resumes/data/skill-normalization.json
-  computes requirement/evidence matching and fit scoring
+FastAPI
+  -> Applications: Capture and Analysis orchestration
+  -> Job Postings: source parsing and URL canonicalization
+  -> Resumes: evidence gating, generation, rendering, and artifact commit
+  -> Matching: deterministic scoring and evidence matching
+  -> workflow-owned store and model interfaces
+    <- Notion, DeepSeek, PDF, and filesystem adapters
 
 Notion
-  stores Job Postings, Resumes, and Notes
+  -> Applications, Resumes, and Resume Fit Analysis Notes
 
-export/
-  stores generated local resume PDFs
+app-data/
+  -> export/ generated PDFs
+  -> recovery/ incomplete-effect journal
 ```
 
-## Feature Ownership
+## Technology stack
 
-| Feature | Owns | Key paths |
-| --- | --- | --- |
-| Job Postings | Captured job posting language, capture evidence, parsing, Job Content, Job Posting Analysis, analysis queue. | `src/features/jobPostings` |
-| Resumes | Master Resume evidence, Resume Creation Queue, Resume Fit Analysis orchestration, Job-Specific Resume generation, PDF export. | `src/features/resumes` |
-| Notes | Supporting analysis notes related to Job Postings and Resumes. | `src/features/notes` |
+| Area              | Technology             | Responsibility                                                                                     |
+| ----------------- | ---------------------- | -------------------------------------------------------------------------------------------------- |
+| Backend           | FastAPI + Pydantic     | HTTP routing, validation, auth, OpenAPI, workflow composition, and health checks.                  |
+| Backend tests     | pytest                 | Domain, route, adapter, recovery, and public-contract verification.                                |
+| Dashboard         | React + TypeScript     | Compact process console for readiness, Analysis batches, Resume Creation, and Notion review links. |
+| Extension         | Chrome MV3 + React     | Active-page evidence collection, parsed-field review, and confirmed Capture writes.                |
+| Frontend build    | Vite                   | Dashboard and independently loadable extension builds.                                             |
+| API client        | Generated from OpenAPI | Typed calls from both React clients to FastAPI.                                                    |
+| Durable workspace | Notion                 | Existing Applications, Resumes, and Notes databases.                                               |
+| Model provider    | DeepSeek               | Application Analysis, fit-requirement extraction, and resume generation.                           |
+| Matching          | Python                 | Provider-independent normalization, evidence matching, and versioned scoring.                      |
+| PDF export        | Python backend adapter | Generates application-ready PDFs from the validated resume document.                               |
 
-`CONTEXT-MAP.md` defines the domain boundaries and relationships. Feature-local `CONTEXT.md` files define stable terminology.
+## Ownership and seams
 
-## Backend Composition
+Routes and screens are adapters; workflow rules live in feature modules behind narrow interfaces.
 
-`src/backend/server.js` creates one plain Node HTTP server and composes feature adapters from `src/backend/adapters.js`.
+| Owner                     | Public seam                                      | Hides                                                                                 |
+| ------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| Application Capture       | `prepare(evidence)`, `confirm(draft)`            | Parsing, duplicate detection, validation, and Notion writes.                          |
+| Application Analysis      | `get_queue(query)`, `run_batch(limit)`           | Eligibility, model repair, deterministic score commit, and partial-failure isolation. |
+| Resume Creation           | `get_queue(query)`, `create(application_id)`     | Evidence gates, model calls, claim repair, document rendering, and compensation.      |
+| Matching                  | `match(targets, evidence_items, scoring_policy)` | Normalization and deterministic scoring details.                                      |
+| Resume Artifact Committer | `commit(application, bundle, staged_pdf)`        | Ordered Notion/PDF effects, relations, rollback, and recovery reporting.              |
+| Extension evidence        | `collectCaptureEvidence()`                       | Chrome tab/frame reads and bounded in-memory page content.                            |
+| Extension session         | `prepare`, `updateReview`, `confirm`, `clear`    | Review state, dirty-discard protection, and confirmation state.                       |
+| Dashboard session         | queue/run/create actions                         | Pending state, cursors, retained results, and operator-facing errors.                 |
 
-Routes come from:
+There is no global workspace or model interface. Capture, Analysis, and Resume Creation each own the smallest protocol they need. The production Notion and DeepSeek adapters may implement several protocols, while the composition root passes each workflow only its owned seam. Tests inject deterministic fakes through the same interfaces.
 
-- `createJobPostingsAdapter()` in `src/features/jobPostings/backend/routes.js`
-- `createResumesAdapter()` in `src/features/resumes/backend/routes.js`
+Notes are not a standalone feature module or editor. Resume Creation owns the Resume Fit Analysis document behavior and persists that document through its workspace interface into the existing Notion Notes database.
 
-The server owns:
+## Data and storage
 
-- CORS allow-listing for same-origin pages and `EXTENSION_ORIGIN`.
-- `X-Capture-Token` validation for extension writes.
-- Same-origin token policy for local operator page POSTs.
-- JSON request parsing.
-- JSON, HTML, and NDJSON responses.
-- Shared `/health` handling.
+Notion is the only durable product workspace. The compatibility adapter translates canonical domain names to the existing physical Applications, Resumes, and Notes schemas and validates them before writes. Record editing and management remain in Notion.
 
-## Token Policies
+The backend also writes only two supported local artifact classes:
 
-| Policy | Meaning | Used by |
-| --- | --- | --- |
-| `none` | No `X-Capture-Token` required. | Static local pages and read-only status endpoints. |
-| `required` | Requires `X-Capture-Token`. | Extension capture, parse, and confirm endpoints. |
-| `same-origin` | Same-origin browser requests do not need the token; other origins do. | `/analysis/run`, `/resumes/create`. |
+- generated PDFs under `app-data/export/`;
+- incomplete-effect recovery entries under `app-data/recovery/`.
 
-The browser extension still uses `X-Capture-Token` for all extension-origin backend calls.
+Job content and Master Resume content are processed in memory and at provider boundaries required by the workflows. Browser clients never receive Notion tokens, database IDs, DeepSeek keys, prompts, filesystem paths, or recovery payloads.
 
-## Startup
+## HTTP and trust boundary
 
-`npm start` runs `src/backend/start.js`, which starts:
+FastAPI and Pydantic are the source of truth for the public contract. Committed OpenAPI generates `packages/api-client`; `npm run check:generated` fails when the schema and generated TypeScript drift.
 
-1. The Python fit runtime from `src/features/resumes/ml/server.py`.
-2. The Node backend from `src/backend/server.js`.
+| Caller               | Policy                                                                                           |
+| -------------------- | ------------------------------------------------------------------------------------------------ |
+| Dashboard            | Same-origin local requests to the FastAPI process.                                               |
+| Chrome extension     | Allowed extension origin plus `X-Capture-Token` on Capture operations.                           |
+| CLI/operator tooling | Backend environment settings; protected write routes require the capture token where documented. |
 
-`PYTHON_BIN` defaults to `.venv/bin/python` when present, then `python3`.
+FastAPI dependencies own token validation, allowed-origin checks, and settings access. Provider-safe error normalization prevents secrets, raw provider payloads, and local paths from crossing into public responses or logs.
 
-Use `npm run start:node` or `npm run start:fit-runtime` when running the two processes separately.
+## Verification boundary
 
-## External Integrations
+`npm test` is the credential-free final-app gate. It verifies generated-client freshness, TypeScript type checking, lint/format, browser-session tests, the full Python suite, production builds, no-demo scans, and the final-only repository guard.
 
-### Notion
-
-Notion API access is implemented with feature-owned clients:
-
-- `NotionClient` for Job Postings.
-- `ResumeNotionClient` for Resumes and Job Posting resume relations.
-- `NotesNotionClient` for Notes and Resume Fit Analysis Notes.
-
-All clients use Notion API version `2022-06-28`.
-
-The shared helper `src/lib/notionRelations.js` validates relation targets using current `relation.data_source_id`, older `relation.database_id`, configured database IDs, and returned database data source IDs.
-
-### DeepSeek
-
-DeepSeek is used for:
-
-- Job Posting Analysis in `src/features/jobPostings/lib/deepseek.js`.
-- Fit Requirement extraction and resume generation in `src/features/resumes/lib/deepseekResume.js`.
-
-Supported model IDs are normalized and validated by `src/backend/deepseekModels.js`.
-
-### Python Fit Runtime
-
-The Node Resume workflow calls `FitRuntimeClient` in `src/features/resumes/lib/fitRuntime.js`.
-
-Runtime endpoints:
-
-- `GET /health`
-- `POST /fit/candidates`
-- `POST /fit/score`
-
-The runtime loads `src/features/resumes/data/skill-normalization.json` once at startup. Restart `npm start` after changing the dictionary or Python analysis code.
-
-## Workflow Data Flow
-
-### Capture
-
-```text
-Chrome active tab
-  -> frame evidence
-  -> /capture or /parse
-  -> parser normalizes title, company, role, URL, location, content
-  -> Notion schema validation
-  -> duplicate check by canonical Job URL
-  -> Job Posting page creation or review response
-```
-
-Direct capture writes to Notion only when the parsed evidence meets minimum fields and confidence. The Fill Form path uses `/parse` to populate editable fields, then `/confirm` writes reviewed content.
-
-### Job Posting Analysis
-
-```text
-/analysis/status
-  -> validate config and Job Postings schema
-  -> count To Apply, unanalyzed postings
-
-/analysis/run
-  -> query bounded analysis queue
-  -> load Job Content from Notion blocks
-  -> repair Analyzed checkbox if analysis already exists
-  -> ask DeepSeek for JSON analysis
-  -> validate evidence against Job Content
-  -> append Job Posting Analysis blocks
-  -> mark Analyzed checkbox true
-```
-
-`src/features/jobPostings/lib/analysisStore.js` owns the semantic Notion storage boundary for analysis. `analysisService.js` coordinates the batch and stream events.
-
-### Resume Creation
-
-```text
-/resumes/status
-  -> validate config, Resume schema, Notes schema
-  -> check Python fit runtime health
-  -> query analyzed To Apply postings with no related Resume
-
-/resumes/create
-  -> read Job Content and Job Posting Analysis
-  -> find exactly one Master Resume
-  -> extract Master Resume evidence
-  -> extract Fit Requirements with DeepSeek
-  -> score support with Python fit runtime
-  -> generate application-ready resume with DeepSeek
-  -> validate and repair claim traces
-  -> write unlinked Resume page
-  -> write related Resume Fit Analysis Note
-  -> save local PDF
-  -> attach Resume to Job Posting
-```
-
-The final attachment is intentionally last. If Note creation, PDF export, or attachment fails, the workflow archives the draft Resume, archives the Note when present, removes the PDF when present, and returns a failed result.
-
-## Response Contracts
-
-Capture result types live in `src/features/jobPostings/types/contracts.js`:
-
-- `parsed`
-- `created`
-- `already_captured`
-- `needs_review`
-- `failed`
-
-Analysis stream event types:
-
-- `run_started`
-- `item_started`
-- `item_finished`
-- `run_finished`
-
-Analysis item result statuses:
-
-- `analyzed`
-- `skipped`
-- `failed`
-- `repaired`
-
-Resume result types live in `src/features/resumes/types/contracts.js`:
-
-- `created`
-- `already_exists`
-- `failed`
-
-## Idempotency And Safety
-
-- Capture deduplicates by canonical `Job URL`.
-- Resume creation returns `already_exists` when the Job Posting already has a related Resume.
-- Job Posting Analysis repairs the `Analyzed` checkbox if the page body already has a `Job Posting Analysis` section.
-- Resume creation writes an unlinked Resume first and attaches it to the Job Posting only after the Resume, Note, and PDF succeed.
-- Generated resume claims must map to supported Master Resume evidence.
-
-## Where To Change Things
-
-| Change | Start here |
-| --- | --- |
-| Add or rename Job Posting properties | `src/features/jobPostings/types/contracts.js`, `src/features/jobPostings/lib/notion.js`, docs and tests. |
-| Change capture parsing | `src/features/jobPostings/lib/parser.js`, `captureEvidence.js`, parser/capture tests. |
-| Change Job Posting Analysis output | `src/features/jobPostings/lib/analysisBlocks.js`, `deepseek.js`, analysis tests. |
-| Change analysis persistence | `src/features/jobPostings/lib/analysisStore.js`. |
-| Change Resume queue rules | `src/features/jobPostings/lib/resumeSource.js`. |
-| Change Master Resume evidence extraction | `src/features/resumes/lib/resumeBlocks.js`. |
-| Change resume template roles | `src/features/resumes/lib/resumeTemplate.js`. |
-| Change fit scoring | `src/features/resumes/ml/analysis.py` and Python tests. |
-| Change PDF output | `src/features/resumes/lib/pdfExport.js`. |
-
+Test fakes live under `apps/api/tests/fakes/`, write only to temporary state, and enter through explicit dependency injection. They are verification adapters, not a second runtime or operator mode.

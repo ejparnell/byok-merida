@@ -3,6 +3,34 @@ import test from 'node:test'
 
 import { createCaptureSession } from './captureSession.ts'
 
+test('reading is observable before Application parsing begins', async () => {
+  const phases = []
+  const session = createCaptureSession(
+    {
+      prepare: async () => ({
+        ok: true,
+        result: 'prepared',
+        draft: {
+          jobUrl: 'https://example.test/job',
+          companyName: 'Example',
+          role: 'Engineer',
+          location: 'Remote',
+          jobContentPreview: 'Build reliable systems',
+        },
+      }),
+    },
+    (state) => phases.push(state.phase),
+  )
+
+  session.beginReading()
+  await session.prepare(
+    { url: 'https://example.test/job', visibleText: 'Build reliable systems' },
+    { tabId: 7, url: 'https://example.test/job' },
+  )
+
+  assert.deepEqual(phases, ['reading', 'parsing', 'reviewing'])
+})
+
 test('reviewed fields survive a failed confirmation and are sent with in-memory job content', async () => {
   const client = {
     prepare: async () => ({
@@ -69,6 +97,37 @@ test('starting a new capture requires discard confirmation when review is dirty'
   )
 
   assert.equal(outcome, 'discard_confirmation_required')
+  assert.equal(session.getState().review.companyName, 'Edited Example')
+})
+
+test('reading cannot bypass discard confirmation for a dirty review', async () => {
+  const session = createCaptureSession({
+    prepare: async () => ({
+      ok: true,
+      result: 'prepared',
+      draft: {
+        jobUrl: 'https://example.test/job',
+        companyName: 'Example',
+        role: 'Engineer',
+        location: '',
+        jobContentPreview: 'Content',
+      },
+    }),
+  })
+  await session.prepare(
+    { url: 'https://example.test/job', visibleText: 'Content' },
+    { tabId: 1, url: 'https://example.test/job' },
+  )
+  session.updateReview('companyName', 'Edited Example')
+
+  session.beginReading()
+  const outcome = await session.prepare(
+    { url: 'https://other.test/job', visibleText: 'Other' },
+    { tabId: 2, url: 'https://other.test/job' },
+  )
+
+  assert.equal(outcome, 'discard_confirmation_required')
+  assert.equal(session.getState().phase, 'reviewing')
   assert.equal(session.getState().review.companyName, 'Edited Example')
 })
 

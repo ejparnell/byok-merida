@@ -1,5 +1,5 @@
 import json
-from typing import Protocol, TypeAlias, Literal
+from typing import TypeAlias, Literal
 
 from pydantic import BaseModel
 
@@ -14,10 +14,6 @@ class EncodedPromptPayload(BaseModel):
     text: str
     source_bytes: int
     encoded_bytes: int
-
-
-class PromptPayloadEncoder(Protocol):
-    def encode(self, value: JsonValue) -> EncodedPromptPayload: ...
 
 
 class JsonPromptPayloadEncoder:

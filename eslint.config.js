@@ -4,12 +4,7 @@ import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
   {
-    ignores: [
-      '**/dist/**',
-      '**/src/generated/**',
-      '**/*.test.ts',
-      'apps/*-prototype/**',
-    ],
+    ignores: ['**/dist/**', '**/src/generated/**'],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,

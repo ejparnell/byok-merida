@@ -10,12 +10,9 @@ export function Spinner() {
   return <span className="spinner" aria-hidden="true" />
 }
 
-export function StatusDot({ status }: { status?: string }) {
+export function StatusDot({ status }: { status: string }) {
   return (
-    <span
-      className={cx('status-dot', `is-${status ?? 'unknown'}`)}
-      aria-hidden="true"
-    />
+    <span className={cx('status-dot', `is-${status}`)} aria-hidden="true" />
   )
 }
 
@@ -24,12 +21,12 @@ export function StatusBadge({
   children,
 }: {
   status: string
-  children?: ReactNode
+  children: ReactNode
 }) {
   return (
-    <span className={cx('status-badge', `is-${status}`)}>
+    <span className="status-badge">
       <StatusDot status={status} />
-      {children ?? status}
+      {children}
     </span>
   )
 }

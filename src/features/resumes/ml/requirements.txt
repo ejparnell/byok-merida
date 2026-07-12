@@ -1,2 +1,0 @@
-# The v1 runtime uses the Python standard library so it can run locally without
-# package downloads. Keep this file for `npm run setup:ml` and future ML deps.

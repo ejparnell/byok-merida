@@ -34,7 +34,6 @@ export interface DashboardSession {
   runAnalysis(limit: unknown): Promise<RunApplicationAnalysisResponse | null>
   createResume(applicationId: string): Promise<CreateResumeResponse | null>
   dismissAnalysisResult(): void
-  dismissResumeResult(applicationId: string): void
 }
 
 export function createDashboardSession(
@@ -159,11 +158,6 @@ export function createDashboardSession(
     },
     dismissAnalysisResult() {
       publish({ analysisResult: null })
-    },
-    dismissResumeResult(applicationId: string) {
-      const resumeResults = { ...state.resumeResults }
-      delete resumeResults[applicationId]
-      publish({ resumeResults })
     },
   }
 }

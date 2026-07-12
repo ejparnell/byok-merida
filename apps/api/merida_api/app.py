@@ -287,7 +287,6 @@ def create_app(
         resume_builder = create_deepseek_resume_builder(
             api_key=settings.deepseek_api_key,
             model=settings.resume_model,
-            input_format=settings.llm_input_format,
         )
     analysis_model_ready = analysis_model is not None
     resume_builder_ready = resume_builder is not None
@@ -658,7 +657,7 @@ def create_app(
     dashboard_index = web_dist / "index.html"
     if require_dashboard and not dashboard_index.is_file():
         raise RuntimeError(
-            "The dashboard build is missing. Run `npm run final:build` before `npm run final:start`."
+            "The dashboard build is missing. Run `npm run build` before `npm start`."
         )
     if dashboard_index.is_file():
         assets = web_dist / "assets"

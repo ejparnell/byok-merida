@@ -1,17 +1,13 @@
 .env
 node_modules/
-apps/web-prototype/dist/
 coverage/
-export/
 .DS_Store
-src/features/jobPostings/extension/local-config.js
 .venv/
 __pycache__/
 *.pyc
 *.egg-info/
 .pytest_cache/
 .cache/
-apps/*-prototype/
 apps/web/dist/
 apps/extension/dist/
 packages/api-client/dist/

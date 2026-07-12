@@ -514,7 +514,7 @@ export function App() {
   }
 
   return (
-    <div className={cx('app-shell', `theme-${theme}`)}>
+    <div className={cx('app-shell', theme === 'dark' && 'theme-dark')}>
       <header className="topbar">
         <Brand />
         <nav aria-label="Primary">

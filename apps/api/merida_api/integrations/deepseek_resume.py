@@ -154,10 +154,8 @@ class DeepSeekResumeDraftModel:
 
 
 def create_deepseek_resume_builder(
-    *, api_key: str, model: str, input_format: str = "json"
+    *, api_key: str, model: str
 ) -> DeepSeekResumeDocumentBuilder:
-    if input_format != "json":
-        raise ValueError("Only JSON prompt input is supported in v1.")
     client = create_deepseek_json_client(
         api_key=api_key, model=model, max_tokens=8000
     )

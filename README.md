@@ -1,205 +1,133 @@
 # Merida
 
-Merida is a local operator app for turning job postings into evidence-backed application materials. It captures job postings from Chrome into Notion, enriches captured postings with DeepSeek-backed analysis, and creates job-specific resumes from a Notion Master Resume using a local Resume Fit Analysis runtime.
+Merida is a local-first operator application for turning captured job postings into evidence-backed application materials. It uses a FastAPI backend, a React dashboard, a React Chrome side-panel extension, Notion as the durable workspace, DeepSeek for bounded language-model workflows, and deterministic Python matching for evidence scoring.
 
-The app is intentionally local-first:
+The supported application has three workflows:
 
-- Chrome reads the current job page only after a button click.
-- A Node backend on localhost owns Notion writes, DeepSeek calls, schema validation, and local operator pages.
-- A Python runtime on localhost scores resume fit with repo-local normalization data.
-- Notion remains the durable store for Job Postings, Resumes, and supporting Notes.
-- Generated resume PDFs are written to the repo-local `export/` folder.
+1. **Application Capture** — collect the active job page in Chrome, review parsed fields, and create or reuse the Application in Notion.
+2. **Application Analysis** — run a bounded analysis batch over eligible Applications and persist evidence-backed analysis plus a deterministic Match Score.
+3. **Resume Creation** — create one evidence-gated Job-Specific Resume, Resume Fit Analysis Note, and PDF for an eligible Application.
 
-## What The App Does
+The dashboard is an LLM process console. Record editing and management remain in Notion.
 
-Merida has three user-facing surfaces:
-
-- **Chrome side panel**: captures the active job posting page, optionally lets the user review parsed fields, and writes a Job Posting page to Notion.
-- **Job Posting Analysis page**: `http://127.0.0.1:3217/analysis` shows the To Apply analysis queue and runs a bounded sequential analysis batch.
-- **Resume Creation page**: `http://127.0.0.1:3217/resumes` shows analyzed To Apply postings that do not yet have a related Resume and creates an application-ready Job-Specific Resume.
-
-The main workflow is:
-
-1. Capture a job posting into the configured Notion Job Postings database.
-2. Run Job Posting Analysis against captured `Job Content`.
-3. Create a Job-Specific Resume from the analyzed posting and the single `Master Resume`.
-4. Review the generated Resume in Notion, the related Resume Fit Analysis Note, and the local PDF export.
-
-## Runtime Shape
+## Runtime shape
 
 ```text
-Chrome extension side panel
-  -> localhost Node backend
-    -> Notion Job Postings database
-    -> DeepSeek Job Posting Analysis
-    -> Notion Resume and Notes databases
-    -> localhost Python Resume Fit Analysis runtime
-    -> export/*.pdf
+React Chrome side panel ─┐
+                         ├─> FastAPI /api/v1
+React /dashboard ────────┘      ├─> Notion
+                                ├─> DeepSeek
+                                └─> app-data/export + app-data/recovery
 ```
 
-The Node backend is plain Node HTTP, not Next.js or Express. It composes feature-owned route adapters from:
+There is one product runtime. Missing provider configuration produces truthful blocked readiness; it never selects demo data or a fictional fallback. Credential-free tests inject deterministic fakes through the application factory.
 
-- `src/features/jobPostings`
-- `src/features/resumes`
-- `src/features/notes`
+## Requirements
 
-See [docs/architecture.md](docs/architecture.md) for the detailed architecture map.
+- Node.js 22.18 or newer
+- npm 11.11 or newer
+- Python 3.14.2 for the supported local setup
+- `uv` 0.11.28 or newer for a clean Python environment
+- a Notion integration connected to the Applications, Resumes, and Notes databases
+- a DeepSeek API key
 
-## Quick Start
+## Setup
 
-1. Install Node.js and Python 3.
-2. Install the local Python fit runtime dependencies:
+1. Copy `.env.example` to `.env` and configure the real provider values.
+2. Install the locked Node and Python environments:
 
    ```sh
-   npm run setup:ml
+   npm run setup
    ```
 
-3. Copy `.env.example` to `.env` and fill in local values.
-4. Configure the Notion databases described in [docs/notion-schema.md](docs/notion-schema.md).
-5. Load the Chrome extension from `src/features/jobPostings/extension` as an unpacked extension.
-6. Copy the extension ID from `chrome://extensions`.
-7. Set `EXTENSION_ORIGIN=chrome-extension://<extension-id>` in `.env`.
-8. Start the app:
+3. Build the dashboard, extension, and generated client:
+
+   ```sh
+   npm run build
+   ```
+
+4. Start the application:
 
    ```sh
    npm start
    ```
 
-9. Open the extension options page and save:
+5. Open `http://127.0.0.1:8000/dashboard`.
+6. Load `apps/extension/dist` as an unpacked Chrome extension and save the same backend URL and `CAPTURE_TOKEN` in its settings.
 
-   - Backend URL: `http://127.0.0.1:3217`
-   - Capture token: the same value as `CAPTURE_TOKEN`
-
-10. Check runtime health:
-
-   ```sh
-   curl -H "X-Capture-Token: <capture-token>" http://127.0.0.1:3217/health?validate=1
-   curl http://127.0.0.1:3218/health
-   ```
+See [Operations](docs/operations.md) for readiness, recovery, and bounded provider checks.
 
 ## Configuration
 
-Merida reads `.env` from the repo root and then lets process environment variables override file values.
+| Variable                    | Required                     | Purpose                                                            |
+| --------------------------- | ---------------------------- | ------------------------------------------------------------------ |
+| `API_HOST`                  | No                           | Loopback API host; defaults to `127.0.0.1`.                        |
+| `API_PORT`                  | No                           | API port; defaults to `8000`.                                      |
+| `WEB_ORIGIN`                | No                           | Allowed React development origin.                                  |
+| `EXTENSION_ORIGIN`          | For installed extension CORS | Exact `chrome-extension://` origin.                                |
+| `CAPTURE_TOKEN`             | Yes                          | Local shared token for protected Capture routes.                   |
+| `NOTION_TOKEN`              | Yes                          | Notion integration token.                                          |
+| `NOTION_DATABASE_ID`        | Yes                          | Applications database ID.                                          |
+| `NOTION_RESUME_DATABASE_ID` | Analysis and Resumes         | Resumes database ID.                                               |
+| `NOTION_NOTES_DATABASE_ID`  | Resume Creation              | Notes database ID.                                                 |
+| `DEEPSEEK_API_KEY`          | Analysis and Resumes         | DeepSeek provider key.                                             |
+| `ANALYSIS_MODEL`            | No                           | Analysis model; defaults to `deepseek-v4-flash`.                   |
+| `RESUME_MODEL`              | No                           | Resume model; defaults to `deepseek-v4-pro`.                       |
+| `EXPORT_PATH`               | No                           | PDF directory; defaults to `app-data/export`.                      |
+| `RECOVERY_JOURNAL_PATH`     | No                           | Effect journal path; defaults to `app-data/recovery/effects.json`. |
 
-| Variable | Required | Used by | Purpose |
-| --- | --- | --- | --- |
-| `NOTION_TOKEN` | Yes | Node backend | Notion integration token. |
-| `NOTION_DATABASE_ID` | Yes | Job Postings, Analysis, Resumes | Job Postings database ID. |
-| `NOTION_RESUME_DATABASE_ID` | For `/resumes` | Resumes | Resume database ID. |
-| `NOTION_NOTES_DATABASE_ID` | For `/resumes` | Notes | Notes database ID for Resume Fit Analysis Notes. |
-| `CAPTURE_TOKEN` | Yes | Extension and backend | Shared local token for extension-origin writes. |
-| `EXTENSION_ORIGIN` | Yes | Backend CORS | Exact Chrome extension origin. |
-| `PORT` | Optional | Node backend | Backend port. Defaults to `3217`. |
-| `FIT_RUNTIME_PORT` | Optional | Python runtime | Fit runtime port. Defaults to `3218`. |
-| `FIT_RUNTIME_URL` | Optional | Node backend | Fit runtime URL. Defaults to `http://127.0.0.1:3218`. |
-| `PYTHON_BIN` | Optional | `npm start` | Python executable for the fit runtime. Defaults to `.venv/bin/python`, then `python3`. |
-| `DEEPSEEK_API_KEY` | For analysis and resumes | DeepSeek clients | Enables Job Posting Analysis and Resume generation. |
-| `DEEPSEEK_MODEL` | Optional | DeepSeek clients | Supported values: `deepseek-v4-flash`, `deepseek-v4-pro`. |
-| `DEBUG_CAPTURE` | Optional | Capture logs | Set `0` to reduce capture logging. |
-| `DEBUG_ANALYSIS_CONTENT` | Optional | Analysis logs | Set `1` only when full extracted Job Content is needed in logs. |
-
-Do not put Notion or DeepSeek secrets into the extension UI. The browser only stores the backend URL and `CAPTURE_TOKEN`.
+Secrets stay in backend environment variables. The extension stores only the backend URL and Capture token.
 
 ## Commands
 
-| Command | Purpose |
-| --- | --- |
-| `npm start` | Starts the Node backend and the Python fit runtime. |
-| `npm run start:node` | Starts only the Node backend. Useful when the fit runtime is already running. |
-| `npm run start:fit-runtime` | Starts only the Python fit runtime. |
-| `npm run setup:ml` | Creates `.venv` and installs Python requirements. |
-| `npm test` | Runs Node tests and Python fit runtime tests. |
+| Command                       | Purpose                                                                    |
+| ----------------------------- | -------------------------------------------------------------------------- |
+| `npm run setup`               | Install locked Node and Python environments.                               |
+| `npm run dev`                 | Run the reloadable API and dashboard development processes.                |
+| `npm run dev:extension`       | Build the MV3 extension in watch mode.                                     |
+| `npm run build`               | Generate the client and build both React consumers.                        |
+| `npm start`                   | Serve `/api/v1`, `/dashboard`, and PDF downloads from one FastAPI process. |
+| `npm test`                    | Run the complete credential-free acceptance gate.                          |
+| `npm run recovery -- inspect` | Inspect unresolved effect-journal entries.                                 |
 
-## Operator Pages And Endpoints
+## Repository map
 
-| Method | Path | Auth | Purpose |
-| --- | --- | --- | --- |
-| `GET` | `/health?validate=1` | `X-Capture-Token` | Checks backend config and optionally the Job Postings schema. |
-| `POST` | `/capture` | `X-Capture-Token` | Captures and writes a Job Posting to Notion. |
-| `POST` | `/parse` | `X-Capture-Token` | Parses page evidence for review without Notion writes. |
-| `POST` | `/confirm` | `X-Capture-Token` | Writes reviewed parsed fields to Notion. |
-| `GET` | `/analysis` | None | Serves the local Job Posting Analysis page. |
-| `GET` | `/analysis/status` | None | Reads analysis readiness and queue count. |
-| `POST` | `/analysis/run` | Same-origin local page | Streams analysis batch progress as NDJSON. |
-| `GET` | `/resumes` | None | Serves the local Resume Creation page. |
-| `GET` | `/resumes/status` | None | Reads resume workflow readiness and queue items. |
-| `POST` | `/resumes/create` | Same-origin local page | Creates or returns a Job-Specific Resume for one Job Posting. |
-
-See [docs/workflows.md](docs/workflows.md) for step-by-step workflow behavior and result types.
-
-## Notion Data Model
-
-Merida expects user-owned Notion databases. It validates schemas before writing, but it does not create or mutate database properties.
-
-Required databases:
-
-- **Job Postings**: captured postings, Job Content, Job Posting Analysis, application status, and inverse Resume/Note relations.
-- **Resumes**: exactly one `Master Resume` plus Job-Specific Resumes.
-- **Notes**: supporting analysis notes, including Resume Fit Analysis Notes.
-
-Important relation names:
-
-- Job Postings inverse relation to Resumes: `Resumes`
-- Job Postings inverse relation to Notes: `Notes`
-- Resumes inverse relation to Notes: `Notes`
-
-See [docs/notion-schema.md](docs/notion-schema.md) for exact property names, types, and Master Resume requirements.
-
-## Resume Generation Guardrails
-
-`Create Resume` is designed to fail before writing a misleading resume. It requires:
-
-- A ready Job Posting: `Application Status = To Apply`, `Analyzed = true`, and no related Resume.
-- Existing `Job Content` and `Job Posting Analysis` blocks in the Job Posting page body.
-- Exactly one Resume page named `Master Resume`.
-- Master Resume evidence that supports enough required or responsibility Fit Requirements.
-- Master Resume work-experience sections that match the configured resume template roles.
-- At least five bullet evidence items per preserved Master Resume role.
-
-On success, Merida writes:
-
-- A clean employer-facing Job-Specific Resume page in Notion.
-- A related Resume Fit Analysis Note in Notion.
-- A local PDF export at `export/{CompanyName}-ElizabethParnell.pdf`.
-
-The Resume page is attached back to the Job Posting only after the Resume, Note, and PDF write path succeeds.
-
-## Project Map
-
-| Path | Purpose |
-| --- | --- |
-| `src/backend` | Local Node server, config loading, route composition, auth and CORS policies. |
-| `src/features/jobPostings` | Chrome extension, capture, parsing, Job Posting Notion client, Job Posting Analysis. |
-| `src/features/resumes` | Resume queue, Resume Notion client, fit analysis orchestration, resume generation, PDF export. |
-| `src/features/resumes/ml` | Local Python Resume Fit Analysis runtime. |
-| `src/features/notes` | Notes Notion client and Resume Fit Analysis Note creation. |
-| `src/lib/notionRelations.js` | Shared Notion relation-target validation. |
-| `CONTEXT-MAP.md` | Domain context ownership map. |
-| `src/features/*/CONTEXT.md` | Feature glossary and domain language. |
-| `src/features/*/docs/adr` | Feature-local architectural decision records. |
-| `report/` | Handoffs and architecture review artifacts. |
-| `export/` | Generated local resume PDFs. |
-
-## Documentation Index
-
-- [Architecture](docs/architecture.md)
-- [Workflows](docs/workflows.md)
-- [Notion Schema](docs/notion-schema.md)
-- [Operations And Troubleshooting](docs/operations.md)
-- [Context Map](CONTEXT-MAP.md)
-- [Job Postings Feature README](src/features/jobPostings/README.md)
-- [Job Postings Glossary](src/features/jobPostings/CONTEXT.md)
-- [Resumes Glossary](src/features/resumes/CONTEXT.md)
-- [Notes Glossary](src/features/notes/CONTEXT.md)
+| Path                                         | Ownership                                                             |
+| -------------------------------------------- | --------------------------------------------------------------------- |
+| `apps/api/merida_api/app.py`                 | FastAPI composition root and public routes.                           |
+| `apps/api/merida_api/features/applications/` | Application Capture and Application Analysis.                         |
+| `apps/api/merida_api/features/job_postings/` | Source-page parsing and canonical Job Posting values.                 |
+| `apps/api/merida_api/features/resumes/`      | Resume Creation, evidence validation, and artifact commit.            |
+| `apps/api/merida_api/matching/`              | Deterministic evidence matching and scoring.                          |
+| `apps/api/merida_api/integrations/`          | Notion, DeepSeek, and PDF adapters.                                   |
+| `apps/web/`                                  | React `/dashboard` process console.                                   |
+| `apps/extension/`                            | React MV3 review-first Capture side panel.                            |
+| `packages/api-client/`                       | OpenAPI document and generated shared TypeScript client.              |
+| `packages/ui/`                               | Small shared React UI primitives.                                     |
+| `scripts/`                                   | Setup, development, generation, verification, and runtime helpers.    |
+| `docs/`                                      | Current architecture, workflow, schema, and operations documentation. |
+| `reports/`                                   | Current repository audits.                                            |
 
 ## Verification
 
-Run the full test suite with:
+Run:
 
 ```sh
 npm test
 ```
 
-The suite covers backend routing, config, DeepSeek JSON parsing, Notion schema validation, capture parsing, analysis blocks, analysis store behavior, Resume Fit Analysis, resume generation guardrails, PDF export, and the Python fit runtime.
+The gate checks generated-client freshness, TypeScript, lint and formatting, browser-session behavior, FastAPI workflows and adapters, both production builds, removed demo surfaces, and the final-only repository boundary.
 
-Some sandboxed environments block local server binding and can fail server tests with `listen EPERM`. If that happens, rerun verification in an environment that permits localhost binding before changing application logic.
+## Documentation
+
+- [Documentation index](docs/README.md)
+- [Architecture](docs/architecture.md)
+- [Codebase structure](docs/codebase-structure.md)
+- [Routes](docs/routes.md)
+- [Workflows](docs/workflows.md)
+- [AI and ML workflows](docs/ai-workflows.md)
+- [Frontend](docs/frontend.md)
+- [Extension](docs/extension.md)
+- [Notion schema](docs/notion-schema.md)
+- [Operations](docs/operations.md)
+- [Context map](CONTEXT-MAP.md)

@@ -10,12 +10,18 @@ export const toOperatorError = (error: unknown): OperatorApiError => {
   if (error instanceof Error) return error
 
   const payload = error as {
-    error?: { code?: ApiErrorDetail['code']; message?: string; requestId?: string | null }
+    error?: {
+      code?: ApiErrorDetail['code']
+      message?: string
+      requestId?: string | null
+    }
     errors?: string[]
     validationFailures?: unknown[]
   }
   const operatorError = new Error(
-    payload?.error?.message || payload?.errors?.[0] || 'The API request failed.',
+    payload?.error?.message ||
+      payload?.errors?.[0] ||
+      'The API request failed.',
   ) as OperatorApiError
   operatorError.code = payload?.error?.code
   operatorError.requestId = payload?.error?.requestId

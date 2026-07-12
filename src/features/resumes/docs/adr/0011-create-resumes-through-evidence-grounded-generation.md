@@ -1,3 +1,0 @@
-# Create resumes through evidence-grounded generation
-
-`Create Resume` now runs the full generation workflow instead of creating a blank Job-Specific Resume: it reads the related Job Posting, reads the Master Resume, produces and validates a Resume Fit Analysis, drafts the Job-Specific Resume from Master Resume evidence with fit evidence guiding emphasis, and creates the related Resume only after generation succeeds. If analysis or generation fails, the workflow must not create a blank Resume or relation, because the relation removes the Job Posting from the Resume Creation Queue and would make a failed generation look complete.

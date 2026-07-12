@@ -1,6 +1,5 @@
 from pathlib import Path
 import ipaddress
-from typing import Literal
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -29,8 +28,6 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     analysis_model: str = "deepseek-v4-flash"
     resume_model: str = "deepseek-v4-pro"
-    llm_input_format: Literal["json"] = "json"
-
     export_path: Path = REPOSITORY_ROOT / "app-data/export"
     recovery_journal_path: Path = REPOSITORY_ROOT / "app-data/recovery/effects.json"
 

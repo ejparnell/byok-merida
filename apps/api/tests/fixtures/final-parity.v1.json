@@ -1,0 +1,270 @@
+{
+  "schemaVersion": 2,
+  "contractVersion": "final-behavior-v1",
+  "fixtures": [
+    {
+      "id": "CAPTURE-EVIDENCE-001",
+      "title": "Normalize readable evidence from the active Source Page",
+      "observation": {
+        "initialState": {
+          "tabUrl": "https://example.com/jobs/123?utm_source=mail",
+          "frames": [
+            {
+              "frameId": 0,
+              "url": "https://jobs.example.com/embed",
+              "pageTitle": "Senior Backend Engineer at Example Labs",
+              "visibleText": "Navigation and Apply now",
+              "metadata": {
+                "jsonLd": [
+                  {
+                    "@type": "JobPosting",
+                    "title": "Senior Backend Engineer",
+                    "hiringOrganization": {
+                      "name": "Example Labs"
+                    },
+                    "jobLocationType": "TELECOMMUTE",
+                    "applicantLocationRequirements": {
+                      "name": "United States"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "frameId": 1,
+              "url": "https://example.com/jobs/123?utm_campaign=share",
+              "selectedText": "Senior Backend Engineer at Example Labs",
+              "visibleText": "Responsibilities: Build reliable APIs.",
+              "semanticHtml": "<main><h1>Senior Backend Engineer</h1><p>Build reliable APIs.</p></main>"
+            }
+          ]
+        },
+        "dependencyOutputs": {
+          "oversizedVisibleTextLength": 120005
+        },
+        "expectedOutcome": {
+          "jobUrl": "https://example.com/jobs/123",
+          "capturedUrl": "https://example.com/jobs/123?utm_source=mail",
+          "companyName": "Example Labs",
+          "role": "Senior Backend Engineer",
+          "location": "Remote - United States",
+          "preferredTextSource": "selectedText",
+          "frameCount": 2,
+          "oversizedVisibleTextLength": 120000
+        }
+      }
+    },
+    {
+      "id": "CAPTURE-001",
+      "title": "Treat a canonical Job URL duplicate as idempotent success",
+      "observation": {
+        "expectedOutcome": true
+      }
+    },
+    {
+      "id": "ANALYSIS-001",
+      "title": "Isolate a failed analysis item and continue the sequential batch",
+      "observation": {
+        "expectedOutcome": true
+      }
+    },
+    {
+      "id": "CAPTURE-002",
+      "title": "Parse Capture Evidence without reading or writing the workspace",
+      "observation": {
+        "expectedOutcome": true
+      }
+    },
+    {
+      "id": "ANALYSIS-002",
+      "title": "Repair the analyzed marker without a duplicate body or model call",
+      "observation": {
+        "expectedOutcome": true
+      }
+    },
+    {
+      "id": "CAPTURE-003",
+      "title": "Observe Capture success, review, validation, confirmation, defaults, and body persistence",
+      "observation": {
+        "expectedOutcome": true
+      }
+    },
+    {
+      "id": "ANALYSIS-ADD-001",
+      "title": "Persist deterministic Match Score for exact repair",
+      "observation": {
+        "expectedOutcome": true
+      }
+    },
+    {
+      "id": "ANALYSIS-003",
+      "title": "Observe analysis evidence validation and body-first partial persistence",
+      "observation": {
+        "expectedOutcome": true
+      }
+    },
+    {
+      "id": "RESUME-001",
+      "title": "Block unsupported Resume claims before artifact creation",
+      "observation": {
+        "expectedOutcome": true
+      }
+    },
+    {
+      "id": "ANALYSIS-004",
+      "title": "Observe analysis queue eligibility and bounded query behavior",
+      "observation": {
+        "expectedOutcome": true
+      }
+    },
+    {
+      "id": "ARTIFACT-001",
+      "title": "Create the employer-facing Resume, fit-analysis Note, and PDF",
+      "observation": {
+        "expectedOutcome": true
+      }
+    },
+    {
+      "id": "RESUME-002",
+      "title": "Return the existing Resume before generation or artifact work",
+      "observation": {
+        "expectedOutcome": true
+      }
+    },
+    {
+      "id": "CLEANUP-001",
+      "title": "Compensate a failed final Resume attachment",
+      "observation": {
+        "expectedOutcome": true
+      }
+    },
+    {
+      "id": "RESUME-003",
+      "title": "Observe Resume source validation and minimum role evidence failures",
+      "observation": {
+        "expectedOutcome": true
+      }
+    },
+    {
+      "id": "RESUME-004",
+      "title": "Reject unsupported and cross-role Resume claims before rendering",
+      "observation": {
+        "expectedOutcome": true
+      }
+    },
+    {
+      "id": "PRIVACY-001",
+      "title": "Keep provider and workspace credentials in backend configuration",
+      "observation": {
+        "expectedOutcome": true
+      }
+    },
+    {
+      "id": "PRIVACY-ADD-001",
+      "title": "Exclude private workflow payloads and local paths from normal output",
+      "observation": {
+        "expectedOutcome": true
+      }
+    },
+    {
+      "id": "NOTION-001",
+      "title": "Observe legacy physical properties, stable body sections, and relation target compatibility",
+      "observation": {
+        "expectedOutcome": true
+      }
+    },
+    {
+      "id": "CLEANUP-002",
+      "title": "Observe cleanup residue after Note, PDF, and final attachment failures",
+      "observation": {
+        "initialState": {
+          "applicationId": "application-1",
+          "resumeRelation": []
+        },
+        "dependencyOutputs": {
+          "noteFailure": "create Note fails",
+          "pdfFailure": "save PDF fails",
+          "attachFailure": "final Resume attachment fails"
+        },
+        "expectedOutcome": {
+          "noteFailure": {
+            "type": "failed",
+            "reason": "resume_generation_failed"
+          },
+          "pdfFailure": {
+            "type": "failed",
+            "reason": "resume_generation_failed"
+          },
+          "attachFailure": {
+            "type": "failed",
+            "reason": "resume_generation_failed"
+          }
+        }
+      }
+    },
+    {
+      "id": "TRANSPORT-001",
+      "title": "Replace NDJSON analysis streaming with one final response",
+      "observation": {
+        "expectedOutcome": true
+      }
+    },
+    {
+      "id": "EXTENSION-DEFECT-001",
+      "title": "Do not preserve the broken side-panel result element",
+      "observation": {
+        "expectedOutcome": true
+      }
+    },
+    {
+      "id": "API-DEFERRED-001",
+      "title": "Defer exact public request and response schemas",
+      "observation": {
+        "expectedOutcome": true
+      }
+    },
+    {
+      "id": "SUPERSEDED-001",
+      "title": "Replace legacy operator surfaces, transport, batch range, and queue leakage",
+      "observation": {
+        "expectedOutcome": true
+      }
+    },
+    {
+      "id": "SUPERSEDED-002",
+      "title": "Protect final Resume, runtime, prompt, and local-path details",
+      "observation": {
+        "expectedOutcome": true
+      }
+    },
+    {
+      "id": "TARGET-ADD-002",
+      "title": "Add canonical Resume rendering, unchanged non-work sections, and typed cleanup state",
+      "observation": {
+        "initialState": {},
+        "dependencyOutputs": {},
+        "expectedOutcome": {
+          "canonicalResumeDocument": true,
+          "nonWorkSectionsUnchanged": true,
+          "notionAndPdfShareSource": true,
+          "typedCleanupBooleans": true,
+          "partialRelationsCleared": true
+        }
+      }
+    },
+    {
+      "id": "DEFECT-002",
+      "title": "Do not freeze contradictory direct-capture docs or an unused skipped result",
+      "observation": {
+        "expectedOutcome": true
+      }
+    },
+    {
+      "id": "WAYFINDER-DEFERRED-001",
+      "title": "Defer module, Notion mapping, runtime, recovery, demo, and roadmap decisions",
+      "observation": {
+        "expectedOutcome": true
+      }
+    }
+  ]
+}

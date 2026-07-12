@@ -69,9 +69,8 @@ export function createCaptureSession(
     evidence: PrepareApplicationRequest['evidence'],
     source: CaptureSource,
   ) => {
-    publish({ phase: 'reading', errors: [], result: null })
+    publish({ phase: 'parsing', errors: [], result: null })
     try {
-      publish({ phase: 'parsing' })
       const response = await activeClient.prepare(evidence)
       const validationErrors = (response.validationFailures || []).map(
         (failure) => failure.message,
@@ -109,9 +108,9 @@ export function createCaptureSession(
     setClient(nextClient: CaptureClient) {
       activeClient = nextClient
     },
-    subscribe(next: (state: CaptureState) => void) {
-      onChange = next
-      next(state)
+    beginReading() {
+      if (state.phase === 'reviewing' && state.dirty) return
+      publish({ phase: 'reading', errors: [], result: null })
     },
     async prepare(
       evidence: PrepareApplicationRequest['evidence'],
@@ -134,11 +133,10 @@ export function createCaptureSession(
       })
     },
     sourceChanged(source: CaptureSource) {
-      if (!state.source) return false
+      if (!state.source) return
       const changed =
         state.source.tabId !== source.tabId || state.source.url !== source.url
       if (changed) publish({ sourceChanged: true })
-      return changed
     },
     async confirm() {
       if (!state.review || !state.evidence || state.phase === 'confirming')
@@ -209,7 +207,7 @@ export function createCaptureSession(
 export interface CaptureSession {
   getState(): CaptureState
   setClient(client: CaptureClient): void
-  subscribe(next: (state: CaptureState) => void): void
+  beginReading(): void
   prepare(
     evidence: PrepareApplicationRequest['evidence'],
     source: CaptureSource,
@@ -220,7 +218,7 @@ export interface CaptureSession {
     | 'discard_confirmation_required'
   >
   updateReview(field: keyof PreparedApplicationDraft, value: string): void
-  sourceChanged(source: CaptureSource): boolean
+  sourceChanged(source: CaptureSource): void
   confirm(): Promise<
     | ConfirmApplicationResponse
     | { ok: false; result: 'needs_review'; missing: string[] }

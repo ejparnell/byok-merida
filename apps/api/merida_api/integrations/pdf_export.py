@@ -125,15 +125,6 @@ class LocalPdfArtifacts:
         if staged.exists():
             staged.unlink()
 
-    def save(
-        self, resume_id: str, document: tuple[DocumentBlock, ...]
-    ) -> Path:
-        staged = self.stage(document)
-        try:
-            return self.publish(resume_id, staged)
-        finally:
-            self.discard(staged)
-
     def remove(self, resume_id: str) -> None:
         path = self._path(resume_id)
         if path.exists():

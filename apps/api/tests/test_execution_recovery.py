@@ -187,10 +187,11 @@ def test_restart_reconciles_unfinished_resume_effects_before_retry(tmp_path):
         return resume, note
 
     resume, note = asyncio.run(create_interrupted_effects())
-    LocalPdfArtifacts(export_path).save(
-        resume.id,
-        (DocumentBlock(kind="paragraph", text="Interrupted PDF"),),
+    pdfs = LocalPdfArtifacts(export_path)
+    staged_pdf = pdfs.stage(
+        (DocumentBlock(kind="paragraph", text="Interrupted PDF"),)
     )
+    pdfs.publish(resume.id, staged_pdf)
     journal = JsonEffectJournal(journal_path)
     journal.start(
         workflow="resume_creation", domain_key="app-orbit", run_id="run-crashed"
