@@ -11,7 +11,7 @@ __pycache__/
 apps/web/dist/
 apps/extension/dist/
 packages/api-client/dist/
-app-data/export/*.pdf
+app-data/export/
 app-data/export/*.tmp
 app-data/recovery/*.json
 app-data/recovery/*.tmp

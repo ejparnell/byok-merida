@@ -666,6 +666,34 @@ def test_public_seam_serializes_partial_analysis_and_failed_resume_outcomes(tmp_
     assert resume.json()["cleanup"]["status"] == "incomplete"
 
 
+def test_resume_generation_failure_is_logged_with_its_cause(tmp_path, caplog):
+    class FailingResumeBuilder:
+        async def build(self, *args, **kwargs):
+            del args, kwargs
+            raise RuntimeError("injected resume builder failure")
+
+    settings = Settings(
+        export_path=tmp_path / "export",
+        recovery_journal_path=tmp_path / "recovery.json",
+    )
+
+    with caplog.at_level("ERROR"):
+        with TestClient(
+            create_test_app(settings, resume_builder=FailingResumeBuilder())
+        ) as client:
+            response = client.post(
+                "/api/v1/resumes/create", json={"applicationId": "app-orbit"}
+            )
+
+    assert response.status_code == 200
+    assert response.json()["errors"] == [
+        "Resume generation could not be completed."
+    ]
+    assert "resume_generation_failed" in caplog.text
+    assert "application_id=app-orbit" in caplog.text
+    assert "injected resume builder failure" in caplog.text
+
+
 def test_invalid_json_and_conflict_use_the_locked_technical_envelope(tmp_path):
     class ConflictWorkspace(FakeWorkspace):
         async def list_analysis_queue(self, *, limit, cursor):

@@ -10,6 +10,24 @@ The side panel has three responsibilities:
 
 The React web dashboard remains responsible for Application Analysis and Resume Creation. Notion remains responsible for editing and managing Applications after capture.
 
+## Install locally in Chrome
+
+Build the extension from the repository root:
+
+```sh
+npm run build
+```
+
+Then:
+
+1. Open `chrome://extensions` in Chrome and turn on **Developer mode**.
+2. Select **Load unpacked** and choose `apps/extension/dist` (the directory, not an individual file).
+3. Copy the ID displayed for **Merida Application Capture** and set the backend's `.env` value to `EXTENSION_ORIGIN=chrome-extension://<extension-id>`.
+4. Restart `npm start` after changing `.env`.
+5. Open a job-posting webpage and click the extension's toolbar icon to open the side panel. In its settings, save the local backend URL and the `CAPTURE_TOKEN` from `.env`.
+
+After rebuilding extension code, use the reload button for this extension on `chrome://extensions`. A build loaded from another directory or Chrome profile can have a different ID, which must also replace `EXTENSION_ORIGIN` before the backend is restarted.
+
 ## Extension Goals
 
 - Keep the capture interface open beside the source page while the user reviews it.

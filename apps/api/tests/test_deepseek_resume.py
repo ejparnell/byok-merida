@@ -30,6 +30,7 @@ from merida_api.integrations.deepseek import DeepSeekJsonClient
 from merida_api.integrations.deepseek_resume import (
     DeepSeekFitRequirementModel,
     DeepSeekResumeDraftModel,
+    create_deepseek_resume_builder,
 )
 from merida_api.shared.prompt_payload import JsonPromptPayloadEncoder
 from fakes.workspace import FakeWorkspace
@@ -52,6 +53,51 @@ def recorded_resume_builder(chat: RecordedChatModel):
         DeepSeekFitRequirementModel(client, encoder),
         DeepSeekResumeDraftModel(client, encoder),
     )
+
+
+def test_resume_builder_uses_analysis_model_for_fit_requirements_and_resume_model_for_draft(
+    monkeypatch,
+):
+    clients = []
+
+    def create_client(**kwargs):
+        client = object()
+        clients.append((kwargs, client))
+        return client
+
+    monkeypatch.setattr(
+        "merida_api.integrations.deepseek_resume.create_deepseek_json_client",
+        create_client,
+    )
+
+    builder = create_deepseek_resume_builder(
+        api_key="test-key",
+        requirement_model="deepseek-v4-flash",
+        resume_model="deepseek-v4-pro",
+    )
+
+    assert [kwargs for kwargs, _client in clients] == [
+        {
+            "api_key": "test-key",
+            "model": "deepseek-v4-flash",
+            "max_tokens": 8000,
+            "timeout": 120,
+        },
+        {
+            "api_key": "test-key",
+            "model": "deepseek-v4-flash",
+            "max_tokens": 16000,
+            "timeout": 180,
+        },
+        {
+            "api_key": "test-key",
+            "model": "deepseek-v4-pro",
+            "max_tokens": 8000,
+        },
+    ]
+    assert builder._graph._requirement_model._client is clients[0][1]
+    assert builder._graph._draft_model._primary._client is clients[1][1]
+    assert builder._graph._draft_model._fallback._client is clients[2][1]
 
 
 def analyzed_application(job_content: str) -> ApplicationRecord:
@@ -99,6 +145,36 @@ def master_resume() -> ResumeDocument:
             DocumentBlock(kind="heading_2", text="Education"),
             DocumentBlock(kind="paragraph", text="Example University"),
             DocumentBlock(kind="bulleted_list_item", text="B.S. Computer Science"),
+        ),
+    )
+
+
+def master_resume_with_duplicate_role_headings() -> ResumeDocument:
+    return ResumeDocument(
+        record=ResumeRecord(
+            id="master-resume",
+            url="https://notion.test/master-resume",
+            name="Master Resume",
+        ),
+        blocks=(
+            DocumentBlock(kind="heading_1", text="Candidate Name"),
+            DocumentBlock(kind="paragraph", text="Boston | candidate@example.test"),
+            DocumentBlock(kind="heading_2", text="Summary"),
+            DocumentBlock(kind="paragraph", text="Original professional summary."),
+            DocumentBlock(kind="heading_2", text="Software Engineer, Example Co"),
+            DocumentBlock(kind="paragraph", text="2022 - Present"),
+            DocumentBlock(kind="bulleted_list_item", text="Built reliable Python APIs."),
+            DocumentBlock(kind="bulleted_list_item", text="Designed observable services."),
+            DocumentBlock(kind="bulleted_list_item", text="Automated integration tests."),
+            DocumentBlock(kind="bulleted_list_item", text="Improved deployment safety."),
+            DocumentBlock(kind="bulleted_list_item", text="Partnered on accessible workflows."),
+            DocumentBlock(kind="heading_2", text="Software Engineer, Example Co"),
+            DocumentBlock(kind="paragraph", text="2019 - 2022"),
+            DocumentBlock(kind="bulleted_list_item", text="Migrated legacy Python services."),
+            DocumentBlock(kind="bulleted_list_item", text="Documented service ownership."),
+            DocumentBlock(kind="bulleted_list_item", text="Reviewed API changes."),
+            DocumentBlock(kind="bulleted_list_item", text="Maintained release tooling."),
+            DocumentBlock(kind="bulleted_list_item", text="Supported incident response."),
         ),
     )
 
@@ -239,6 +315,116 @@ def test_resume_graph_repairs_once_then_completes_roles_from_same_role_evidence(
     assert len(role_bullets) == 5
     assert len(chat.messages) == 3
     assert "role_bullet_count" in chat.messages[2][-1][1]
+
+
+def test_resume_graph_deduplicates_roles_before_deterministic_completion():
+    requirements = {
+        "requirements": [
+            {
+                "id": "req-1",
+                "text": "Build reliable Python services",
+                "type": "responsibility",
+                "category": "Backend",
+                "importance": "required",
+                "evidence": "reliable Python services",
+            }
+        ]
+    }
+    duplicate_roles = {
+        "resume": {
+            "summary": "Platform engineer who builds reliable Python services.",
+            "roles": [
+                {
+                    "sourceSection": "Software Engineer, Example Co",
+                    "bullets": [
+                        {
+                            "text": "Built reliable Python APIs.",
+                            "evidenceIds": ["master-resume:block-7"],
+                            "requirementIds": ["req-1"],
+                        }
+                    ],
+                },
+                {
+                    "sourceSection": "Software Engineer, Example Co",
+                    "bullets": [
+                        {
+                            "text": "Designed observable services.",
+                            "evidenceIds": ["master-resume:block-8"],
+                            "requirementIds": [],
+                        }
+                    ],
+                },
+            ],
+        }
+    }
+    chat = RecordedChatModel(
+        [json.dumps(requirements), json.dumps(duplicate_roles), json.dumps(duplicate_roles)]
+    )
+
+    bundle = asyncio.run(
+        recorded_resume_builder(chat).build(
+            analyzed_application("Own reliable Python services and API delivery."),
+            master_resume(),
+        )
+    )
+
+    role_bullets = [
+        block.text
+        for block in bundle.resume
+        if block.kind == "bulleted_list_item"
+    ]
+    assert len(role_bullets) >= 5
+    assert "Built reliable Python APIs." in role_bullets
+
+
+def test_resume_graph_preserves_distinct_roles_with_the_same_heading():
+    requirements = {
+        "requirements": [
+            {
+                "id": "req-1",
+                "text": "Build reliable Python services",
+                "type": "responsibility",
+                "category": "Backend",
+                "importance": "required",
+                "evidence": "reliable Python services",
+            }
+        ]
+    }
+    incomplete = {
+        "resume": {
+            "summary": "Platform engineer who builds reliable Python services.",
+            "roles": [
+                {
+                    "sourceSection": "Software Engineer, Example Co",
+                    "bullets": [
+                        {
+                            "text": "Built reliable Python APIs.",
+                            "evidenceIds": ["master-resume:block-7"],
+                            "requirementIds": ["req-1"],
+                        }
+                    ],
+                }
+            ],
+        }
+    }
+    chat = RecordedChatModel(
+        [json.dumps(requirements), json.dumps(incomplete), json.dumps(incomplete)]
+    )
+
+    bundle = asyncio.run(
+        recorded_resume_builder(chat).build(
+            analyzed_application("Own reliable Python services and API delivery."),
+            master_resume_with_duplicate_role_headings(),
+        )
+    )
+
+    role_heading_indexes = [
+        index
+        for index, block in enumerate(bundle.resume)
+        if block.text == "Software Engineer, Example Co"
+    ]
+    assert len(role_heading_indexes) == 2
+    assert any(block.text == "Migrated legacy Python services." for block in bundle.resume)
 
 
 def test_resume_graph_removes_invented_metrics_and_ownership_after_one_repair():

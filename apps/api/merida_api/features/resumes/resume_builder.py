@@ -266,7 +266,7 @@ class ResumeDocumentGraph:
         if payload is None:
             return {"generation_error": state.get("generation_error") or "invalid_resume_schema"}
         try:
-            generated = payload.resume
+            generated = _deduplicate_generated_roles(payload.resume, state["roles"])
             _validate_generated_resume(
                 generated,
                 state["evidence"],
@@ -289,11 +289,11 @@ class ResumeDocumentGraph:
     async def _complete_roles(self, state: _ResumeGraphState) -> dict:
         generated = state.get("generated")
         if state.get("generation_error"):
-            if generated is None:
-                raise ResumeModelOutputError(
-                    state["generation_error"],
-                    "Generated Resume returned invalid JSON.",
-                )
+            generated = _resume_from_source_evidence(
+                state["master_resume"],
+                state["evidence"],
+                state["roles"],
+            )
             generated = _deterministically_complete_resume(
                 generated,
                 state["master_resume"],
@@ -609,6 +609,25 @@ def _select_prompt_evidence(
     return tuple(selected)
 
 
+def _deduplicate_generated_roles(
+    generated: _GeneratedResume, roles: tuple[_RoleSource, ...]
+) -> _GeneratedResume:
+    allowed_counts: dict[str, int] = {}
+    for role in roles:
+        allowed_counts[role.source_section] = (
+            allowed_counts.get(role.source_section, 0) + 1
+        )
+    seen_counts: dict[str, int] = {}
+    filtered_roles = []
+    for role in generated.roles:
+        seen_count = seen_counts.get(role.source_section, 0)
+        if seen_count >= allowed_counts.get(role.source_section, 0):
+            continue
+        seen_counts[role.source_section] = seen_count + 1
+        filtered_roles.append(role)
+    return generated.model_copy(update={"roles": filtered_roles})
+
+
 def _validate_generated_resume(
     generated: _GeneratedResume,
     evidence: tuple[EvidenceItem, ...],
@@ -617,14 +636,6 @@ def _validate_generated_resume(
     matcher: EvidenceMatchingEngine,
 ) -> None:
     evidence_by_id = {item.id: item for item in evidence}
-    role_by_section = {role.source_section: role for role in roles}
-    generated_by_section = {role.source_section: role for role in generated.roles}
-    if len(generated_by_section) != len(generated.roles):
-        raise ResumeModelOutputError("duplicate_role", "Generated roles must be unique.")
-    if set(generated_by_section) != set(role_by_section):
-        raise ResumeModelOutputError(
-            "role_chronology", "Every Master Resume role must be preserved in order."
-        )
     if [role.source_section for role in generated.roles] != [
         role.source_section for role in roles
     ]:
@@ -637,8 +648,7 @@ def _validate_generated_resume(
         for fit in fit_score.requirements
         if fit.strongest.strength in {"direct evidence", "adjacent evidence"}
     }
-    for role in generated.roles:
-        source = role_by_section[role.source_section]
+    for role, source in zip(generated.roles, roles, strict=True):
         if len(source.evidence_ids) < 5 or not 5 <= len(role.bullets) <= 7:
             raise ResumeModelOutputError(
                 "role_bullet_count",
@@ -669,10 +679,9 @@ def _deterministically_complete_resume(
     fit_score: ResumeFitScore,
     matcher: EvidenceMatchingEngine,
 ) -> _GeneratedResume:
-    generated_by_section = {
-        role.source_section: role for role in generated.roles
-    }
-    if set(generated_by_section) != {role.source_section for role in roles}:
+    if [role.source_section for role in generated.roles] != [
+        role.source_section for role in roles
+    ]:
         raise ResumeModelOutputError(
             "role_chronology", "Every Master Resume role must be preserved."
         )
@@ -696,8 +705,7 @@ def _deterministically_complete_resume(
                 )
 
     completed_roles = []
-    for source in roles:
-        source_role = generated_by_section[source.source_section]
+    for source, source_role in zip(roles, generated.roles, strict=True):
         allowed = set(source.evidence_ids)
         bullets = []
         used_evidence: set[str] = set()
@@ -744,6 +752,30 @@ def _deterministically_complete_resume(
     if not _claim_supported(summary, evidence, matcher):
         summary = _master_summary(master_resume) or evidence[0].text
     return _GeneratedResume(summary=summary, roles=completed_roles)
+
+
+def _resume_from_source_evidence(
+    master_resume: ResumeDocument,
+    evidence: tuple[EvidenceItem, ...],
+    roles: tuple[_RoleSource, ...],
+) -> _GeneratedResume:
+    evidence_by_id = {item.id: item for item in evidence}
+    return _GeneratedResume(
+        summary=_master_summary(master_resume) or evidence[0].text,
+        roles=[
+            _GeneratedRole(
+                sourceSection=role.source_section,
+                bullets=[
+                    _GeneratedBullet(
+                        text=evidence_by_id[role.evidence_ids[0]].text,
+                        evidenceIds=[role.evidence_ids[0]],
+                        requirementIds=[],
+                    )
+                ],
+            )
+            for role in roles
+        ],
+    )
 
 
 def _master_summary(master_resume: ResumeDocument) -> str | None:
@@ -830,7 +862,10 @@ def _render_resume_document(
     roles: tuple[_RoleSource, ...],
 ) -> tuple[DocumentBlock, ...]:
     role_by_start = {role.heading_index: role for role in roles}
-    generated_by_section = {role.source_section: role for role in generated.roles}
+    generated_by_start = {
+        role.heading_index: generated_role
+        for role, generated_role in zip(roles, generated.roles, strict=True)
+    }
     output: list[DocumentBlock] = []
     index = 0
     while index < len(master_resume.blocks):
@@ -843,7 +878,7 @@ def _render_resume_document(
                     output.append(source_block)
             output.extend(
                 DocumentBlock(kind="bulleted_list_item", text=bullet.text)
-                for bullet in generated_by_section[role.source_section].bullets
+                for bullet in generated_by_start[role.heading_index].bullets
             )
             index = role.end_index
             continue

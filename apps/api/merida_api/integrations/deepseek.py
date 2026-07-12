@@ -66,10 +66,13 @@ class DeepSeekJsonClient:
         return payload
 
 class _LazyDeepSeekChatModel:
-    def __init__(self, *, api_key: str, model: str, max_tokens: int):
+    def __init__(
+        self, *, api_key: str, model: str, max_tokens: int, timeout: float
+    ):
         self._api_key = api_key
         self._model = model
         self._max_tokens = max_tokens
+        self._timeout = timeout
         self._chat = None
 
     def _configured_chat(self):
@@ -81,11 +84,10 @@ class _LazyDeepSeekChatModel:
                 model=self._model,
                 temperature=0,
                 max_tokens=self._max_tokens,
-                timeout=30,
+                timeout=self._timeout,
                 max_retries=0,
             ).bind(
                 response_format={"type": "json_object"},
-                thinking={"type": "disabled"},
             )
         return self._chat
 
@@ -94,11 +96,14 @@ class _LazyDeepSeekChatModel:
 
 
 def create_deepseek_json_client(
-    *, api_key: str, model: str, max_tokens: int = 3000
+    *, api_key: str, model: str, max_tokens: int = 3000, timeout: float = 30
 ) -> DeepSeekJsonClient:
     return DeepSeekJsonClient(
         _LazyDeepSeekChatModel(
-            api_key=api_key, model=model, max_tokens=max_tokens
+            api_key=api_key,
+            model=model,
+            max_tokens=max_tokens,
+            timeout=timeout,
         )
     )
 

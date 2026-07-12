@@ -11,7 +11,11 @@ from ..features.resumes.ports import (
 )
 from ..features.resumes.resume_builder import DeepSeekResumeDocumentBuilder
 from ..shared.prompt_payload import JsonPromptPayloadEncoder
-from .deepseek import DeepSeekJsonClient, create_deepseek_json_client
+from .deepseek import (
+    DeepSeekJsonClient,
+    DeepSeekProviderError,
+    create_deepseek_json_client,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -153,14 +157,50 @@ class DeepSeekResumeDraftModel:
         return GeneratedResumeProposal.model_validate(payload)
 
 
+class _FallbackResumeDraftModel:
+    def __init__(
+        self,
+        primary: DeepSeekResumeDraftModel,
+        fallback: DeepSeekResumeDraftModel,
+    ):
+        self._primary = primary
+        self._fallback = fallback
+
+    async def generate(
+        self,
+        input: ResumeDraftInput,
+        *,
+        repair_code: str | None = None,
+    ) -> GeneratedResumeProposal:
+        try:
+            return await self._primary.generate(input, repair_code=repair_code)
+        except DeepSeekProviderError:
+            return await self._fallback.generate(input, repair_code=repair_code)
+
+
 def create_deepseek_resume_builder(
-    *, api_key: str, model: str
+    *, api_key: str, requirement_model: str, resume_model: str
 ) -> DeepSeekResumeDocumentBuilder:
-    client = create_deepseek_json_client(
-        api_key=api_key, model=model, max_tokens=8000
+    requirement_client = create_deepseek_json_client(
+        api_key=api_key,
+        model=requirement_model,
+        max_tokens=8000,
+        timeout=120,
+    )
+    fast_draft_client = create_deepseek_json_client(
+        api_key=api_key,
+        model=requirement_model,
+        max_tokens=16000,
+        timeout=180,
+    )
+    resume_draft_client = create_deepseek_json_client(
+        api_key=api_key, model=resume_model, max_tokens=8000
     )
     encoder = JsonPromptPayloadEncoder()
     return DeepSeekResumeDocumentBuilder(
-        DeepSeekFitRequirementModel(client, encoder),
-        DeepSeekResumeDraftModel(client, encoder),
+        DeepSeekFitRequirementModel(requirement_client, encoder),
+        _FallbackResumeDraftModel(
+            DeepSeekResumeDraftModel(fast_draft_client, encoder),
+            DeepSeekResumeDraftModel(resume_draft_client, encoder),
+        ),
     )

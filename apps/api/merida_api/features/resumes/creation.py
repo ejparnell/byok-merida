@@ -1,4 +1,5 @@
 from pathlib import Path
+import logging
 from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -45,6 +46,9 @@ from ...shared.observability import log_workflow_outcome, workflow_timer
 from ...matching import SCORING_POLICY_VERSION
 
 
+logger = logging.getLogger(__name__)
+
+
 ResumeCreationOutcome = (
     ResumeCreatedResponse
     | ResumeAlreadyCreatedResponse
@@ -88,6 +92,11 @@ class ResumeCreationGraph:
             )
             return state["outcome"]
         except Exception:
+            logger.exception(
+                "resume_generation_failed boundary=workflow_graph application_id=%s run_id=%s",
+                application_id,
+                run_id,
+            )
             return _generation_failed()
 
     def _build_graph(self):
@@ -201,7 +210,13 @@ class ResumeCreationGraph:
             }
         except ResumeEvidenceError as error:
             return {"outcome": _blocked_error(str(error))}
-        except (ResumeModelOutputError, ResumeGenerationError):
+        except (ResumeModelOutputError, ResumeGenerationError) as error:
+            logger.exception(
+                "resume_generation_failed boundary=document_builder application_id=%s run_id=%s error_type=%s",
+                state["application_id"],
+                state["run_id"],
+                type(error).__name__,
+            )
             return {"outcome": _generation_failed()}
 
     async def _commit_artifacts(self, state: _ResumeCreationState) -> dict:
@@ -243,6 +258,11 @@ class ResumeCreationGraph:
         try:
             return {"staged_pdf": self._committer.stage(state["bundle"])}
         except Exception:
+            logger.exception(
+                "resume_generation_failed boundary=pdf_staging application_id=%s run_id=%s",
+                state["application_id"],
+                state["run_id"],
+            )
             return {"outcome": _generation_failed()}
 
     def _terminal_or_continue(self, state: _ResumeCreationState) -> str:

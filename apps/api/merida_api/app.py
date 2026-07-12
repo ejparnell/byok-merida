@@ -292,7 +292,8 @@ def create_app(
     if resume_builder is None and settings.deepseek_configured:
         resume_builder = create_deepseek_resume_builder(
             api_key=settings.deepseek_api_key,
-            model=settings.resume_model,
+            requirement_model=settings.analysis_model,
+            resume_model=settings.resume_model,
         )
     analysis_model_ready = analysis_model is not None
     resume_builder_ready = resume_builder is not None

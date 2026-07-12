@@ -1,10 +1,14 @@
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 
 from .ports import ResumeCreationStore, ResumePdfArtifacts
 from .workspace import NoteRecord, ResumeArtifactBundle, ResumeRecord
 from ..applications.workspace import ApplicationRecord
 from ...shared.recovery import EffectEntry, EffectJournal
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -105,6 +109,13 @@ class ResumeArtifactCommitter:
                 cleanup_status="not_required",
             )
         except Exception:
+            logger.exception(
+                "resume_artifact_commit_failed application_id=%s run_id=%s resume_id=%s note_id=%s",
+                application.id,
+                run_id or "none",
+                resume.id if resume else "none",
+                note.id if note else "none",
+            )
             self._pdfs.discard(staged)
             cleanup_errors = await self._cleanup(
                 resume_id=resume.id if resume else None,

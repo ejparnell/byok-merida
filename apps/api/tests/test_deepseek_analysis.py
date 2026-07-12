@@ -2,6 +2,8 @@ import asyncio
 import json
 import pytest
 import httpx
+import sys
+import types
 from pathlib import Path
 from fastapi.testclient import TestClient
 
@@ -20,6 +22,7 @@ from merida_api.features.applications.analysis_model import (
 )
 from merida_api.integrations.deepseek import DeepSeekJsonClient
 from merida_api.integrations.deepseek import DeepSeekProviderError
+from merida_api.integrations.deepseek import create_deepseek_json_client
 from merida_api.matching import MATCHING_V1, SCORING_POLICY_VERSION
 from merida_api.matching import EvidenceItem, EvidenceMatchingEngine
 from merida_api.features.applications.workspace import SkillSignal
@@ -46,6 +49,35 @@ class ProviderFailure(Exception):
     def __init__(self, status_code: int):
         super().__init__(f"private provider error {status_code}")
         self.status_code = status_code
+
+
+def test_deepseek_chat_adapter_uses_only_supported_json_mode(monkeypatch):
+    captured = {}
+
+    class FakeChatDeepSeek:
+        def __init__(self, **kwargs):
+            captured["init"] = kwargs
+
+        def bind(self, **kwargs):
+            captured["bind"] = kwargs
+            return self
+
+        async def ainvoke(self, _messages):
+            return type("Message", (), {"content": '{"ok": true}'})()
+
+    module = types.ModuleType("langchain_deepseek")
+    module.ChatDeepSeek = FakeChatDeepSeek
+    monkeypatch.setitem(sys.modules, "langchain_deepseek", module)
+
+    response = asyncio.run(
+        create_deepseek_json_client(
+            api_key="test-key", model="deepseek-v4-flash", max_tokens=32
+        ).request_json([("human", "Return JSON.")])
+    )
+
+    assert response == {"ok": True}
+    assert captured["init"]["max_retries"] == 0
+    assert captured["bind"] == {"response_format": {"type": "json_object"}}
 
 
 class AnalysisStore:
