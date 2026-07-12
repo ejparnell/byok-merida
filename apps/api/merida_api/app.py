@@ -31,11 +31,6 @@ from .features.resumes.schemas import (
     CreateResumeResponse,
     GetResumeCreationQueueResponse,
 )
-from .integrations.demo_workspace import DemoWorkspace
-from .integrations.demo_models import (
-    DemoApplicationAnalysisModel,
-    DemoResumeDocumentBuilder,
-)
 from .integrations.notion_workspace import NotionWorkspace
 from .integrations.pdf_export import LocalPdfArtifacts
 from .shared.pagination import InvalidCursor
@@ -52,7 +47,6 @@ from .shared.schemas import (
     HealthResponse,
     NotionHealthResponse,
     OperatorSettingsResponse,
-    ResetDemoResponse,
     ResumeCreationHealthResponse,
 )
 
@@ -67,46 +61,35 @@ def _api_error_responses(*status_codes: int) -> dict[int, dict]:
     }
 
 
-def _health(settings: Settings, recovery_error: str | None = None) -> dict:
-    if settings.merida_mode == "demo":
-        checks = {
-            "settings": "ready",
-            "notion": "blocked" if recovery_error else "ready",
-            "analysis": "ready",
-            "resumes": "blocked" if recovery_error else "ready",
-        }
-        return {
-            "ok": not recovery_error,
-            "status": "blocked" if recovery_error else "ready",
-            "service": "merida-api",
-            "mode": "demo",
-            "checks": checks,
-            "validationFailures": [],
-            "errors": [recovery_error] if recovery_error else [],
-        }
-
+def _health(
+    settings: Settings,
+    recovery_error: str | None = None,
+    *,
+    workspace_ready: bool = False,
+    analysis_model_ready: bool = False,
+    resume_builder_ready: bool = False,
+) -> dict:
     errors = []
-    notion = "ready" if settings.notion_configured else "blocked"
-    analysis = "ready" if settings.notion_configured and settings.deepseek_configured else "blocked"
-    resumes = analysis
+    notion = "ready" if workspace_ready else "blocked"
+    analysis = "ready" if workspace_ready and analysis_model_ready else "blocked"
+    resumes = "ready" if workspace_ready and resume_builder_ready else "blocked"
     if not settings.notion_configured:
         errors.append("Notion configuration is incomplete.")
     if not settings.deepseek_configured:
         errors.append("DEEPSEEK_API_KEY is not configured.")
-    if settings.notion_configured:
-        errors.append("The real Notion adapter has not been enabled in this build; use MERIDA_MODE=demo.")
-        notion = analysis = resumes = "blocked"
+    if not analysis_model_ready or not resume_builder_ready:
+        errors.append("Real DeepSeek workflow adapters are not enabled in this build.")
     if recovery_error:
         errors.append(recovery_error)
         notion = resumes = "blocked"
+    ready = notion == analysis == resumes == "ready"
     return {
-        "ok": False,
-        "status": "blocked",
+        "ok": ready,
+        "status": "ready" if ready else "blocked",
         "service": "merida-api",
-        "mode": "real",
         "checks": {"settings": "ready", "notion": notion, "analysis": analysis, "resumes": resumes},
         "validationFailures": [],
-        "errors": errors,
+        "errors": [] if ready else list(dict.fromkeys(errors)),
     }
 
 
@@ -150,28 +133,19 @@ def create_app(
     coordinator: ExecutionCoordinator | None = None,
 ) -> FastAPI:
     settings = settings or Settings()
+    workspace_injected = workspace is not None
+    analysis_model_ready = analysis_model is not None
+    resume_builder_ready = resume_builder is not None
     if workspace is None:
-        workspace = (
-            DemoWorkspace(
-                settings.demo_state_path,
-                settings.export_path,
-                fixture_path=settings.demo_fixture_path,
-            )
-            if settings.merida_mode == "demo"
-            else NotionWorkspace(
-                token=settings.notion_token,
-                application_database_id=settings.notion_database_id,
-                resume_database_id=settings.notion_resume_database_id,
-                notes_database_id=settings.notion_notes_database_id,
-            )
+        workspace = NotionWorkspace(
+            token=settings.notion_token,
+            application_database_id=settings.notion_database_id,
+            resume_database_id=settings.notion_resume_database_id,
+            notes_database_id=settings.notion_notes_database_id,
         )
+    workspace_ready = workspace_injected or settings.notion_configured
     coordinator = coordinator or ExecutionCoordinator()
     recovery_path = settings.recovery_journal_path
-    if (
-        recovery_path == Settings().recovery_journal_path
-        and settings.demo_state_path != Settings().demo_state_path
-    ):
-        recovery_path = settings.demo_state_path.parent / "recovery-effects.json"
     try:
         journal = JsonEffectJournal(recovery_path)
         recovery_error = None
@@ -181,13 +155,11 @@ def create_app(
         )
         journal = UnavailableEffectJournal(recovery_error)
     capture = ApplicationCapture(workspace, coordinator, journal)
-    analysis = ApplicationAnalysis(
-        workspace, analysis_model or DemoApplicationAnalysisModel(), coordinator
-    )
+    analysis = ApplicationAnalysis(workspace, analysis_model, coordinator)
     pdf_artifacts = LocalPdfArtifacts(settings.export_path)
     resumes = ResumeCreation(
         workspace,
-        resume_builder or DemoResumeDocumentBuilder(),
+        resume_builder,
         ResumeArtifactCommitter(workspace, pdf_artifacts, journal),
         coordinator,
         journal,
@@ -377,40 +349,43 @@ def create_app(
         responses=_api_error_responses(500),
     )
     async def get_health():
-        return _health(settings, recovery_error)
+        return _health(
+            settings,
+            recovery_error,
+            workspace_ready=workspace_ready,
+            analysis_model_ready=analysis_model_ready,
+            resume_builder_ready=resume_builder_ready,
+        )
 
     @app.get("/api/v1/health/notion", operation_id="getNotionHealth", response_model=NotionHealthResponse, responses=_api_error_responses(500))
     async def get_notion_health():
-        health = _health(settings, recovery_error)
+        health = await get_health()
         ready = health["checks"]["notion"] == "ready"
-        return {"ok": ready, "status": "ready" if ready else "blocked", "workspace": "demo" if settings.merida_mode == "demo" else "notion", "databases": {"applications": health["checks"]["notion"], "resumes": health["checks"]["notion"], "notes": health["checks"]["notion"]}, "validationFailures": health["validationFailures"], "errors": [] if ready else health["errors"]}
+        return {"ok": ready, "status": "ready" if ready else "blocked", "databases": {"applications": health["checks"]["notion"], "resumes": health["checks"]["notion"], "notes": health["checks"]["notion"]}, "validationFailures": health["validationFailures"], "errors": [] if ready else health["errors"]}
 
     @app.get("/api/v1/health/analysis", operation_id="getApplicationAnalysisHealth", response_model=ApplicationAnalysisHealthResponse, responses=_api_error_responses(500))
     async def get_analysis_health():
-        health = _health(settings, recovery_error)
+        health = await get_health()
         ready = health["checks"]["analysis"] == "ready"
         state = "ready" if ready else "blocked"
         return {"ok": ready, "status": state, "workflow": "application_analysis", "checks": {"deepseek": state, "applicationsDatabase": health["checks"]["notion"], "jobContentAccess": health["checks"]["notion"], "masterResumeEvidence": state, "evidenceMatcher": state}, "validationFailures": health["validationFailures"], "errors": [] if ready else health["errors"]}
 
     @app.get("/api/v1/health/resumes", operation_id="getResumeCreationHealth", response_model=ResumeCreationHealthResponse, responses=_api_error_responses(500))
     async def get_resume_health():
-        health = _health(settings, recovery_error)
+        health = await get_health()
         ready = health["checks"]["resumes"] == "ready"
         state = "ready" if ready else "blocked"
         return {"ok": ready, "status": state, "workflow": "resume_creation", "checks": {"deepseek": state, "notion": health["checks"]["notion"], "fitAnalysis": state, "masterResume": state, "pdfExport": state}, "validationFailures": health["validationFailures"], "errors": [] if ready else health["errors"]}
 
     @app.get("/api/v1/operator/settings", operation_id="getOperatorSettings", response_model=OperatorSettingsResponse, responses=_api_error_responses(500))
     async def get_operator_settings():
-        demo = settings.merida_mode == "demo"
         return {
             "ok": True,
-            "mode": settings.merida_mode,
-            "workspace": "demo" if demo else "notion",
             "models": {
-                "analysis": "demo-analysis-v1" if demo else settings.analysis_model,
-                "resumes": "demo-resume-v1" if demo else settings.resume_model,
+                "analysis": settings.analysis_model,
+                "resumes": settings.resume_model,
             },
-            "configured": {"notion": demo or settings.notion_configured, "deepseek": demo or settings.deepseek_configured},
+            "configured": {"notion": settings.notion_configured, "deepseek": settings.deepseek_configured},
             "validationFailures": [],
             "errors": [],
         }
@@ -433,31 +408,31 @@ def create_app(
         responses=_api_error_responses(400, 401, 413, 415, 500),
     )
     async def confirm_application(request: ConfirmApplicationRequest):
-        if settings.merida_mode != "demo":
-            return {"ok": False, "status": "blocked", "result": "blocked", "validationFailures": [], "errors": ["Real workspace writes are not enabled in this build."]}
+        if not workspace_ready:
+            return {"ok": False, "status": "blocked", "result": "blocked", "validationFailures": [], "errors": ["Notion configuration is incomplete."]}
         return await capture.confirm(request.draft)
 
     @app.get("/api/v1/applications/analysis/queue", operation_id="getApplicationAnalysisQueue", response_model=GetApplicationAnalysisQueueResponse, responses=_api_error_responses(400, 500))
     async def get_analysis_queue(limit: int = Query(default=5, ge=1, le=10), cursor: str | None = None):
-        if settings.merida_mode != "demo":
-            return {"ok": False, "status": "blocked", "queueCount": 0, "items": [], "pagination": {"limit": limit, "nextCursor": None, "hasMore": False}, "validationFailures": [], "errors": ["Real Application Analysis is not enabled in this build."]}
+        if not workspace_ready:
+            return {"ok": False, "status": "blocked", "queueCount": 0, "items": [], "pagination": {"limit": limit, "nextCursor": None, "hasMore": False}, "validationFailures": [], "errors": ["Notion configuration is incomplete."]}
         return await analysis.get_queue(limit, cursor)
 
     @app.post("/api/v1/applications/analysis/run", operation_id="runApplicationAnalysis", response_model=RunApplicationAnalysisResponse, responses=_api_error_responses(400, 409, 415, 500))
     async def run_application_analysis(request: RunApplicationAnalysisRequest):
-        if settings.merida_mode != "demo":
+        if not analysis_model_ready:
             return {"ok": False, "status": "blocked", "result": "blocked", "processed": 0, "succeeded": 0, "failed": 0, "repaired": 0, "items": [], "validationFailures": [], "errors": ["Real Application Analysis is not enabled in this build."]}
         return await analysis.run_batch(request.limit)
 
     @app.get("/api/v1/resumes/queue", operation_id="getResumeCreationQueue", response_model=GetResumeCreationQueueResponse, responses=_api_error_responses(400, 500))
     async def get_resume_queue(limit: int = Query(default=5, ge=1, le=10), cursor: str | None = None):
-        if settings.merida_mode != "demo":
-            return {"ok": False, "status": "blocked", "queueCount": 0, "items": [], "pagination": {"limit": limit, "nextCursor": None, "hasMore": False}, "validationFailures": [], "errors": ["Real Resume Creation is not enabled in this build."]}
+        if not workspace_ready:
+            return {"ok": False, "status": "blocked", "queueCount": 0, "items": [], "pagination": {"limit": limit, "nextCursor": None, "hasMore": False}, "validationFailures": [], "errors": ["Notion configuration is incomplete."]}
         return await resumes.get_queue(limit, cursor)
 
     @app.post("/api/v1/resumes/create", operation_id="createResume", response_model=CreateResumeResponse, responses=_api_error_responses(400, 409, 415, 500))
     async def create_resume(request: CreateResumeRequest):
-        if settings.merida_mode != "demo":
+        if not resume_builder_ready:
             return {"ok": False, "status": "blocked", "result": "blocked", "cleanup": {"status": "not_required", "errors": []}, "validationFailures": [], "errors": ["Real Resume Creation is not enabled in this build."]}
         return await resumes.create(request.application_id)
 
@@ -471,27 +446,10 @@ def create_app(
         },
     )
     async def download_resume_pdf(resume_id: str = ApiPath(alias="resumeId")):
-        if settings.merida_mode != "demo":
-            raise HTTPException(status_code=404, detail={"code": "pdf_not_found", "message": "Resume PDF was not found."})
         path = resumes.pdf_path(resume_id)
         if path is None:
             raise HTTPException(status_code=404, detail={"code": "pdf_not_found", "message": "Resume PDF was not found."})
         return FileResponse(path, media_type="application/pdf", filename=path.name)
-
-    @app.post("/api/v1/demo/reset", operation_id="resetDemo", response_model=ResetDemoResponse, responses=_api_error_responses(404, 500))
-    async def reset_demo():
-        if settings.merida_mode != "demo":
-            raise HTTPException(status_code=404, detail={"code": "demo_not_active", "message": "Demo mode is not active."})
-        async with coordinator.exclusive(
-            "workflow:demo-reset",
-            "A workflow mutation is already in progress.",
-            conflict_prefixes=(
-                "workflow:application-analysis",
-                "workflow:resume-creation",
-                "capture:",
-            ),
-        ):
-            return await workspace.reset()
 
     web_dist = dashboard_dist or Path(__file__).resolve().parents[2] / "web" / "dist"
     dashboard_index = web_dist / "index.html"

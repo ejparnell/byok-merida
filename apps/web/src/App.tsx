@@ -80,10 +80,6 @@ function Readiness({
             Notion.
           </p>
         </div>
-        <div className="mode-chip">
-          <span />
-          {settings?.mode || 'loading'} mode
-        </div>
       </div>
       <div className="status-track" aria-label="Workflow readiness">
         {segments.map(([label, status]) => (
@@ -494,11 +490,6 @@ export function App() {
     setTheme(next)
   }
 
-  const resetDemo = async () => {
-    await client.resetDemo()
-    await session.load({ reset: true })
-  }
-
   return (
     <div className={cx('app-shell', `theme-${theme}`)}>
       <header className="topbar">
@@ -510,11 +501,6 @@ export function App() {
           </a>
         </nav>
         <div className="topbar-actions">
-          {view.settings?.mode === 'demo' && (
-            <button type="button" onClick={resetDemo}>
-              Reset demo
-            </button>
-          )}
           <button
             type="button"
             onClick={toggleTheme}

@@ -7,7 +7,8 @@ from fastapi.testclient import TestClient
 
 from merida_api.app import create_app
 from merida_api.core.settings import Settings
-from merida_api.integrations.demo_workspace import DemoWorkspace, initial_demo_state
+from fakes.app import create_test_app
+from fakes.workspace import FakeWorkspace, initial_test_state
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -15,16 +16,20 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 def make_client(tmp_path, **overrides):
     settings = Settings(
-        merida_mode="demo",
         capture_token="test-capture-token",
-        demo_state_path=tmp_path / "state.json",
+        notion_token="test-notion-token",
+        notion_database_id="applications-database",
+        notion_resume_database_id="resumes-database",
+        notion_notes_database_id="notes-database",
+        deepseek_api_key="test-deepseek-key",
         export_path=tmp_path / "export",
+        recovery_journal_path=tmp_path / "recovery.json",
         **overrides,
     )
-    return TestClient(create_app(settings))
+    return TestClient(create_test_app(settings, state_path=tmp_path / "state.json"))
 
 
-def test_health_and_operator_settings_are_safe_and_ready_in_demo_mode(tmp_path):
+def test_health_and_operator_settings_are_safe_and_ready(tmp_path):
     with make_client(tmp_path) as client:
         health = client.get("/api/v1/health").json()
         settings = client.get("/api/v1/operator/settings").json()
@@ -33,7 +38,6 @@ def test_health_and_operator_settings_are_safe_and_ready_in_demo_mode(tmp_path):
         "ok": True,
         "status": "ready",
         "service": "merida-api",
-        "mode": "demo",
         "checks": {
             "settings": "ready",
             "notion": "ready",
@@ -44,8 +48,8 @@ def test_health_and_operator_settings_are_safe_and_ready_in_demo_mode(tmp_path):
         "errors": [],
     }
     assert settings["models"] == {
-        "analysis": "demo-analysis-v1",
-        "resumes": "demo-resume-v1",
+        "analysis": "deepseek-v4-flash",
+        "resumes": "deepseek-v4-pro",
     }
     assert "captureToken" not in settings
     assert "notionToken" not in settings
@@ -65,11 +69,29 @@ def test_health_openapi_uses_a_named_discriminated_response(tmp_path):
         "ok",
         "status",
         "service",
-        "mode",
         "checks",
         "validationFailures",
         "errors",
     }
+
+
+def test_public_contract_has_one_real_runtime_and_no_demo_surface(tmp_path):
+    with make_client(tmp_path) as client:
+        health = client.get("/api/v1/health").json()
+        operator_settings = client.get("/api/v1/operator/settings").json()
+        schema = client.get("/openapi.json").json()
+        removed_reset = client.post("/api/v1/demo/reset")
+
+    assert "mode" not in health
+    assert "mode" not in operator_settings
+    assert "workspace" not in operator_settings
+    assert "/api/v1/demo/reset" not in schema["paths"]
+    assert "ResetDemoResponse" not in schema["components"]["schemas"]
+    assert "demo_not_active" not in schema["components"]["schemas"][
+        "ApiErrorDetail"
+    ]["properties"]["code"]["enum"]
+    assert removed_reset.status_code == 404
+    assert removed_reset.json()["error"]["code"] == "not_found"
 
 
 def test_capture_is_review_first_protected_and_idempotent(tmp_path):
@@ -233,24 +255,23 @@ def test_already_created_resume_reports_a_missing_historical_pdf_as_null(tmp_pat
 
 
 def test_already_created_resume_allows_missing_historical_note_and_pdf(tmp_path):
-    state = initial_demo_state()
+    state = initial_test_state()
     application = next(item for item in state["applications"] if item["id"] == "app-orbit")
     application["resumeId"] = "resume-historical"
     state["resumes"]["resume-historical"] = {
         "id": "resume-historical",
         "title": "Platform Engineer at Orbit Works",
-        "url": "https://www.notion.so/demo/resume-historical",
+        "url": "https://www.notion.so/test/resume-historical",
         "filename": "missing.pdf",
     }
     state_path = tmp_path / "state.json"
     state_path.write_text(json.dumps(state))
     settings = Settings(
-        merida_mode="demo",
-        demo_state_path=state_path,
         export_path=tmp_path / "export",
+        recovery_journal_path=tmp_path / "recovery.json",
     )
 
-    with TestClient(create_app(settings)) as client:
+    with TestClient(create_test_app(settings, state_path=state_path)) as client:
         existing = client.post(
             "/api/v1/resumes/create", json={"applicationId": "app-orbit"}
         ).json()
@@ -260,12 +281,16 @@ def test_already_created_resume_allows_missing_historical_note_and_pdf(tmp_path)
     assert existing["pdf"] is None
 
 
-def test_real_mode_exposes_typed_blocked_health_queues_and_resume_outcome(tmp_path):
+def test_unconfigured_real_runtime_exposes_typed_blocked_outcomes(tmp_path):
     settings = Settings(
-        merida_mode="real",
         capture_token="test-capture-token",
-        demo_state_path=tmp_path / "state.json",
+        notion_token="",
+        notion_database_id="",
+        notion_resume_database_id="",
+        notion_notes_database_id="",
+        deepseek_api_key="",
         export_path=tmp_path / "export",
+        recovery_journal_path=tmp_path / "recovery.json",
     )
 
     with TestClient(create_app(settings)) as client:
@@ -309,19 +334,18 @@ def test_real_mode_exposes_typed_blocked_health_queues_and_resume_outcome(tmp_pa
 
 
 def test_analysis_repairs_existing_findings_without_rerunning_work(tmp_path):
-    state = initial_demo_state()
+    state = initial_test_state()
     application = next(item for item in state["applications"] if item["id"] == "app-northstar")
     application["analysis"] = {"summary": "Existing findings", "skillSignals": ["React"]}
     application["matchScore"] = 77
     state_path = tmp_path / "state.json"
     state_path.write_text(json.dumps(state))
     settings = Settings(
-        merida_mode="demo",
-        demo_state_path=state_path,
         export_path=tmp_path / "export",
+        recovery_journal_path=tmp_path / "recovery.json",
     )
 
-    with TestClient(create_app(settings)) as client:
+    with TestClient(create_test_app(settings, state_path=state_path)) as client:
         response = client.post(
             "/api/v1/applications/analysis/run", json={"limit": 1}
         )
@@ -332,7 +356,7 @@ def test_analysis_repairs_existing_findings_without_rerunning_work(tmp_path):
 
 
 def test_public_seam_serializes_partial_analysis_and_failed_resume_outcomes(tmp_path):
-    class OutcomeWorkspace(DemoWorkspace):
+    class OutcomeWorkspace(FakeWorkspace):
         async def append_application_analysis(self, application_id, document):
             if application_id == "app-lantern":
                 raise RuntimeError("injected item failure")
@@ -345,13 +369,12 @@ def test_public_seam_serializes_partial_analysis_and_failed_resume_outcomes(tmp_
             raise RuntimeError("injected cleanup failure")
 
     settings = Settings(
-        merida_mode="demo",
-        demo_state_path=tmp_path / "state.json",
         export_path=tmp_path / "export",
+        recovery_journal_path=tmp_path / "recovery.json",
     )
-    workspace = OutcomeWorkspace(settings.demo_state_path, settings.export_path)
+    workspace = OutcomeWorkspace(tmp_path / "state.json")
 
-    with TestClient(create_app(settings, workspace=workspace)) as client:
+    with TestClient(create_test_app(settings, workspace=workspace)) as client:
         analysis = client.post(
             "/api/v1/applications/analysis/run", json={"limit": 2}
         )
@@ -371,7 +394,7 @@ def test_public_seam_serializes_partial_analysis_and_failed_resume_outcomes(tmp_
 
 
 def test_invalid_json_and_conflict_use_the_locked_technical_envelope(tmp_path):
-    class ConflictWorkspace(DemoWorkspace):
+    class ConflictWorkspace(FakeWorkspace):
         async def list_analysis_queue(self, *, limit, cursor):
             raise HTTPException(
                 status_code=409,
@@ -382,13 +405,12 @@ def test_invalid_json_and_conflict_use_the_locked_technical_envelope(tmp_path):
             )
 
     settings = Settings(
-        merida_mode="demo",
-        demo_state_path=tmp_path / "state.json",
         export_path=tmp_path / "export",
+        recovery_journal_path=tmp_path / "recovery.json",
     )
-    workspace = ConflictWorkspace(settings.demo_state_path, settings.export_path)
+    workspace = ConflictWorkspace(tmp_path / "state.json")
 
-    with TestClient(create_app(settings, workspace=workspace)) as client:
+    with TestClient(create_test_app(settings, workspace=workspace)) as client:
         invalid_json = client.post(
             "/api/v1/applications/analysis/run",
             content="{",
@@ -641,20 +663,19 @@ def test_cors_allows_only_configured_browser_origins_and_headers(tmp_path):
 
 
 def test_unexpected_failures_are_sanitized_and_correlated(tmp_path, caplog):
-    class ExplodingWorkspace(DemoWorkspace):
+    class ExplodingWorkspace(FakeWorkspace):
         async def validate_analysis_workspace(self):
             raise RuntimeError("private provider response must not escape")
 
     settings = Settings(
-        merida_mode="demo",
         capture_token="test-capture-token",
-        demo_state_path=tmp_path / "state.json",
         export_path=tmp_path / "export",
+        recovery_journal_path=tmp_path / "recovery.json",
     )
-    workspace = ExplodingWorkspace(settings.demo_state_path, settings.export_path)
+    workspace = ExplodingWorkspace(tmp_path / "state.json")
 
     with TestClient(
-        create_app(settings, workspace=workspace), raise_server_exceptions=False
+        create_test_app(settings, workspace=workspace), raise_server_exceptions=False
     ) as client:
         response = client.post(
             "/api/v1/applications/analysis/run", json={"limit": 1}
@@ -666,20 +687,6 @@ def test_unexpected_failures_are_sanitized_and_correlated(tmp_path, caplog):
     assert response.json()["validationFailures"] == []
     assert "private provider response" not in response.text
     assert "private provider response" not in caplog.text
-
-
-def test_demo_reset_is_stable_but_unavailable_in_real_mode(tmp_path):
-    settings = Settings(
-        merida_mode="real",
-        demo_state_path=tmp_path / "state.json",
-        export_path=tmp_path / "export",
-    )
-
-    with TestClient(create_app(settings)) as client:
-        response = client.post("/api/v1/demo/reset")
-
-    assert response.status_code == 404
-    assert response.json()["error"]["code"] == "demo_not_active"
 
 
 def test_openapi_locks_the_public_route_inventory_and_named_responses(tmp_path):
@@ -725,7 +732,6 @@ def test_openapi_locks_the_public_route_inventory_and_named_responses(tmp_path):
             "createResume",
             "CreateResumeResponse",
         ),
-        ("post", "/api/v1/demo/reset"): ("resetDemo", "ResetDemoResponse"),
     }
 
     with make_client(tmp_path) as client:
@@ -791,7 +797,6 @@ def test_openapi_locks_the_public_route_inventory_and_named_responses(tmp_path):
         "invalid_capture_token",
         "not_found",
         "pdf_not_found",
-        "demo_not_active",
         "method_not_allowed",
         "conflict",
         "payload_too_large",
@@ -813,9 +818,8 @@ def test_emitted_openapi_matches_the_accepted_client_contract(tmp_path):
 
 def test_production_start_rejects_a_missing_dashboard_build(tmp_path):
     settings = Settings(
-        merida_mode="demo",
-        demo_state_path=tmp_path / "state.json",
         export_path=tmp_path / "export",
+        recovery_journal_path=tmp_path / "recovery.json",
     )
 
     with pytest.raises(RuntimeError, match="dashboard build is missing"):
@@ -831,9 +835,8 @@ def test_dashboard_history_fallback_serves_the_built_app(tmp_path):
     dashboard_dist.mkdir()
     dashboard_dist.joinpath("index.html").write_text("<main>Merida dashboard</main>")
     settings = Settings(
-        merida_mode="demo",
-        demo_state_path=tmp_path / "state.json",
         export_path=tmp_path / "export",
+        recovery_journal_path=tmp_path / "recovery.json",
     )
 
     with TestClient(create_app(settings, dashboard_dist=dashboard_dist)) as client:

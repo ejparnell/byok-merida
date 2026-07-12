@@ -86,7 +86,6 @@ class ApplicationCapture:
         async with self._coordinator.exclusive(
             f"capture:{normalized.job_url}",
             "Application Capture is already in progress for this Job URL.",
-            conflict_keys=("workflow:demo-reset",),
         ) as run:
             readiness = await self._store.validate_capture_workspace()
             if not readiness.ready:

@@ -83,7 +83,7 @@ export type ApiErrorDetail = {
     /**
      * Code
      */
-    code: 'invalid_request' | 'invalid_cursor' | 'invalid_capture_token' | 'not_found' | 'pdf_not_found' | 'demo_not_active' | 'method_not_allowed' | 'conflict' | 'payload_too_large' | 'unsupported_media_type' | 'internal_error';
+    code: 'invalid_request' | 'invalid_cursor' | 'invalid_capture_token' | 'not_found' | 'pdf_not_found' | 'method_not_allowed' | 'conflict' | 'payload_too_large' | 'unsupported_media_type' | 'internal_error';
     /**
      * Message
      */
@@ -634,10 +634,6 @@ export type HealthResponse = {
      */
     errors: Array<string>;
     /**
-     * Mode
-     */
-    mode: 'demo' | 'real';
-    /**
      * Ok
      */
     ok: boolean;
@@ -694,10 +690,6 @@ export type NotionHealthResponse = {
      * Validationfailures
      */
     validationFailures: Array<RequestValidationFailure | ConfigurationValidationFailure | WorkspaceSchemaValidationFailure>;
-    /**
-     * Workspace
-     */
-    workspace: 'demo' | 'notion';
 };
 
 /**
@@ -737,10 +729,6 @@ export type OperatorSettingsResponse = {
      * Errors
      */
     errors: Array<string>;
-    /**
-     * Mode
-     */
-    mode: 'demo' | 'real';
     models: OperatorModels;
     /**
      * Ok
@@ -750,10 +738,6 @@ export type OperatorSettingsResponse = {
      * Validationfailures
      */
     validationFailures: Array<RequestValidationFailure | ConfigurationValidationFailure | WorkspaceSchemaValidationFailure>;
-    /**
-     * Workspace
-     */
-    workspace: 'demo' | 'notion';
 };
 
 /**
@@ -881,28 +865,6 @@ export type RequestValidationFailure = {
      * Message
      */
     message: string;
-};
-
-/**
- * ResetDemoResponse
- */
-export type ResetDemoResponse = {
-    /**
-     * Errors
-     */
-    errors: Array<string>;
-    /**
-     * Ok
-     */
-    ok: true;
-    /**
-     * Result
-     */
-    result: 'reset';
-    /**
-     * Validationfailures
-     */
-    validationFailures: Array<RequestValidationFailure | ConfigurationValidationFailure | WorkspaceSchemaValidationFailure>;
 };
 
 /**
@@ -1449,35 +1411,6 @@ export type PrepareApplicationResponses = {
 };
 
 export type PrepareApplicationResponse2 = PrepareApplicationResponses[keyof PrepareApplicationResponses];
-
-export type ResetDemoData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/v1/demo/reset';
-};
-
-export type ResetDemoErrors = {
-    /**
-     * Technical error
-     */
-    404: ApiErrorResponse;
-    /**
-     * Technical error
-     */
-    500: ApiErrorResponse;
-};
-
-export type ResetDemoError = ResetDemoErrors[keyof ResetDemoErrors];
-
-export type ResetDemoResponses = {
-    /**
-     * Successful Response
-     */
-    200: ResetDemoResponse;
-};
-
-export type ResetDemoResponse2 = ResetDemoResponses[keyof ResetDemoResponses];
 
 export type GetHealthData = {
     body?: never;

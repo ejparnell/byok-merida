@@ -21,8 +21,8 @@ FastAPI backend
   -> Notes modules
   -> deterministic Matching module
   -> workflow-owned store and model interfaces
-    <- Notion and demo adapters
-    <- DeepSeek and deterministic model adapters
+    <- Notion adapters and test-only store fakes
+    <- DeepSeek adapters and test-only model fakes
     <- PDF and filesystem adapters
 
 Notion
@@ -39,12 +39,12 @@ app-data/export/
 | Backend server | FastAPI | HTTP routing, request validation, OpenAPI schema, CORS, final workflow responses, health checks. |
 | Backend schemas | Pydantic | Request and response contracts, config validation, Notion DTOs. |
 | Backend tests | pytest | Module tests, router tests, adapter tests, workflow regression tests. |
-| Main frontend | React + TypeScript | Operator app for readiness, analysis batches, resume creation, review links, demo mode. |
+| Main frontend | React + TypeScript | Operator app for readiness, analysis batches, resume creation, and review links. |
 | Frontend build | Vite | Fast local development and production static builds for the React app and extension UI. |
 | API client | Generated from OpenAPI | Type-safe calls from React and the extension to FastAPI. |
 | Extension | Chrome MV3 + React side panel | Capture active-tab evidence, review parsed fields, confirm writes. |
 | Durable workspace | Notion | User-owned Job Postings, Resumes, and Notes databases. |
-| Demo workspace | Local fixtures | Portfolio-safe mode with no private Notion data or secrets. |
+| Test support | Injected deterministic fakes | Credential-free verification without a second product runtime. |
 | LLM provider | DeepSeek | Application Analysis, Fit Requirement extraction, and resume generation. |
 | Fit analysis | Python module | Local requirement/evidence matching, scoring, and normalization. |
 | PDF export | Backend module | Creates application-ready PDFs after successful resume generation. |
@@ -56,7 +56,7 @@ app-data/export/
 - **Feature ownership**: Applications owns pursuit workflows, Job Postings owns source-opportunity behavior, Resumes owns resume generation, and Notes owns note documents.
 - **Deep modules**: workflow rules sit behind small interfaces; routes and screens stay thin.
 - **Evidence-backed output**: generated analysis and resumes must remain traceable to Job Content and Master Resume evidence.
-- **Demoable without private data**: the final app should run in demo mode from checked-in fixtures.
+- **Credential-free verification**: tests inject deterministic boundary fakes without exposing a second product runtime.
 
 ## FastAPI Server Layer
 
@@ -106,8 +106,8 @@ The final app should make these modules explicit.
 | Module | External interface | Important adapters |
 | --- | --- | --- |
 | Local Operator App | `create_app(settings, adapters)` | FastAPI app factory, CORS/auth policy, router composition. |
-| Application Capture | `prepare(evidence)`, `confirm(draft)` | `CaptureStore`, Job Posting parser, real and demo model adapters. |
-| Capture Evidence | `create_capture_evidence(raw)` | Chrome extension payloads, future pasted text, demo fixtures. |
+| Application Capture | `prepare(evidence)`, `confirm(draft)` | `CaptureStore`, Job Posting parser, and Notion adapter. |
+| Capture Evidence | `create_capture_evidence(raw)` | Chrome extension payloads, future pasted text, and test fixtures. |
 | Application Analysis | `get_queue(query)`, `run_batch(limit)` | `ApplicationAnalysisStore`, task-specific model adapter, Matching. |
 | Resume Creation | `get_queue(query)`, `create(application_id)` | `ResumeCreationStore`, task-specific model adapters, Matching, Notes, artifact committer. |
 | Matching | `match(targets, evidence_items, scoring_policy)` | Deterministic Python implementation, normalization dictionary. |
@@ -116,16 +116,16 @@ The final app should make these modules explicit.
 | Resume Artifact Committer | `commit(validated_bundle)` | Ordered Notion, PDF, relation, and reverse-compensation effects. |
 
 There is no global `Workspace` interface. Capture, Application Analysis, and
-Resume Creation each own a narrow semantic store interface. The Notion and demo
-adapters may implement all three, but the composition root passes each workflow
+Resume Creation each own a narrow semantic store interface. The Notion adapter
+and test-only fakes may implement all three, but the composition root passes each workflow
 only the interface it is allowed to use. Model interfaces are likewise
 workflow-specific; shared DeepSeek infrastructure stays private to the adapter.
 
 ## Data And Storage
 
-The final app should keep Notion as the v1 durable workspace, with a demo adapter that mirrors the same workflow-owned interfaces.
+The final app keeps Notion as the only v1 durable product workspace. Test-only fakes mirror the workflow-owned interfaces for credential-free verification.
 
-Real mode:
+The product runtime:
 
 - reads and writes existing Notion Job Postings, Resumes, and Notes databases
 - validates schema before writes
@@ -133,12 +133,12 @@ Real mode:
 - stores Resume Fit Analysis in related Notes
 - writes PDFs to `app-data/export/`
 
-Demo mode:
+Test composition:
 
-- reads checked-in sample Job Postings, Master Resume evidence, and Notes
-- writes to local temporary state
-- never calls Notion or DeepSeek unless explicitly configured
-- supports screenshots, walkthroughs, and GitHub review without private data
+- reads test-owned fictional Applications, Master Resume evidence, and Notes
+- writes only to isolated temporary state
+- never calls Notion or DeepSeek
+- is available only through explicit dependency injection in tests
 
 ## Auth And Local Trust
 
@@ -150,7 +150,7 @@ The current token policy maps cleanly to FastAPI dependencies.
 | Chrome extension | `X-Capture-Token` for capture, parse, and confirm. |
 | CLI or curl | `X-Capture-Token` for protected write endpoints. |
 
-FastAPI dependencies should own token validation, CORS origin checks, settings access, and current workspace adapter selection.
+FastAPI dependencies should own token validation, CORS origin checks, and settings access. The production composition always selects the real workspace adapter.
 
 ## API Contract Strategy
 
@@ -161,13 +161,12 @@ FastAPI should be the source of truth for HTTP contracts.
 - TypeScript API clients are generated from OpenAPI for the React app and extension.
 - Contract tests compare key prototype responses with the new Pydantic models during migration.
 
-## Portfolio Readiness
+## Project Readiness
 
 The final app should include:
 
 - clear setup docs with `.env.example`
-- demo mode that works without private secrets
 - screenshots or a short demo video
 - a concise architecture diagram
 - CI for backend tests, frontend tests, type checks, and extension build
-- sample data that demonstrates Capture, Analysis, Resume Creation, and PDF export safely
+- credential-free tests that demonstrate Capture, Analysis, Resume Creation, and PDF export safely

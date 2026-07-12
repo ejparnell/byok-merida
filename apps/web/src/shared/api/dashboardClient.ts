@@ -6,7 +6,6 @@ import {
   getOperatorSettings,
   getResumeCreationQueue,
   invokeApiData,
-  resetDemo,
   runApplicationAnalysis,
 } from '@merida/api-client'
 import type {
@@ -15,7 +14,6 @@ import type {
   GetResumeCreationQueueResponse,
   HealthResponse,
   OperatorSettingsResponse,
-  ResetDemoResponse,
   RunApplicationAnalysisResponse,
 } from '@merida/api-client'
 
@@ -33,7 +31,6 @@ export interface DashboardClient {
   }): Promise<DashboardSnapshot>
   runAnalysis(limit: number): Promise<RunApplicationAnalysisResponse>
   createResume(applicationId: string): Promise<CreateResumeResponse>
-  resetDemo(): Promise<ResetDemoResponse>
 }
 
 const queueQuery = (cursor?: string | null) => ({
@@ -102,11 +99,6 @@ export function createDashboardClient(
           body: { applicationId },
           throwOnError: true,
         }),
-      )
-    },
-    resetDemo() {
-      return invokeApiData(
-        resetDemo<true>({ client: generatedClient, throwOnError: true }),
       )
     },
   }

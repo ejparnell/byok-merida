@@ -124,7 +124,6 @@
               "invalid_capture_token",
               "not_found",
               "pdf_not_found",
-              "demo_not_active",
               "method_not_allowed",
               "conflict",
               "payload_too_large",
@@ -1288,14 +1287,6 @@
             "title": "Errors",
             "type": "array"
           },
-          "mode": {
-            "enum": [
-              "demo",
-              "real"
-            ],
-            "title": "Mode",
-            "type": "string"
-          },
           "ok": {
             "title": "Ok",
             "type": "boolean"
@@ -1345,7 +1336,6 @@
           "errors",
           "status",
           "service",
-          "mode",
           "checks"
         ],
         "title": "HealthResponse",
@@ -1439,14 +1429,6 @@
             },
             "title": "Validationfailures",
             "type": "array"
-          },
-          "workspace": {
-            "enum": [
-              "demo",
-              "notion"
-            ],
-            "title": "Workspace",
-            "type": "string"
           }
         },
         "required": [
@@ -1454,7 +1436,6 @@
           "validationFailures",
           "errors",
           "status",
-          "workspace",
           "databases"
         ],
         "title": "NotionHealthResponse",
@@ -1511,14 +1492,6 @@
             "title": "Errors",
             "type": "array"
           },
-          "mode": {
-            "enum": [
-              "demo",
-              "real"
-            ],
-            "title": "Mode",
-            "type": "string"
-          },
           "models": {
             "$ref": "#/components/schemas/OperatorModels"
           },
@@ -1550,22 +1523,12 @@
             },
             "title": "Validationfailures",
             "type": "array"
-          },
-          "workspace": {
-            "enum": [
-              "demo",
-              "notion"
-            ],
-            "title": "Workspace",
-            "type": "string"
           }
         },
         "required": [
           "ok",
           "validationFailures",
           "errors",
-          "mode",
-          "workspace",
           "models",
           "configured"
         ],
@@ -1814,61 +1777,6 @@
           "message"
         ],
         "title": "RequestValidationFailure",
-        "type": "object"
-      },
-      "ResetDemoResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "errors": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Errors",
-            "type": "array"
-          },
-          "ok": {
-            "const": true,
-            "title": "Ok",
-            "type": "boolean"
-          },
-          "result": {
-            "const": "reset",
-            "title": "Result",
-            "type": "string"
-          },
-          "validationFailures": {
-            "items": {
-              "discriminator": {
-                "mapping": {
-                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
-                  "request": "#/components/schemas/RequestValidationFailure",
-                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
-                },
-                "propertyName": "kind"
-              },
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/RequestValidationFailure"
-                },
-                {
-                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
-                },
-                {
-                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
-                }
-              ]
-            },
-            "title": "Validationfailures",
-            "type": "array"
-          }
-        },
-        "required": [
-          "ok",
-          "validationFailures",
-          "errors",
-          "result"
-        ],
-        "title": "ResetDemoResponse",
         "type": "object"
       },
       "ResumeAlreadyCreatedResponse": {
@@ -2975,44 +2883,6 @@
           }
         },
         "summary": "Prepare Application"
-      }
-    },
-    "/api/v1/demo/reset": {
-      "post": {
-        "operationId": "resetDemo",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ResetDemoResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Technical error"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Technical error"
-          }
-        },
-        "summary": "Reset Demo"
       }
     },
     "/api/v1/health": {

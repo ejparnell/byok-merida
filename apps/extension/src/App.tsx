@@ -51,7 +51,7 @@ async function readCaptureHealth(
   }
   try {
     const result = await activeClient.health()
-    const ready = result.mode === 'demo' || result.checks.notion === 'ready'
+    const ready = result.checks.notion === 'ready'
     return {
       phase: ready ? 'ready' : 'blocked',
       errors: ready ? [] : result.errors,

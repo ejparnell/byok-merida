@@ -191,26 +191,6 @@ h2 {
   font-size: 12px;
   line-height: 1.65;
 }
-.mode-chip {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 11px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  color: var(--muted);
-  font-size: 9px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-.mode-chip span {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent);
-}
-
 .status-track {
   display: grid;
   grid-template-columns: repeat(5, 1fr);

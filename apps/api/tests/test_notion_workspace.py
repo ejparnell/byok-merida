@@ -14,7 +14,7 @@ from merida_api.features.applications.workspace import (
 )
 from merida_api.features.resumes.commit import ResumeArtifactCommitter
 from merida_api.features.resumes.workspace import DocumentBlock, ResumeArtifactBundle
-from merida_api.integrations.demo_workspace import DemoWorkspace, initial_demo_state
+from fakes.workspace import FakeWorkspace, initial_test_state
 from merida_api.integrations.notion_workspace import (
     HttpxNotionTransport,
     NotionWorkspace,
@@ -757,8 +757,8 @@ def test_resume_artifact_writes_keep_resume_unlinked_until_final_attachment_and_
     assert archive_resume == ("PATCH", "/pages/resume-1", {"archived": True})
 
 
-def test_demo_analysis_store_preserves_body_first_property_second_commit_contract(tmp_path):
-    store = DemoWorkspace(tmp_path / "state.json", tmp_path / "export")
+def test_fake_analysis_store_preserves_body_first_property_second_commit_contract(tmp_path):
+    store = FakeWorkspace(tmp_path / "state.json", tmp_path / "export")
     document = ApplicationAnalysisDocument(
         summary="Sentence one. Sentence two. Sentence three.",
         match_score=84,
@@ -782,7 +782,7 @@ def test_demo_analysis_store_preserves_body_first_property_second_commit_contrac
 
 
 def test_capture_workflow_carries_exact_source_url_from_prepare_into_confirm(tmp_path):
-    store = DemoWorkspace(tmp_path / "state.json", tmp_path / "export")
+    store = FakeWorkspace(tmp_path / "state.json", tmp_path / "export")
     capture = ApplicationCapture(store)
     evidence = CaptureEvidence(
         url="https://example.test/jobs/42?utm_source=newsletter",
@@ -811,8 +811,8 @@ def test_capture_workflow_carries_exact_source_url_from_prepare_into_confirm(tmp
     assert created["capturedUrl"] == evidence.url
 
 
-def test_demo_resume_store_uses_relation_last_as_the_completion_marker(tmp_path):
-    store = DemoWorkspace(tmp_path / "state.json", tmp_path / "export")
+def test_fake_resume_store_uses_relation_last_as_the_completion_marker(tmp_path):
+    store = FakeWorkspace(tmp_path / "state.json", tmp_path / "export")
     document = (DocumentBlock(kind="heading_1", text="Elizabeth Parnell"),)
 
     draft = asyncio.run(store.create_resume_draft("Engineer at Example", document))
@@ -830,7 +830,7 @@ def test_demo_resume_store_uses_relation_last_as_the_completion_marker(tmp_path)
 
 
 def test_artifact_committer_clears_a_relation_when_final_attach_response_fails(tmp_path):
-    class AppliedThenFailedWorkspace(DemoWorkspace):
+    class AppliedThenFailedWorkspace(FakeWorkspace):
         async def attach_resume_to_application(self, resume_id, application_id):
             await super().attach_resume_to_application(resume_id, application_id)
             raise RuntimeError("simulated response loss after relation write")
@@ -938,8 +938,8 @@ async def assert_capture_store_contract(store, existing_job_url: str):
     assert existing.application_status == "To Apply"
 
 
-def test_demo_capture_store_conformance(tmp_path):
-    store = DemoWorkspace(tmp_path / "state.json", tmp_path / "export")
+def test_fake_capture_store_conformance(tmp_path):
+    store = FakeWorkspace(tmp_path / "state.json", tmp_path / "export")
     asyncio.run(
         assert_capture_store_contract(
             store, "https://jobs.example.test/northstar/frontend"
@@ -984,8 +984,8 @@ async def assert_capture_write_contract(store, job_url: str):
     assert found.analyzed is False
 
 
-def test_demo_capture_write_conformance(tmp_path):
-    store = DemoWorkspace(tmp_path / "state.json", tmp_path / "export")
+def test_fake_capture_write_conformance(tmp_path):
+    store = FakeWorkspace(tmp_path / "state.json", tmp_path / "export")
     asyncio.run(
         assert_capture_write_contract(store, "https://jobs.example.test/new-role")
     )
@@ -1043,12 +1043,12 @@ async def assert_capture_duplicate_conflict_contract(store, job_url: str):
         raise AssertionError("Expected duplicate canonical Job URLs to conflict.")
 
 
-def test_demo_capture_duplicate_conflict_conformance(tmp_path):
-    state = initial_demo_state()
+def test_fake_capture_duplicate_conflict_conformance(tmp_path):
+    state = initial_test_state()
     state["applications"].append({**state["applications"][0], "id": "duplicate"})
     state_path = tmp_path / "state.json"
     state_path.write_text(json.dumps(state))
-    store = DemoWorkspace(state_path, tmp_path / "export")
+    store = FakeWorkspace(state_path, tmp_path / "export")
     asyncio.run(
         assert_capture_duplicate_conflict_contract(
             store, "https://jobs.example.test/northstar/frontend"
@@ -1095,8 +1095,8 @@ async def assert_capture_partial_failure_contract(store, job_url: str):
     assert await store.find_application_by_job_url(job_url) is None
 
 
-def test_demo_capture_partial_failure_conformance(tmp_path):
-    class FailingCaptureStore(DemoWorkspace):
+def test_fake_capture_partial_failure_conformance(tmp_path):
+    class FailingCaptureStore(FakeWorkspace):
         async def create_application(self, *args, **kwargs):
             raise WorkspaceProviderError("Safe injected failure.")
 
@@ -1180,8 +1180,8 @@ async def assert_analysis_store_contract(store):
             raise AssertionError("Expected a queue mutation to expire the cursor.")
 
 
-def test_demo_analysis_store_conformance(tmp_path):
-    store = DemoWorkspace(tmp_path / "state.json", tmp_path / "export")
+def test_fake_analysis_store_conformance(tmp_path):
+    store = FakeWorkspace(tmp_path / "state.json", tmp_path / "export")
     asyncio.run(assert_analysis_store_contract(store))
 
 
@@ -1247,8 +1247,8 @@ async def assert_analysis_write_contract(store, application_id: str):
     assert completed.match_score == 84
 
 
-def test_demo_analysis_write_conformance(tmp_path):
-    store = DemoWorkspace(tmp_path / "state.json", tmp_path / "export")
+def test_fake_analysis_write_conformance(tmp_path):
+    store = FakeWorkspace(tmp_path / "state.json", tmp_path / "export")
     asyncio.run(assert_analysis_write_contract(store, "app-northstar"))
 
 
@@ -1298,8 +1298,8 @@ async def assert_legacy_analysis_repair_contract(store, application_id: str):
     assert repaired.match_score == repair_score
 
 
-def test_demo_legacy_analysis_repair_conformance(tmp_path):
-    state = initial_demo_state()
+def test_fake_legacy_analysis_repair_conformance(tmp_path):
+    state = initial_test_state()
     application = state["applications"][0]
     application["analysis"] = {
         "summary": "Existing legacy analysis.",
@@ -1311,7 +1311,7 @@ def test_demo_legacy_analysis_repair_conformance(tmp_path):
     state_path.write_text(json.dumps(state))
     asyncio.run(
         assert_legacy_analysis_repair_contract(
-            DemoWorkspace(state_path, tmp_path / "export"), "app-northstar"
+            FakeWorkspace(state_path, tmp_path / "export"), "app-northstar"
         )
     )
 
@@ -1364,8 +1364,8 @@ async def assert_resume_store_contract(store):
     assert master.blocks
 
 
-def test_demo_resume_store_conformance(tmp_path):
-    store = DemoWorkspace(tmp_path / "state.json", tmp_path / "export")
+def test_fake_resume_store_conformance(tmp_path):
+    store = FakeWorkspace(tmp_path / "state.json", tmp_path / "export")
     asyncio.run(assert_resume_store_contract(store))
 
 
@@ -1433,8 +1433,8 @@ async def assert_resume_artifact_store_contract(store, application):
     assert await store.find_completed_resume(related_application) is None
 
 
-def test_demo_resume_artifact_store_conformance(tmp_path):
-    store = DemoWorkspace(tmp_path / "state.json", tmp_path / "export")
+def test_fake_resume_artifact_store_conformance(tmp_path):
+    store = FakeWorkspace(tmp_path / "state.json", tmp_path / "export")
     application = asyncio.run(store.load_resume_input("app-orbit"))
     asyncio.run(assert_resume_artifact_store_contract(store, application))
 
@@ -1506,27 +1506,27 @@ async def assert_multiple_resume_conflict_contract(store, application):
         raise AssertionError("Expected multiple active Resumes to conflict.")
 
 
-def test_demo_multiple_resume_conflict_conformance(tmp_path):
-    state = initial_demo_state()
+def test_fake_multiple_resume_conflict_conformance(tmp_path):
+    state = initial_test_state()
     state["resumes"] = {
         "resume-1": {
             "id": "resume-1",
             "title": "Engineer at Example",
-            "url": "https://www.notion.so/demo/resume-1",
+            "url": "https://www.notion.so/test/resume-1",
             "applicationId": "app-orbit",
             "archived": False,
         },
         "resume-2": {
             "id": "resume-2",
             "title": "Engineer at Example",
-            "url": "https://www.notion.so/demo/resume-2",
+            "url": "https://www.notion.so/test/resume-2",
             "applicationId": "app-orbit",
             "archived": False,
         },
     }
     state_path = tmp_path / "state.json"
     state_path.write_text(json.dumps(state))
-    store = DemoWorkspace(state_path, tmp_path / "export")
+    store = FakeWorkspace(state_path, tmp_path / "export")
     application = replace(
         asyncio.run(store.load_resume_input("app-orbit")),
         resume_ids=("resume-1", "resume-2"),

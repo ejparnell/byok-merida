@@ -80,7 +80,6 @@ class ResumeCreation:
         async with self._coordinator.exclusive(
             "workflow:resume-creation",
             "Resume Creation is already in progress.",
-            conflict_keys=("workflow:demo-reset",),
         ) as run:
             async with self._coordinator.exclusive(
                 f"application:{application_id}",

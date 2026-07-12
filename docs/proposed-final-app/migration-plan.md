@@ -11,10 +11,10 @@ Completed:
 - target workflow module seams and dependency direction
 - FastAPI `/api/v1` shell and OpenAPI schema
 - workflow-owned Python store interfaces
-- persisted demo adapter and deterministic demo workflow results
+- deterministic test fakes behind workflow-owned interfaces
 - production React `/dashboard`
 - production React MV3 review-first side panel
-- PDF download and demo reset
+- PDF download through the shared artifact contract
 - public REST and UI-session tests
 
 Not yet cut over:
@@ -33,7 +33,7 @@ Each workflow is a vertical migration slice. A slice may cut over only when:
 2. every relevant `parity_required` and `target_addition` fixture passes;
 3. forbidden effects and private-data logging checks pass;
 4. idempotency, commit ordering, and cleanup cases pass;
-5. the React caller works through the same OpenAPI contract used by demo mode;
+5. the React caller works through the accepted OpenAPI contract exercised by credential-free ASGI tests;
 6. the prototype route remains available as a fallback until the slice is accepted.
 
 ## Slice 1: Real Application Capture
@@ -54,9 +54,9 @@ Port Fit Requirement extraction, Matching, evidence gating, Resume Draft generat
 
 Exit: one-at-a-time creation is idempotent, Resume and PDF render from the same validated document, final attachment is last, and every partial failure compensates in reverse order with explicit residue.
 
-## Slice 4: Real-Mode Enablement
+## Slice 4: Real Runtime Completion
 
-Enable `MERIDA_MODE=real` only after all three slices pass readiness and parity. Generate the frontend client from the accepted OpenAPI document, add CI gates for backend tests and both React builds, and refresh setup/operations docs.
+Complete the single real composition only after all three slices pass readiness and parity. Generate the frontend client from the accepted OpenAPI document, add CI gates for backend tests and both React builds, and refresh setup/operations docs. There is no mode selector or fictional fallback.
 
 ## Slice 5: Prototype Retirement
 

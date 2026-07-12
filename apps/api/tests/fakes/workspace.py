@@ -7,19 +7,19 @@ from pathlib import Path
 from typing import Callable
 from uuid import uuid4
 
-from ..features.applications.schemas import ConfirmedApplicationDraft
-from ..features.applications.workspace import (
+from merida_api.features.applications.schemas import ConfirmedApplicationDraft
+from merida_api.features.applications.workspace import (
     ApplicationAnalysisDocument,
     ApplicationRecord,
 )
-from ..features.resumes.workspace import (
+from merida_api.features.resumes.workspace import (
     DocumentBlock,
     NoteRecord,
     ResumeDocument,
     ResumeRecord,
 )
-from ..shared.pagination import InvalidCursor, decode_cursor, encode_cursor
-from ..shared.workspace import (
+from merida_api.shared.pagination import InvalidCursor, decode_cursor, encode_cursor
+from merida_api.shared.workspace import (
     QueuePage,
     WorkspaceDataConflict,
     WorkspaceDataError,
@@ -27,22 +27,20 @@ from ..shared.workspace import (
 )
 
 
-DEFAULT_DEMO_FIXTURE = (
-    Path(__file__).resolve().parents[4] / "app-data/demo/fixtures/state.v1.json"
-)
+DEFAULT_TEST_FIXTURE = Path(__file__).resolve().parents[1] / "fixtures/workspace.v1.json"
 
 
-def initial_demo_state() -> dict:
-    return json.loads(DEFAULT_DEMO_FIXTURE.read_text())
+def initial_test_state() -> dict:
+    return json.loads(DEFAULT_TEST_FIXTURE.read_text())
 
 
-class DemoWorkspace:
+class FakeWorkspace:
     def __init__(
         self,
         state_path: Path,
         _export_path: Path | None = None,
         *,
-        fixture_path: Path = DEFAULT_DEMO_FIXTURE,
+        fixture_path: Path = DEFAULT_TEST_FIXTURE,
     ):
         self._state_path = state_path
         self._fixture_path = fixture_path
@@ -169,7 +167,7 @@ class DemoWorkspace:
             )
         return ApplicationRecord(
             id=application["id"],
-            url=f'https://www.notion.so/demo/{application["id"]}',
+            url=f'https://www.notion.so/test/{application["id"]}',
             company_name=application["companyName"],
             role=application["role"],
             job_url=application["jobUrl"],
@@ -332,8 +330,8 @@ class DemoWorkspace:
 
     async def load_master_resume(self) -> ResumeDocument:
         record = ResumeRecord(
-            id="demo-master-resume",
-            url="https://www.notion.so/demo/master-resume",
+            id="test-master-resume",
+            url="https://www.notion.so/test/master-resume",
             name="Master Resume",
         )
         return ResumeDocument(
@@ -354,7 +352,7 @@ class DemoWorkspace:
         resume = {
             "id": resume_id,
             "title": name,
-            "url": f"https://www.notion.so/demo/{resume_id}",
+            "url": f"https://www.notion.so/test/{resume_id}",
             "applicationId": None,
             "document": [block.__dict__ for block in document],
             "archived": False,
@@ -375,7 +373,7 @@ class DemoWorkspace:
         note = {
             "id": note_id,
             "title": name,
-            "url": f"https://www.notion.so/demo/{note_id}",
+            "url": f"https://www.notion.so/test/{note_id}",
             "applicationId": application_id,
             "resumeId": resume_id,
             "document": [block.__dict__ for block in document],

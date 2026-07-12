@@ -21,7 +21,7 @@ export async function collectCaptureEvidence(): Promise<CollectedCaptureEvidence
   if (!globalThis.chrome?.tabs || !globalThis.chrome?.scripting) {
     return {
       evidence: {
-        url: 'https://jobs.example.test/demo/frontend-engineer',
+        url: 'https://jobs.example.test/test/frontend-engineer',
         title: 'Senior Frontend Engineer at Northstar Labs',
         selectedText: '',
         visibleText:
@@ -30,7 +30,7 @@ export async function collectCaptureEvidence(): Promise<CollectedCaptureEvidence
       },
       source: {
         tabId: 0,
-        url: 'https://jobs.example.test/demo/frontend-engineer',
+        url: 'https://jobs.example.test/test/frontend-engineer',
       },
     }
   }

@@ -16,9 +16,8 @@ def main() -> None:
     with TemporaryDirectory() as temporary_directory:
         temporary_path = Path(temporary_directory)
         settings = Settings(
-            merida_mode="demo",
-            demo_state_path=temporary_path / "state.json",
             export_path=temporary_path / "export",
+            recovery_journal_path=temporary_path / "recovery.json",
         )
         schema = create_app(settings).openapi()
 

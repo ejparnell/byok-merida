@@ -10,7 +10,9 @@ test('analysis completion resets both queue cursors and keeps a safe final resul
       calls.push(['load', analysisCursor, resumeCursor])
       return {
         health: { checks: { analysis: 'ready', resumes: 'ready' } },
-        settings: { models: { analysis: 'demo', resumes: 'demo' } },
+        settings: {
+          models: { analysis: 'analysis-test', resumes: 'resume-test' },
+        },
         analysisQueue: {
           queueCount: 1,
           items: [],
@@ -52,7 +54,9 @@ test('resume completion keeps output links after the queue refresh', async () =>
   const client = {
     loadDashboard: async () => ({
       health: { checks: { analysis: 'ready', resumes: 'ready' } },
-      settings: { models: { analysis: 'demo', resumes: 'demo' } },
+      settings: {
+        models: { analysis: 'analysis-test', resumes: 'resume-test' },
+      },
       analysisQueue: {
         queueCount: 0,
         items: [],
@@ -95,7 +99,9 @@ test('invalid queue cursors recover once by loading both first pages', async () 
       }
       return {
         health: { checks: { analysis: 'ready', resumes: 'ready' } },
-        settings: { models: { analysis: 'demo', resumes: 'demo' } },
+        settings: {
+          models: { analysis: 'analysis-test', resumes: 'resume-test' },
+        },
         analysisQueue: {
           queueCount: 0,
           items: [],
@@ -129,7 +135,9 @@ test('empty analysis and already-created resume outcomes preserve valid cursors'
       loads.push([analysisCursor, resumeCursor])
       return {
         health: { checks: { analysis: 'ready', resumes: 'ready' } },
-        settings: { models: { analysis: 'demo', resumes: 'demo' } },
+        settings: {
+          models: { analysis: 'analysis-test', resumes: 'resume-test' },
+        },
         analysisQueue: {
           queueCount: 0,
           items: [],
@@ -178,7 +186,9 @@ test('created resume resets only the Resume Creation Queue cursor', async () => 
       loads.push([analysisCursor, resumeCursor])
       return {
         health: { checks: { analysis: 'ready', resumes: 'ready' } },
-        settings: { models: { analysis: 'demo', resumes: 'demo' } },
+        settings: {
+          models: { analysis: 'analysis-test', resumes: 'resume-test' },
+        },
         analysisQueue: {
           queueCount: 0,
           items: [],
@@ -214,7 +224,9 @@ test('failure-only analysis preserves valid queue cursors', async () => {
       loads.push([analysisCursor, resumeCursor])
       return {
         health: { checks: { analysis: 'ready', resumes: 'ready' } },
-        settings: { models: { analysis: 'demo', resumes: 'demo' } },
+        settings: {
+          models: { analysis: 'analysis-test', resumes: 'resume-test' },
+        },
         analysisQueue: {
           queueCount: 1,
           items: [],

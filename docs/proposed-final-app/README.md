@@ -7,7 +7,7 @@ This folder describes the FastAPI and React target built from the working protot
 The first production-shaped vertical slice is implemented:
 
 - FastAPI application factory and versioned REST routes under `/api/v1`
-- persisted, resettable demo workspace with eligible-only queues
+- one real Notion composition with eligible-only queues
 - review-first Application Capture with `X-Capture-Token`
 - bounded Application Analysis with one final typed response
 - one-at-a-time, idempotent Resume Creation with Resume, Note, and PDF outputs
@@ -15,7 +15,7 @@ The first production-shaped vertical slice is implemented:
 - functional React MV3 side panel using the accepted Focused Flow design
 - OpenAPI schema, public-interface tests, production builds, and FastAPI static serving
 
-Demo mode is complete and is the default. The existing real Notion and DeepSeek implementation remains in the frozen Node prototype while its behavior is migrated behind the new workflow-owned Python interfaces. The FastAPI app reports real mode as blocked instead of silently writing through an incomplete adapter. See [Implementation Review](implementation-review.md) for the review findings and remaining cutover work.
+The selectable demo runtime has been removed. The FastAPI app always targets the configured real Notion workspace and reports blocked readiness when real dependencies or workflow adapters are incomplete. Deterministic stores and models remain test-only dependencies injected behind workflow-owned interfaces. The existing real DeepSeek implementation remains in the frozen Node prototype while its behavior is migrated. See [Implementation Review](implementation-review.md) for the review findings and remaining cutover work.
 
 ## Run The Implemented App
 
@@ -56,7 +56,7 @@ The proposed technology update is:
 
 ## Why This Shape
 
-The prototype proved the workflow. The final app should make that workflow easier to understand, run, demo, and maintain.
+The prototype proved the workflow. The final app should make that workflow easier to understand, run, verify, and maintain.
 
 The main architectural move is not "add more layers." It is to keep each workflow behind deep modules with small interfaces. FastAPI routes and React screens should be thin adapters over domain modules like Job Posting Capture, Job Posting Analysis, Resume Fit Analysis, and Resume Creation.
 
@@ -73,7 +73,7 @@ The main architectural move is not "add more layers." It is to keep each workflo
 
 - Notion remains the durable user workspace for the first shareable version.
 - DeepSeek remains the configured LLM provider until a second provider is truly needed.
-- The app remains local-first for v1, with a polished demo mode for GitHub and LinkedIn.
+- The app remains local-first for v1 and operates only against explicitly configured real providers.
 - The browser extension never stores Notion or DeepSeek secrets.
 - The React web app replaces backend-served `/analysis` and `/resumes` pages.
 - The React extension replaces the current handwritten side-panel UI.

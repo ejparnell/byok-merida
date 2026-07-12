@@ -796,16 +796,6 @@ Failure:
 }
 ```
 
-## Demo Administration
-
-| HTTP verb | Route | Simple explanation |
-| --- | --- | --- |
-| `POST` | `/demo/reset` | Restores deterministic fictional demo state. |
-
-`POST /demo/reset` remains in OpenAPI in both modes. It returns result `reset`
-in demo mode and `404 demo_not_active` in real mode, so both modes use one
-generated client contract.
-
 ## Generated Client And Verification
 
 - `@hey-api/openapi-ts` `0.99.0` and TypeScript `5.9.3` are pinned development dependencies.

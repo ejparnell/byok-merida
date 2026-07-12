@@ -1,6 +1,4 @@
 from pathlib import Path
-from typing import Literal
-
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -16,7 +14,6 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    merida_mode: Literal["demo", "real"] = "demo"
     capture_token: str = "local-capture-token"
     api_host: str = "127.0.0.1"
     api_port: int = 8000
@@ -31,14 +28,10 @@ class Settings(BaseSettings):
     analysis_model: str = "deepseek-v4-flash"
     resume_model: str = "deepseek-v4-pro"
 
-    demo_fixture_path: Path = REPOSITORY_ROOT / "app-data/demo/fixtures/state.v1.json"
-    demo_state_path: Path = REPOSITORY_ROOT / "app-data/demo/state.json"
     export_path: Path = REPOSITORY_ROOT / "app-data/export"
     recovery_journal_path: Path = REPOSITORY_ROOT / "app-data/recovery/effects.json"
 
     @field_validator(
-        "demo_fixture_path",
-        "demo_state_path",
         "export_path",
         "recovery_journal_path",
         mode="after",

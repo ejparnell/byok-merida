@@ -48,7 +48,6 @@ ApiErrorCode = Literal[
     "invalid_capture_token",
     "not_found",
     "pdf_not_found",
-    "demo_not_active",
     "method_not_allowed",
     "conflict",
     "payload_too_large",
@@ -78,7 +77,6 @@ class HealthChecks(ApiModel):
 class HealthResponse(CommonResponse):
     status: Literal["ready", "blocked"]
     service: Literal["merida-api"]
-    mode: Literal["demo", "real"]
     checks: HealthChecks
 
 
@@ -90,7 +88,6 @@ class NotionDatabaseChecks(ApiModel):
 
 class NotionHealthResponse(CommonResponse):
     status: Literal["ready", "blocked"]
-    workspace: Literal["demo", "notion"]
     databases: NotionDatabaseChecks
 
 
@@ -133,8 +130,6 @@ class OperatorConfigured(ApiModel):
 
 
 class OperatorSettingsResponse(CommonResponse):
-    mode: Literal["demo", "real"]
-    workspace: Literal["demo", "notion"]
     models: OperatorModels
     configured: OperatorConfigured
 
@@ -143,8 +138,3 @@ class Pagination(ApiModel):
     limit: int = Field(ge=1, le=10)
     next_cursor: str | None = Field(alias="nextCursor")
     has_more: bool = Field(alias="hasMore")
-
-
-class ResetDemoResponse(CommonResponse):
-    ok: Literal[True]
-    result: Literal["reset"]

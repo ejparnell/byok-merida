@@ -36,7 +36,6 @@ docs/
   proposed-final-app/
 app-data/
   export/
-  demo/
 ```
 
 ## Backend Layout
@@ -93,9 +92,7 @@ apps/api/merida_api/
       tests/
   integrations/
     notion_workspace.py
-    demo_workspace.py
     deepseek_models.py
-    demo_models.py
     pdf_export.py
     notion_relations.py
   shared/
@@ -110,7 +107,7 @@ apps/api/merida_api/
 - Workflow modules return typed results, not FastAPI `Response` objects.
 - Applications owns pursuit workflow orchestration; Job Postings owns source-opportunity parsing and values.
 - Each workflow owns its narrow store and model interfaces in `ports.py`.
-- Notion, demo, DeepSeek, PDF, and filesystem adapters depend inward on those interfaces.
+- Notion, DeepSeek, PDF, and filesystem adapters depend inward on those interfaces; deterministic fakes live under test support.
 - Shared integration modules are only for concepts used by multiple features.
 - Feature tests target the module interface first, router behavior second.
 
@@ -271,7 +268,7 @@ class ResumeCreationStore(Protocol):
     # Artifact operations used only by ResumeArtifactCommitter.
 ```
 
-The Notion and demo adapters may implement every interface, but the composition
+The Notion adapter and test-only fakes may implement every interface, but the composition
 root injects only the relevant interface into each workflow. Exact operation
 names may be refined by the Notion compatibility decision without widening the
 interfaces or exposing Notion payloads.
@@ -302,7 +299,7 @@ class ResumeDraftModel(Protocol):
 ```
 
 Matching is deterministic and provider-independent. Model interfaces are
-workflow-specific; DeepSeek and demo adapters hide prompt and provider details.
+workflow-specific; DeepSeek adapters hide prompt and provider details, while deterministic model fakes remain test-only.
 
 ### Notes and artifact commit
 
@@ -327,11 +324,11 @@ The interface is the test surface.
 | Test type | Target |
 | --- | --- |
 | Backend module tests | Application Capture, Application Analysis, Matching, Resume Creation, Notes rendering, artifact commit. |
-| Backend adapter tests | Narrow store conformance, Notion relation validation, demo behavior, task-specific model contracts. |
+| Backend adapter tests | Narrow store conformance, Notion relation validation, fake behavior, task-specific model contracts. |
 | Router tests | HTTP status, auth policy, request validation, and final response shape. |
 | Frontend unit tests | Rendering, queue interactions, progress states, error states. |
 | Extension tests | Capture Evidence collection, settings storage, API client calls. |
-| End-to-end tests | Demo mode Capture -> Analysis -> Resume Creation path. |
+| End-to-end tests | ASGI Capture -> Analysis -> Resume Creation with injected boundary fakes. |
 
 Prototype tests that only assert internal plumbing should be replaced as deeper module tests land.
 

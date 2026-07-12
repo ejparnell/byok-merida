@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ConfirmApplicationData, ConfirmApplicationErrors, ConfirmApplicationResponses, CreateResumeData, CreateResumeErrors, CreateResumeResponses, DownloadResumePdfData, DownloadResumePdfErrors, DownloadResumePdfResponses, GetApplicationAnalysisHealthData, GetApplicationAnalysisHealthErrors, GetApplicationAnalysisHealthResponses, GetApplicationAnalysisQueueData, GetApplicationAnalysisQueueErrors, GetApplicationAnalysisQueueResponses, GetHealthData, GetHealthErrors, GetHealthResponses, GetNotionHealthData, GetNotionHealthErrors, GetNotionHealthResponses, GetOperatorSettingsData, GetOperatorSettingsErrors, GetOperatorSettingsResponses, GetResumeCreationHealthData, GetResumeCreationHealthErrors, GetResumeCreationHealthResponses, GetResumeCreationQueueData, GetResumeCreationQueueErrors, GetResumeCreationQueueResponses, PrepareApplicationData, PrepareApplicationErrors, PrepareApplicationResponses, ResetDemoData, ResetDemoErrors, ResetDemoResponses, RunApplicationAnalysisData, RunApplicationAnalysisErrors, RunApplicationAnalysisResponses } from './types.gen';
+import type { ConfirmApplicationData, ConfirmApplicationErrors, ConfirmApplicationResponses, CreateResumeData, CreateResumeErrors, CreateResumeResponses, DownloadResumePdfData, DownloadResumePdfErrors, DownloadResumePdfResponses, GetApplicationAnalysisHealthData, GetApplicationAnalysisHealthErrors, GetApplicationAnalysisHealthResponses, GetApplicationAnalysisQueueData, GetApplicationAnalysisQueueErrors, GetApplicationAnalysisQueueResponses, GetHealthData, GetHealthErrors, GetHealthResponses, GetNotionHealthData, GetNotionHealthErrors, GetNotionHealthResponses, GetOperatorSettingsData, GetOperatorSettingsErrors, GetOperatorSettingsResponses, GetResumeCreationHealthData, GetResumeCreationHealthErrors, GetResumeCreationHealthResponses, GetResumeCreationQueueData, GetResumeCreationQueueErrors, GetResumeCreationQueueResponses, PrepareApplicationData, PrepareApplicationErrors, PrepareApplicationResponses, RunApplicationAnalysisData, RunApplicationAnalysisErrors, RunApplicationAnalysisResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -58,11 +58,6 @@ export const prepareApplication = <ThrowOnError extends boolean = false>(options
         ...options.headers
     }
 });
-
-/**
- * Reset Demo
- */
-export const resetDemo = <ThrowOnError extends boolean = false>(options?: Options<ResetDemoData, ThrowOnError>): RequestResult<ResetDemoResponses, ResetDemoErrors, ThrowOnError> => (options?.client ?? client).post<ResetDemoResponses, ResetDemoErrors, ThrowOnError>({ url: '/api/v1/demo/reset', ...options });
 
 /**
  * Get Health

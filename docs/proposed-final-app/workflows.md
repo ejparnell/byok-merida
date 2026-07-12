@@ -80,8 +80,8 @@ Flow:
 7. Partial failures are compensated in reverse order and cleanup results are explicit.
 8. The dashboard refreshes the queue but retains Resume, Note, and PDF output links.
 
-## Demo And Real Modes
+## Runtime And Test Composition
 
-Demo mode exercises the same routes and workflow interfaces using deterministic local adapters and fictional data. It persists state in `app-data/demo/state.json` and PDFs in `app-data/export/`.
+The final app has one runtime composition: Notion, DeepSeek, PDF, and recovery adapters behind the workflow-owned interfaces. Missing real configuration produces blocked readiness and never falls back to fictional data.
 
-Real mode will use Notion and DeepSeek adapters behind the same workflow-owned interfaces. Until parity and cleanup suites pass, FastAPI reports real mode as blocked and the frozen Node prototype remains the real-workflow executable reference.
+Credential-free tests inject deterministic stores, models, PDF storage, and journals through the application factory. These fakes exercise the same ASGI routes and workflow interfaces but are not selectable by users, persisted as product state, or exposed through OpenAPI. Until parity and cleanup suites pass, the frozen Node prototype remains the real-workflow executable reference.

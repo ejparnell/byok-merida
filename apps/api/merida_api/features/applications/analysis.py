@@ -50,7 +50,6 @@ class ApplicationAnalysis:
         async with self._coordinator.exclusive(
             "workflow:application-analysis",
             "Job Posting Analysis is already in progress.",
-            conflict_keys=("workflow:demo-reset",),
         ):
             return await self._run_batch(limit)
 

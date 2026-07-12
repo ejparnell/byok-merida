@@ -4,22 +4,21 @@ import json
 
 from fastapi.testclient import TestClient
 
-from merida_api.app import create_app
 from merida_api.core.settings import Settings
-from merida_api.integrations.demo_models import DemoApplicationAnalysisModel
-from merida_api.integrations.demo_models import DemoResumeDocumentBuilder
-from merida_api.integrations.demo_workspace import DemoWorkspace, initial_demo_state
 from merida_api.integrations.pdf_export import LocalPdfArtifacts
 from merida_api.features.resumes.workspace import DocumentBlock
 from merida_api.shared.recovery import JsonEffectJournal
 from merida_api.cli import run_recovery_command
+from fakes.app import create_test_app
+from fakes.models import FakeApplicationAnalysisModel, FakeResumeDocumentBuilder
+from fakes.workspace import FakeWorkspace, initial_test_state
 
 
 class BlockingAnalysisModel:
     def __init__(self):
         self.started = threading.Event()
         self.release = threading.Event()
-        self._delegate = DemoApplicationAnalysisModel()
+        self._delegate = FakeApplicationAnalysisModel()
 
     async def analyze(self, application):
         self.started.set()
@@ -31,7 +30,7 @@ class BlockingResumeBuilder:
     def __init__(self):
         self.started = threading.Event()
         self.release = threading.Event()
-        self._delegate = DemoResumeDocumentBuilder()
+        self._delegate = FakeResumeDocumentBuilder()
 
     async def build(self, application, master_resume):
         self.started.set()
@@ -42,12 +41,12 @@ class BlockingResumeBuilder:
 def test_overlapping_analysis_run_fails_fast_with_conflict(tmp_path):
     model = BlockingAnalysisModel()
     settings = Settings(
-        merida_mode="demo",
-        demo_state_path=tmp_path / "state.json",
         export_path=tmp_path / "export",
         recovery_journal_path=tmp_path / "recovery.json",
     )
-    app = create_app(settings, analysis_model=model)
+    app = create_test_app(
+        settings, state_path=tmp_path / "state.json", analysis_model=model
+    )
     first_result = {}
 
     with TestClient(app) as client:
@@ -64,7 +63,6 @@ def test_overlapping_analysis_run_fails_fast_with_conflict(tmp_path):
         overlapping = client.post(
             "/api/v1/applications/analysis/run", json={"limit": 1}
         )
-        reset = client.post("/api/v1/demo/reset")
         model.release.set()
         thread.join(timeout=5)
 
@@ -73,8 +71,6 @@ def test_overlapping_analysis_run_fails_fast_with_conflict(tmp_path):
     assert overlapping.json()["error"]["message"] == (
         "Job Posting Analysis is already in progress."
     )
-    assert reset.status_code == 409
-    assert reset.json()["error"]["code"] == "conflict"
     assert first_result["response"].status_code == 200
     assert first_result["response"].json()["result"] == "completed"
 
@@ -106,12 +102,12 @@ def test_effect_journal_persists_only_recovery_metadata_atomically(tmp_path):
 def test_overlapping_resume_creation_fails_fast_without_duplicate_artifacts(tmp_path):
     builder = BlockingResumeBuilder()
     settings = Settings(
-        merida_mode="demo",
-        demo_state_path=tmp_path / "state.json",
         export_path=tmp_path / "export",
         recovery_journal_path=tmp_path / "recovery.json",
     )
-    app = create_app(settings, resume_builder=builder)
+    app = create_test_app(
+        settings, state_path=tmp_path / "state.json", resume_builder=builder
+    )
     first_result = {}
 
     with TestClient(app) as client:
@@ -140,7 +136,7 @@ def test_restart_reconciles_unfinished_resume_effects_before_retry(tmp_path):
     state_path = tmp_path / "state.json"
     export_path = tmp_path / "export"
     journal_path = tmp_path / "recovery.json"
-    workspace = DemoWorkspace(state_path, export_path)
+    workspace = FakeWorkspace(state_path)
     document = (DocumentBlock(kind="heading_1", text="Elizabeth Parnell"),)
 
     async def create_interrupted_effects():
@@ -170,13 +166,11 @@ def test_restart_reconciles_unfinished_resume_effects_before_retry(tmp_path):
         pdf_id=resume.id,
     )
     settings = Settings(
-        merida_mode="demo",
-        demo_state_path=state_path,
         export_path=export_path,
         recovery_journal_path=journal_path,
     )
 
-    with TestClient(create_app(settings)) as client:
+    with TestClient(create_test_app(settings, workspace=workspace)) as client:
         retried = client.post(
             "/api/v1/resumes/create", json={"applicationId": "app-orbit"}
         )
@@ -191,7 +185,7 @@ def test_restart_reconciles_unfinished_resume_effects_before_retry(tmp_path):
 
 
 def test_retry_after_uncertain_capture_result_returns_existing_application(tmp_path):
-    class LostCaptureResponseWorkspace(DemoWorkspace):
+    class LostCaptureResponseWorkspace(FakeWorkspace):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
             self.lose_response = True
@@ -206,13 +200,11 @@ def test_retry_after_uncertain_capture_result_returns_existing_application(tmp_p
     state_path = tmp_path / "state.json"
     journal_path = tmp_path / "recovery.json"
     settings = Settings(
-        merida_mode="demo",
         capture_token="capture-token",
-        demo_state_path=state_path,
         export_path=tmp_path / "export",
         recovery_journal_path=journal_path,
     )
-    workspace = LostCaptureResponseWorkspace(state_path, settings.export_path)
+    workspace = LostCaptureResponseWorkspace(state_path)
     payload = {
         "draft": {
             "jobUrl": "https://example.test/jobs/recovery",
@@ -224,7 +216,10 @@ def test_retry_after_uncertain_capture_result_returns_existing_application(tmp_p
     }
     headers = {"X-Capture-Token": "capture-token"}
 
-    with TestClient(create_app(settings, workspace=workspace), raise_server_exceptions=False) as client:
+    with TestClient(
+        create_test_app(settings, workspace=workspace),
+        raise_server_exceptions=False,
+    ) as client:
         uncertain = client.post(
             "/api/v1/applications/confirm", json=payload, headers=headers
         )
@@ -241,7 +236,7 @@ def test_retry_after_uncertain_capture_result_returns_existing_application(tmp_p
 
 
 def test_analysis_skips_an_application_that_becomes_ineligible_after_selection(tmp_path):
-    class EligibilityChangesWorkspace(DemoWorkspace):
+    class EligibilityChangesWorkspace(FakeWorkspace):
         async def list_analysis_queue(self, *, limit, cursor):
             page = await super().list_analysis_queue(limit=limit, cursor=cursor)
             selected = page.items[0]
@@ -251,16 +246,12 @@ def test_analysis_skips_an_application_that_becomes_ineligible_after_selection(t
             return page
 
     settings = Settings(
-        merida_mode="demo",
-        demo_state_path=tmp_path / "state.json",
         export_path=tmp_path / "export",
         recovery_journal_path=tmp_path / "recovery.json",
     )
-    workspace = EligibilityChangesWorkspace(
-        settings.demo_state_path, settings.export_path
-    )
+    workspace = EligibilityChangesWorkspace(tmp_path / "state.json")
 
-    with TestClient(create_app(settings, workspace=workspace)) as client:
+    with TestClient(create_test_app(settings, workspace=workspace)) as client:
         response = client.post(
             "/api/v1/applications/analysis/run", json={"limit": 1}
         )
@@ -276,8 +267,6 @@ def test_recovery_command_inspects_and_requires_confirmation_to_acknowledge(
     tmp_path, capsys
 ):
     settings = Settings(
-        merida_mode="demo",
-        demo_state_path=tmp_path / "state.json",
         export_path=tmp_path / "export",
         recovery_journal_path=tmp_path / "recovery.json",
     )
@@ -305,8 +294,6 @@ def test_restart_keeps_an_ambiguous_resume_create_window_for_manual_recovery(
     tmp_path,
 ):
     settings = Settings(
-        merida_mode="demo",
-        demo_state_path=tmp_path / "state.json",
         export_path=tmp_path / "export",
         recovery_journal_path=tmp_path / "recovery.json",
     )
@@ -317,7 +304,9 @@ def test_restart_keeps_an_ambiguous_resume_create_window_for_manual_recovery(
         run_id="run-ambiguous",
     )
 
-    with TestClient(create_app(settings)) as client:
+    with TestClient(
+        create_test_app(settings, state_path=tmp_path / "state.json")
+    ) as client:
         response = client.post(
             "/api/v1/resumes/create", json={"applicationId": "app-orbit"}
         )
@@ -331,21 +320,19 @@ def test_restart_keeps_an_ambiguous_resume_create_window_for_manual_recovery(
 
 
 def test_incomplete_unjournaled_capture_is_a_manual_recovery_conflict(tmp_path):
-    state = initial_demo_state()
+    state = initial_test_state()
     application = state["applications"][0]
     application["jobUrl"] = "https://example.test/jobs/incomplete"
     application["jobContent"] = "partial"
     state_path = tmp_path / "state.json"
     state_path.write_text(json.dumps(state))
     settings = Settings(
-        merida_mode="demo",
         capture_token="capture-token",
-        demo_state_path=state_path,
         export_path=tmp_path / "export",
         recovery_journal_path=tmp_path / "recovery.json",
     )
 
-    with TestClient(create_app(settings)) as client:
+    with TestClient(create_test_app(settings, state_path=state_path)) as client:
         response = client.post(
             "/api/v1/applications/confirm",
             headers={"X-Capture-Token": "capture-token"},
@@ -365,13 +352,11 @@ def test_incomplete_unjournaled_capture_is_a_manual_recovery_conflict(tmp_path):
 
 
 def test_unverified_resume_artifacts_remain_blocked_for_manual_recovery(tmp_path):
-    class UnverifiedWorkspace(DemoWorkspace):
+    class UnverifiedWorkspace(FakeWorkspace):
         async def verify_recovery_artifacts(self, **_kwargs):
             return False
 
     settings = Settings(
-        merida_mode="demo",
-        demo_state_path=tmp_path / "state.json",
         export_path=tmp_path / "export",
         recovery_journal_path=tmp_path / "recovery.json",
     )
@@ -384,9 +369,9 @@ def test_unverified_resume_artifacts_remain_blocked_for_manual_recovery(tmp_path
     journal.advance(
         "run-unverified", phase="resume_created", resume_id="resume-unknown"
     )
-    workspace = UnverifiedWorkspace(settings.demo_state_path, settings.export_path)
+    workspace = UnverifiedWorkspace(tmp_path / "state.json")
 
-    with TestClient(create_app(settings, workspace=workspace)) as client:
+    with TestClient(create_test_app(settings, workspace=workspace)) as client:
         response = client.post(
             "/api/v1/resumes/create", json={"applicationId": "app-orbit"}
         )
@@ -402,14 +387,14 @@ def test_corrupt_recovery_journal_keeps_health_available_and_blocks_mutations(
     journal_path = tmp_path / "recovery.json"
     journal_path.write_text("{")
     settings = Settings(
-        merida_mode="demo",
         capture_token="capture-token",
-        demo_state_path=tmp_path / "state.json",
         export_path=tmp_path / "export",
         recovery_journal_path=journal_path,
     )
 
-    with TestClient(create_app(settings)) as client:
+    with TestClient(
+        create_test_app(settings, state_path=tmp_path / "state.json")
+    ) as client:
         health = client.get("/api/v1/health")
         capture = client.post(
             "/api/v1/applications/confirm",

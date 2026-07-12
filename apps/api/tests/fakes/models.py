@@ -1,15 +1,15 @@
-from ..features.applications.workspace import (
+from merida_api.features.applications.workspace import (
     ApplicationAnalysisDocument,
     ApplicationRecord,
 )
-from ..features.resumes.workspace import (
+from merida_api.features.resumes.workspace import (
     DocumentBlock,
     ResumeArtifactBundle,
     ResumeDocument,
 )
 
 
-class DemoApplicationAnalysisModel:
+class FakeApplicationAnalysisModel:
     async def analyze(
         self, application: ApplicationRecord
     ) -> ApplicationAnalysisDocument:
@@ -32,7 +32,7 @@ class DemoApplicationAnalysisModel:
         return ApplicationAnalysisDocument(
             summary=(
                 f"{application.title} emphasizes {signal_summary}. "
-                "The analysis uses only readable Job Content and deterministic demo evidence. "
+                "The analysis uses only readable Job Content and deterministic test evidence. "
                 "Review the durable record in Notion before applying."
             ),
             match_score=score,
@@ -41,7 +41,7 @@ class DemoApplicationAnalysisModel:
         )
 
 
-class DemoResumeDocumentBuilder:
+class FakeResumeDocumentBuilder:
     async def build(
         self, application: ApplicationRecord, master_resume: ResumeDocument
     ) -> ResumeArtifactBundle:
@@ -53,7 +53,7 @@ class DemoResumeDocumentBuilder:
                 DocumentBlock(kind="heading_2", text=application.title),
                 DocumentBlock(
                     kind="paragraph",
-                    text="Evidence-backed application-ready demo resume.",
+                    text="Evidence-backed application-ready test resume.",
                 ),
                 DocumentBlock(
                     kind="bulleted_list_item",
@@ -71,7 +71,7 @@ class DemoResumeDocumentBuilder:
             pdf_lines=(
                 "Elizabeth Parnell",
                 application.title,
-                "Evidence-backed application-ready demo resume",
+                "Evidence-backed application-ready test resume",
                 f"Match Score: {score}",
                 "Skills: " + ", ".join(signals),
             ),

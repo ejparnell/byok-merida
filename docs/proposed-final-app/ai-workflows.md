@@ -62,7 +62,7 @@ React /dashboard
   -> FastAPI route
     -> feature workflow module
       -> LangGraph StateGraph
-        -> workspace adapter (Notion or demo)
+        -> Notion workspace adapter
         -> DeepSeek structured-output adapter
         -> prompt payload encoder (JSON in v1; accepted TOON in a future revision)
         -> deterministic ML/NLP modules
@@ -180,7 +180,7 @@ LLM_INPUT_FORMAT=json
 - Model names are read-only in `/operator/settings`.
 - Both model values are validated at startup.
 - Thinking mode is explicitly disabled for v1 structured extraction and generation calls. A future thinking workflow must be a separate, tested node policy rather than an implicit provider default.
-- Demo mode injects deterministic model adapters and does not require a DeepSeek key.
+- Credential-free tests inject deterministic model fakes and do not require a DeepSeek key.
 
 ### Structured Output
 
@@ -842,18 +842,18 @@ Do not log:
 
 The dashboard receives safe progress state only while the request is pending and a final typed summary when it completes. Raw graph state never crosses the FastAPI boundary.
 
-## Demo Mode
+## Credential-Free Test Composition
 
-Demo mode uses the same graphs and node contracts.
+Tests use the same graphs and node contracts through explicit dependency injection.
 
 Replace only adapters:
 
-- `DemoWorkspace` instead of `NotionWorkspace`
+- a deterministic test store instead of `NotionWorkspace`
 - `DeterministicAnalysisModel` instead of DeepSeek analysis
 - `DeterministicResumeModel` instead of DeepSeek resume generation
-- temporary demo PDF storage instead of real export storage
+- temporary test PDF storage instead of real export storage
 
-The deterministic ML/NLP pipeline, validators, prompt-encoder contract tests, graph branching, renderers, and result models remain real. Demo-specific `if` branches must not be scattered through graph nodes.
+The deterministic ML/NLP pipeline, validators, prompt-encoder contract tests, graph branching, renderers, and result models remain real. Test fakes are injected only at system boundaries; test-specific branches must not be scattered through graph nodes or production composition.
 
 ## Proposed Backend Modules
 
@@ -886,7 +886,6 @@ apps/api/merida_api/
       match_score.py
       adapters/
         notion.py
-        demo.py
     resumes/
       creation.py
       creation_graph.py
@@ -901,7 +900,6 @@ apps/api/merida_api/
       pdf_export.py
       adapters/
         notion.py
-        demo.py
 ```
 
 Applications and Resumes may depend on Matching's small deterministic interface. Matching must not import either feature's schemas. Feature modules may depend on the shared LLM integration interfaces, while the LLM integration must not import feature schemas or decide feature validation rules.
@@ -960,7 +958,7 @@ Applications and Resumes may depend on Matching's small deterministic interface.
 - exact score recovery from persisted analysis
 - relation-final Resume commit
 - cleanup after each artifact stage
-- demo and Notion adapters satisfy the same contract suite
+- test fakes and Notion adapters satisfy the same semantic contract suite
 - PDF and Notion render from the same canonical Resume Document
 
 ### End-To-End Fixtures
@@ -992,7 +990,7 @@ At minimum, retain fixtures for:
 10. Add prompt selection, JSON encoding, resume generation, Claim Trace validation, and deterministic role completion.
 11. Add the canonical Resume Document plus Notion, Note, and PDF renderers.
 12. Add artifact commit, relation-final behavior, compensation, and idempotency.
-13. Add deterministic demo adapters and end-to-end fixtures.
+13. Add deterministic test fakes and end-to-end fixtures under test support.
 14. Reconcile older proposed `architecture.md`, `codebase-structure.md`, `workflows.md`, and `migration-plan.md` terminology and routes with the reviewed documents and this contract.
 
 ## Implementation Acceptance Criteria
@@ -1015,7 +1013,7 @@ At minimum, retain fixtures for:
 - Notion and PDF render from the same canonical Resume Document.
 - Final relations are attached only after all artifacts succeed.
 - Expected blocks return typed product outcomes; technical failures preserve the route HTTP boundary.
-- Demo mode exercises the same graphs without Notion or DeepSeek secrets.
+- Credential-free ASGI tests exercise the same graphs with injected fakes and no Notion or DeepSeek secrets.
 
 ## External References
 

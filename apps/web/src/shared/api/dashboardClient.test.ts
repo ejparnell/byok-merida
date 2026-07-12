@@ -8,7 +8,11 @@ const payloads = {
     ok: true,
     checks: { analysis: 'ready', resumes: 'ready' },
   },
-  '/api/v1/operator/settings': { ok: true, mode: 'demo' },
+  '/api/v1/operator/settings': {
+    ok: true,
+    models: { analysis: 'deepseek-v4-flash', resumes: 'deepseek-v4-pro' },
+    configured: { notion: true, deepseek: true },
+  },
   '/api/v1/applications/analysis/queue': {
     ok: true,
     queueCount: 0,
