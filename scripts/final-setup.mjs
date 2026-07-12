@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 
 const parseVersion = (value) =>
   value
@@ -52,31 +53,62 @@ function run(command, args) {
 
 requireMinimum(parseVersion(process.versions.node), [22, 18, 0], 'Node')
 requireMinimum(readVersion('npm', ['--version'], 'npm'), [11, 11, 0], 'npm')
-requireMinimum(readVersion('uv', ['--version'], 'uv'), [0, 11, 28], 'uv')
-
 run('npm', ['ci'])
-run('uv', [
-  '--cache-dir',
-  '.cache/uv',
-  'sync',
-  '--project',
-  'apps/api',
-  '--frozen',
-])
 
-const python = readVersion(
-  'uv',
-  [
+const localPython =
+  process.platform === 'win32'
+    ? 'apps/api/.venv/Scripts/python.exe'
+    : 'apps/api/.venv/bin/python'
+const uvProbe = spawnSync('uv', ['--version'], { encoding: 'utf8' })
+if (!uvProbe.error && uvProbe.status === 0) {
+  requireMinimum(
+    parseVersion(`${uvProbe.stdout} ${uvProbe.stderr}`),
+    [0, 11, 28],
+    'uv',
+  )
+  run('uv', [
     '--cache-dir',
     '.cache/uv',
-    'run',
+    'sync',
     '--project',
     'apps/api',
-    'python',
-    '--version',
-  ],
-  'Python',
-)
+    '--frozen',
+    '--python',
+    '3.14.2',
+  ])
+} else if (
+  !existsSync(localPython) ||
+  spawnSync(
+    localPython,
+    ['-c', 'import fastapi, langgraph, merida_api, pytest, uvicorn'],
+    { cwd: process.cwd() },
+  ).status !== 0
+) {
+  console.error(
+    'uv 0.11.28 or newer is required for a clean setup. Install uv, then rerun npm run final:setup.',
+  )
+  process.exit(1)
+} else {
+  console.log(
+    'Using the existing apps/api/.venv environment because uv is unavailable.',
+  )
+}
+
+const python = existsSync(localPython)
+  ? readVersion(localPython, ['--version'], 'Python')
+  : readVersion(
+      'uv',
+      [
+        '--cache-dir',
+        '.cache/uv',
+        'run',
+        '--project',
+        'apps/api',
+        'python',
+        '--version',
+      ],
+      'Python',
+    )
 if (python.join('.') !== '3.14.2') {
   console.error(
     'Python 3.14.2 is required for the preferred local environment.',

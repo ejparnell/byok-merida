@@ -491,6 +491,25 @@ def test_resume_readiness_accepts_database_and_data_source_relation_targets():
     assert readiness.warnings == ()
 
 
+def test_resume_readiness_rejects_a_wrong_inverse_relation_name():
+    applications, resumes, notes = relational_schemas()
+    applications["properties"]["Resumes"]["relation"]["dual_property"] = {
+        "synced_property_name": "Wrong Inverse"
+    }
+    transport = RecordingTransport([applications, resumes, notes])
+
+    readiness = asyncio.run(workspace(transport).validate_resume_workspace())
+
+    assert readiness.ready is False
+    assert any(issue.property == "Resumes" for issue in readiness.errors)
+
+
+def test_target_notion_compatibility_fixture():
+    test_resume_readiness_accepts_database_and_data_source_relation_targets()
+    test_resume_readiness_rejects_a_wrong_inverse_relation_name()
+    test_notion_capture_write_conformance()
+
+
 def test_resume_queue_requires_readable_canonical_or_legacy_analysis():
     eligible = application_page(
         properties={
@@ -536,7 +555,7 @@ def test_resume_queue_requires_readable_canonical_or_legacy_analysis():
 def test_master_resume_reader_recurses_without_returning_raw_notion_blocks():
     master = {
         "id": "master-resume",
-        "url": "https://www.notion.so/master-resume",
+        "url": "https://app.notion.com/master-resume",
         "archived": False,
         "properties": {
             "Name": {"type": "title", "title": rich_text("Master Resume")},

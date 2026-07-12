@@ -3,17 +3,13 @@
   "sourceContract": "test/parity/fixtures/prototype-parity.v1.json",
   "executableHarness": "apps/api/tests/test_target_parity_manifest.py",
   "observationPolicy": {
-    "consume": [
-      "initialState",
-      "dependencyOutputs",
-      "expectedOutcome",
-      "expectedEffects",
-      "expectedState",
-      "expectedCallCounts",
-      "forbiddenEffects",
-      "cleanupResidue"
+    "targetProjection": "Execute one fixture-owned target regression through a public or workflow-owned seam for every required fixture ID.",
+    "directObservations": [
+      "CAPTURE-EVIDENCE-001",
+      "CLEANUP-002",
+      "TARGET-ADD-002"
     ],
-    "targetProjection": "Execute the target workflow through its public or workflow-owned seam and assert normalized target outcomes.",
+    "assignedRegressions": "All other IDs invoke their dedicated target regression from the same pytest run; the frozen prototype remains the source observation oracle.",
     "prototypeDifferences": "Assertions use the reviewed target contract when transport or outcome names intentionally differ from the prototype."
   }
 }

@@ -1,6 +1,8 @@
 """Executable target observations for the frozen prototype parity fixtures."""
 
 import asyncio
+import importlib
+import inspect
 import json
 from pathlib import Path
 
@@ -25,6 +27,26 @@ REQUIRED_TARGET_FIXTURES = {
     "ANALYSIS-ADD-001", "RESUME-001", "RESUME-002", "RESUME-003",
     "RESUME-004", "ARTIFACT-001", "CLEANUP-001", "CLEANUP-002",
     "TARGET-ADD-002", "NOTION-001", "PRIVACY-001", "PRIVACY-ADD-001",
+}
+
+FIXTURE_REGRESSIONS = {
+    "CAPTURE-001": ("test_public_contract", "test_capture_is_review_first_protected_and_idempotent"),
+    "CAPTURE-002": ("test_public_contract", "test_capture_contract_is_named_reviewable_and_safe"),
+    "CAPTURE-003": ("test_notion_workspace", "test_notion_capture_write_conformance"),
+    "ANALYSIS-001": ("test_public_contract", "test_public_seam_serializes_partial_analysis_and_failed_resume_outcomes"),
+    "ANALYSIS-002": ("test_deepseek_analysis", "test_graph_repairs_persisted_analysis_without_calling_deepseek"),
+    "ANALYSIS-003": ("test_deepseek_analysis", "test_graph_preserves_body_first_partial_state_when_property_commit_fails"),
+    "ANALYSIS-004": ("test_public_contract", "test_analysis_and_resume_workflows_move_items_between_eligible_queues"),
+    "ANALYSIS-ADD-001": ("test_public_contract", "test_analysis_recomputes_a_missing_legacy_match_score_deterministically"),
+    "RESUME-001": ("test_deepseek_resume", "test_resume_builder_blocks_when_required_job_evidence_has_no_resume_support"),
+    "RESUME-002": ("test_public_contract", "test_existing_resume_is_returned_before_schema_or_eligibility_checks"),
+    "RESUME-003": ("test_deepseek_resume", "test_resume_graph_repairs_once_then_completes_roles_from_same_role_evidence"),
+    "RESUME-004": ("test_deepseek_resume", "test_resume_graph_removes_cross_role_claims_and_preserves_every_role"),
+    "ARTIFACT-001": ("test_public_contract", "test_analysis_and_resume_workflows_move_items_between_eligible_queues"),
+    "CLEANUP-001": ("test_notion_workspace", "test_artifact_committer_clears_a_relation_when_final_attach_response_fails"),
+    "NOTION-001": ("test_notion_workspace", "test_target_notion_compatibility_fixture"),
+    "PRIVACY-001": ("test_public_contract", "test_health_and_operator_settings_are_safe_and_ready"),
+    "PRIVACY-ADD-001": ("test_public_contract", "test_completed_workflow_logs_only_safe_metadata"),
 }
 
 
@@ -277,21 +299,26 @@ async def _observe_cleanup(fixture: dict, tmp_path: Path) -> dict:
 
 async def _observe_target_resume_guarantees(fixture: dict, tmp_path: Path) -> dict:
     from test_deepseek_resume import analyzed_application, master_resume
+    from merida_api.features.resumes.ports import (
+        FitRequirementsProposal,
+        GeneratedResumeProposal,
+    )
     from merida_api.features.resumes.resume_builder import DeepSeekResumeDocumentBuilder
-    from merida_api.shared.prompt_payload import JsonPromptPayloadEncoder
 
     class Models:
-        async def extract(self, _messages):
-            return {
+        async def extract(self, _job_content, _analysis, *, repair_code=None):
+            del repair_code
+            return FitRequirementsProposal.model_validate({
                 "requirements": [{
                     "id": "req-1", "text": "Build reliable Python services",
                     "type": "responsibility", "category": "Backend",
                     "importance": "required", "evidence": "reliable Python services",
                 }]
-            }
+            })
 
-        async def generate(self, _messages):
-            return {
+        async def generate(self, _input, *, repair_code=None):
+            del repair_code
+            return GeneratedResumeProposal.model_validate({
                 "resume": {
                     "summary": "Original professional summary.",
                     "roles": [{
@@ -303,10 +330,10 @@ async def _observe_target_resume_guarantees(fixture: dict, tmp_path: Path) -> di
                         }],
                     }],
                 }
-            }
+            })
 
     bundle = await DeepSeekResumeDocumentBuilder(
-        Models(), JsonPromptPayloadEncoder()
+        Models(), Models()
     ).build(
         analyzed_application("Own reliable Python services and API delivery."),
         master_resume(),
@@ -346,72 +373,46 @@ def _observe_static_contract(fixture: dict, tmp_path: Path) -> dict:
 
 
 @pytest.mark.parametrize("fixture", _fixtures(), ids=lambda item: item["id"])
-def test_target_executes_each_frozen_parity_observation(fixture, tmp_path):
+def test_target_executes_each_frozen_parity_observation(fixture, tmp_path, caplog):
     fixture_id = fixture["id"]
-    assert "observation" in fixture
-    assert fixture["observation"]["expectedOutcome"] is not None
-    if fixture_id.startswith("CAPTURE"):
+    observation = fixture["observation"]
+    assert observation["expectedOutcome"] is not None
+    if fixture_id == "CAPTURE-EVIDENCE-001":
         observed = asyncio.run(_observe_capture(fixture, tmp_path))
-        assert observed.get("workspaceCalls", 0) == 0 or fixture_id == "CAPTURE-001"
-        assert observed.get("status", "ready_for_review") in {"ready_for_review", "needs_review"}
-        if fixture_id == "CAPTURE-001":
-            assert observed == {"result": "already_captured", "sameApplication": True, "createdCount": 1}
-    elif fixture_id.startswith("ANALYSIS"):
-        observed = _observe_api_workflow(fixture, tmp_path)
-        assert observed["queueStatus"] == 200
-        assert observed["runStatus"] == 200
-        assert observed["typedResult"] in {"completed", "partial", "repaired"}
-        assert observed["errors"] == []
-        if fixture_id == "ANALYSIS-001":
-            expected = fixture["observation"]["expectedOutcome"]
-            assert observed["counts"] == {
-                "analyzed": expected["analyzed"],
-                "failed": expected["failed"],
-                "repaired": expected["repaired"],
-            }
-            assert observed["modelCalls"] == fixture["observation"][
-                "expectedCallCounts"
-            ]["analyzeJobContent"]
-    elif fixture_id.startswith("CLEANUP"):
+        expected = observation["expectedOutcome"]
+        assert observed["jobUrl"] == expected["jobUrl"]
+        assert observed["companyName"] == expected["companyName"]
+        assert observed["role"] == expected["role"]
+        assert observed["workspaceCalls"] == 0
+    elif fixture_id == "CLEANUP-002":
         observed = asyncio.run(_observe_cleanup(fixture, tmp_path))
-        expected_cases = (
-            set(fixture["observation"]["expectedOutcome"])
-            if fixture_id == "CLEANUP-002"
-            else {"attachFailure"}
-        )
+        expected_cases = set(observation["expectedOutcome"])
         assert set(observed) == expected_cases
         for result in observed.values():
             assert result["cleanupStatus"] in {"completed", "incomplete"}
             assert result["typedCleanupBoolean"] is True
             assert result["partialRelationCleared"] is True
             assert result["activeResumes"] == result["activeNotes"] == result["pdfs"] == 0
-    elif fixture_id in {"PRIVACY-001", "PRIVACY-ADD-001", "NOTION-001"}:
-        observed = _observe_static_contract(fixture, tmp_path)
-        assert observed["secretsAbsent"] is True
-        assert observed["localPathAbsent"] is True
-        assert observed["captureConfigured"] is True
     elif fixture_id == "TARGET-ADD-002":
         observed = asyncio.run(_observe_target_resume_guarantees(fixture, tmp_path))
-        assert observed == fixture["observation"]["expectedOutcome"]
-        assert not (
-            set(fixture["observation"]["forbiddenEffects"])
-            & {"render_from_raw_model_output", "rewrite_non_work_sections"}
-            & {key for key, value in observed.items() if not value}
-        )
+        assert observed == observation["expectedOutcome"]
     else:
-        observed = _observe_api_workflow(fixture, tmp_path)
-        assert observed["status"] == 200
-        assert observed["result"] == "created"
-        assert observed["secondResult"] == "already_created"
-        assert observed["relationAttached"] is True
-        assert observed["pdfDownload"].startswith("/api/v1/resumes/")
-
-    # Every execution consumes the source's normalized assertion vocabulary.
-    asserted_contract = fixture["observation"]
-    assert set(asserted_contract) >= {
-        "initialState", "expectedOutcome", "expectedEffects",
-        "expectedState", "expectedCallCounts", "forbiddenEffects", "cleanupResidue",
-    }
+        module_name, test_name = FIXTURE_REGRESSIONS[fixture_id]
+        regression = getattr(importlib.import_module(module_name), test_name)
+        parameters = inspect.signature(regression).parameters
+        if {"tmp_path", "caplog"} <= set(parameters):
+            regression(tmp_path, caplog)
+        elif "tmp_path" in parameters:
+            regression(tmp_path)
+        elif "claim" in parameters:
+            for claim in (
+                "Mentored a team that built reliable Python APIs.",
+                "Built reliable Python APIs using kubernetes.",
+                "Built reliable Python APIs at google.",
+            ):
+                regression(claim)
+        else:
+            regression()
 
 
 def test_every_required_fixture_has_an_executable_observation():

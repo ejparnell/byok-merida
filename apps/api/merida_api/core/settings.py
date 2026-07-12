@@ -59,7 +59,15 @@ class Settings(BaseSettings):
     @property
     def capture_token_configured(self) -> bool:
         token = self.capture_token.strip()
-        return bool(token and token != "local-capture-token")
+        return bool(
+            token
+            and token
+            not in {
+                "local-capture-token",
+                "choose-a-local-shared-token",
+                "your-capture-token",
+            }
+        )
 
     @property
     def notion_applications_configured(self) -> bool:

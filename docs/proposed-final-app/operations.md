@@ -7,10 +7,12 @@ This guide operates the FastAPI, React dashboard, React Chrome extension, Notion
 Requirements:
 
 - Node 22.18 or newer and npm 11.11 or newer
-- Python 3.10 through 3.14
+- Python 3.14.2 for the supported local setup
 - `uv` 0.11.28 or newer
 - one Notion integration connected to the existing Applications, Resumes, and Notes databases
 - one DeepSeek API key
+
+Install `uv` before the first clean setup (`brew install uv` on macOS, or use the installer documented at <https://docs.astral.sh/uv/getting-started/installation/>). `uv` installs the pinned Python 3.14.2 environment. After setup, the checked-out `apps/api/.venv` is sufficient for normal start, verification, and recovery commands even when `uv` is temporarily unavailable. The package metadata remains compatible with Python 3.10 through 3.14 for future CI coverage, but this repository does not currently claim a compatibility CI matrix.
 
 Copy `.env.example` to `.env` and set:
 
@@ -66,7 +68,7 @@ npm run test:final
 npm test
 ```
 
-The final gate regenerates OpenAPI and the TypeScript client, typechecks, lints, runs backend and frontend contract tests, executes normalized target observations for every required frozen parity fixture, builds both React consumers, and scans shipped source/builds for demo surfaces. The prototype gate remains the migration oracle until retirement.
+The final gate regenerates OpenAPI and the TypeScript client, typechecks, lints, runs backend and frontend contract tests, executes one fixture-owned target regression for every required frozen parity ID, builds both React consumers, and scans shipped source/builds for demo surfaces. The prototype gate remains the source-observation oracle until retirement.
 
 ## Recovery
 
@@ -75,13 +77,13 @@ The effect journal is content-free and defaults to `app-data/recovery/effects.js
 Inspect unresolved entries:
 
 ```bash
-uv --cache-dir .cache/uv run --project apps/api python -m merida_api.cli recovery inspect
+npm run final:recovery -- inspect
 ```
 
 Attempt targeted reconciliation only after stopping new mutations:
 
 ```bash
-uv --cache-dir .cache/uv run --project apps/api python -m merida_api.cli recovery reconcile --run-id <run-id> --yes
+npm run final:recovery -- reconcile --run-id <run-id> --yes
 ```
 
 Run `inspect` again. If an entry remains active, verify the listed safe Application, Resume, Note, and PDF identifiers directly in Notion and the export directory. Do not guess ownership and do not start the prototype mutating workflow while an effect is ambiguous.
@@ -89,7 +91,7 @@ Run `inspect` again. If an entry remains active, verify the listed safe Applicat
 After manual repair and fresh domain verification, acknowledge the exact entry:
 
 ```bash
-uv --cache-dir .cache/uv run --project apps/api python -m merida_api.cli recovery acknowledge --run-id <run-id> --yes
+npm run final:recovery -- acknowledge --run-id <run-id> --yes
 ```
 
 Acknowledgement is not cleanup. It records that the operator verified and repaired provider state. Keep the cutover evidence record with the revision and recovery outcome.

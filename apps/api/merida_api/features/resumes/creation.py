@@ -41,6 +41,8 @@ from ...shared.workspace import (
 )
 from ...shared.execution import ExecutionCoordinator, OperationConflict
 from ...shared.recovery import EffectJournal
+from ...shared.observability import log_workflow_outcome, workflow_timer
+from ...matching import SCORING_POLICY_VERSION
 
 
 ResumeCreationOutcome = (
@@ -310,6 +312,7 @@ class ResumeCreation:
         | ResumeCreationBlockedResponse
         | ResumeCreationFailedResponse
     ):
+        started_at = workflow_timer()
         if self._journal is not None and not self._journal.available:
             return ResumeCreationBlockedResponse(
                 ok=False,
@@ -333,7 +336,15 @@ class ResumeCreation:
                     raise OperationConflict(
                         "Resume Creation requires recovery for this Application."
                     )
-                return await self._create(application_id, run.run_id)
+                outcome = await self._create(application_id, run.run_id)
+                log_workflow_outcome(
+                    workflow="resume_creation",
+                    record_id=application_id,
+                    outcome_code=outcome.result,
+                    policy_version=SCORING_POLICY_VERSION,
+                    started_at=started_at,
+                )
+                return outcome
 
     async def _create(
         self, application_id: str, run_id: str

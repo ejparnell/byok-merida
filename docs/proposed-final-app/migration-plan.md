@@ -26,7 +26,7 @@ Completed:
 - one canonical Resume Document for Notion and PDF
 - real Resume artifact commit, relation-last completion, reverse compensation, and durable recovery journal
 - workflow-scoped readiness, structured Capture metadata, and independently resilient dashboard sections
-- executable target-parity observations that feed every required frozen fixture through a final-app workflow or public seam
+- fixture-owned target regressions that exercise every required frozen fixture ID through a final-app workflow or public seam
 
 Not yet cut over:
 

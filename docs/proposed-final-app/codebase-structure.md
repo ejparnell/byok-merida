@@ -197,7 +197,7 @@ regenerates the contract and fails on drift.
 
 ## Runtime And Commands
 
-- Python 3.14.2 is the preferred runtime; compatibility CI covers 3.10 through 3.14.
+- Python 3.14.2 is the supported local runtime. Package metadata permits 3.10 through 3.14; a compatibility CI matrix is future work.
 - Node 22.18 or newer is required by the generated-client toolchain.
 - `uv.lock` is the Python resolution authority and the root `package-lock.json` is the TypeScript resolution authority.
 - `final:dev` coordinates the reloadable FastAPI and dashboard processes; extension development uses an MV3 watch build.

@@ -1058,10 +1058,14 @@ def _record_identity(page: dict, noun: str) -> tuple[str, str]:
     host = (parts.hostname or "").lower()
     if not record_id:
         raise WorkspaceDataError(f"{noun} ID is missing.")
+    official_notion_host = any(
+        host == domain or host.endswith(f".{domain}")
+        for domain in ("notion.so", "notion.com", "notion.site")
+    )
     if (
         parts.scheme not in {"http", "https"}
         or not host
-        or (host != "notion.so" and not host.endswith(".notion.so"))
+        or not official_notion_host
     ):
         raise WorkspaceDataError(f"{noun} Notion URL is missing or invalid.")
     return record_id, record_url

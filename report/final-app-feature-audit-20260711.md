@@ -10,7 +10,26 @@ The audit below records the starting state reviewed on 2026-07-11. The identifie
 
 Repository implementation is therefore complete. Two deployment decisions intentionally remain outside this code-completion change: a bounded smoke run against explicitly selected real Notion/DeepSeek records, and changing the default commands from the frozen prototype to the final app. Follow [Operations](../docs/proposed-final-app/operations.md) and record that evidence in the [Cutover Evidence Template](../docs/proposed-final-app/cutover-evidence-template.md) before default-runtime cutover.
 
-## Executive conclusion
+### 2026-07-12 runnable-state verification
+
+A fresh post-completion review found and corrected four operational issues: startup depended on `uv` even when the prepared API environment existed, documented Capture-token placeholders could be accepted, Resume model ports exposed provider-message transport, and current Notion `app.notion.com` record URLs were rejected. The target parity harness now invokes one fixture-owned target regression for every required fixture ID instead of treating unrelated Resume fixtures as generic success cases.
+
+Verified against the current configured workspace:
+
+- `npm run final:setup` succeeds using the prepared `apps/api/.venv` when `uv` is unavailable;
+- `npm run test:final` passes, including generated-client freshness, typecheck, lint, 18 React/extension contract tests, 151 FastAPI tests, production builds, and no-demo scans;
+- `npm run final:start` serves the built dashboard and API;
+- the configured root health response is fully `ready` for settings, Notion, Analysis, and Resumes;
+- both read-only eligible queues respond successfully and currently contain zero items;
+- the recovery journal contains no unresolved entry.
+
+No mutating real-provider smoke was run because there is currently no explicitly selected eligible Application in either queue. Default-command cutover therefore remains intentionally pending; run the final app with `npm run final:start`.
+
+---
+
+The remainder of this document is the original pre-implementation audit and is retained as historical evidence.
+
+## Original executive conclusion (historical)
 
 The final app is a strong production-shaped migration shell, but it is **not yet a feature-complete replacement for the prototype**.
 

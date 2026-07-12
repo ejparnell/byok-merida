@@ -175,6 +175,15 @@ def test_default_capture_token_is_not_treated_as_configured(tmp_path):
     assert response.json()["error"]["code"] == "invalid_capture_token"
 
 
+def test_documented_capture_token_placeholders_are_not_configured():
+    for token in (
+        "local-capture-token",
+        "choose-a-local-shared-token",
+        "your-capture-token",
+    ):
+        assert Settings(capture_token=token).capture_token_configured is False
+
+
 def test_provider_outages_return_typed_workflow_blocks(tmp_path):
     class UnavailableWorkspace(FakeWorkspace):
         async def validate_capture_workspace(self):
@@ -940,6 +949,28 @@ def test_unexpected_failures_are_sanitized_and_correlated(tmp_path, caplog):
     assert response.json()["validationFailures"] == []
     assert "private provider response" not in response.text
     assert "private provider response" not in caplog.text
+
+
+def test_completed_workflow_logs_only_safe_metadata(tmp_path, caplog):
+    private_values = (
+        "Own Python platform services",
+        "test-deepseek-key",
+        str(tmp_path / "export"),
+    )
+    caplog.set_level("INFO", logger="merida.workflow")
+
+    with make_client(tmp_path) as client:
+        response = client.post(
+            "/api/v1/resumes/create", json={"applicationId": "app-orbit"}
+        )
+
+    assert response.status_code == 200
+    assert response.json()["result"] == "created"
+    for field in ("record_id", "outcome_code", "policy_version", "duration_ms"):
+        assert f"{field}=" in caplog.text
+    for private_value in private_values:
+        assert private_value not in response.text
+        assert private_value not in caplog.text
 
 
 def test_openapi_locks_the_public_route_inventory_and_named_responses(tmp_path):

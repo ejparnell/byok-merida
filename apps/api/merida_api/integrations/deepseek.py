@@ -65,15 +65,6 @@ class DeepSeekJsonClient:
             )
         return payload
 
-    async def extract(self, messages: list[tuple[str, str]]) -> dict:
-        """Fulfill the Resume Fit Requirement model port."""
-        return await self.request_json(messages)
-
-    async def generate(self, messages: list[tuple[str, str]]) -> dict:
-        """Fulfill the Resume Draft model port."""
-        return await self.request_json(messages)
-
-
 class _LazyDeepSeekChatModel:
     def __init__(self, *, api_key: str, model: str, max_tokens: int):
         self._api_key = api_key

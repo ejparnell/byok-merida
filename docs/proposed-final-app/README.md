@@ -17,7 +17,7 @@ The production-shaped application is implemented in code:
 - functional React `/dashboard` using the accepted Workflow Overview design
 - functional React MV3 side panel using the accepted Focused Flow design
 - OpenAPI schema, public-interface tests, production builds, and FastAPI static serving
-- executable target observations for every required frozen parity fixture in `apps/api/tests/test_target_parity_manifest.py`
+- one fixture-owned executable target regression for every required frozen parity ID in `apps/api/tests/test_target_parity_manifest.py`
 
 The selectable demo runtime has been removed. The FastAPI app always targets the configured real Notion workspace and reports workflow-scoped blocked readiness when real dependencies are incomplete. Deterministic stores and models remain test-only dependencies injected behind workflow-owned interfaces. Repository implementation is complete; bounded real Notion/DeepSeek smoke evidence and the explicit default-command cutover remain operator acceptance steps. See [Implementation Review](implementation-review.md) and [Operations](operations.md).
 
@@ -31,8 +31,9 @@ npm run final:start
 
 Open `http://127.0.0.1:8000/dashboard`. Load `apps/extension/dist` as an unpacked Chrome extension and set its Capture token to the backend `CAPTURE_TOKEN` value.
 
-The final-app toolchain uses Python 3.14.2 locally, supports Python 3.10 through
-3.14 in compatibility CI, requires Node 22.18 or newer with npm 11.11 or newer,
+The final-app toolchain uses Python 3.14.2 locally. Package metadata permits
+Python 3.10 through 3.14, but no compatibility CI matrix is currently claimed.
+It requires Node 22.18 or newer with npm 11.11 or newer,
 and requires `uv` 0.11.28 or newer for the one Python lockfile. npm workspaces
 use one root lockfile for the web app, extension, generated API client, and
 shared UI.

@@ -27,6 +27,10 @@ from merida_api.features.resumes.workspace import (
     ResumeRecord,
 )
 from merida_api.integrations.deepseek import DeepSeekJsonClient
+from merida_api.integrations.deepseek_resume import (
+    DeepSeekFitRequirementModel,
+    DeepSeekResumeDraftModel,
+)
 from merida_api.shared.prompt_payload import JsonPromptPayloadEncoder
 from fakes.workspace import FakeWorkspace
 
@@ -39,6 +43,15 @@ class RecordedChatModel:
     async def ainvoke(self, messages):
         self.messages.append(messages)
         return type("Message", (), {"content": self.responses.pop(0)})()
+
+
+def recorded_resume_builder(chat: RecordedChatModel):
+    client = DeepSeekJsonClient(chat)
+    encoder = JsonPromptPayloadEncoder()
+    return DeepSeekResumeDocumentBuilder(
+        DeepSeekFitRequirementModel(client, encoder),
+        DeepSeekResumeDraftModel(client, encoder),
+    )
 
 
 def analyzed_application(job_content: str) -> ApplicationRecord:
@@ -141,9 +154,7 @@ def test_resume_builder_creates_one_evidence_grounded_document_for_notion_and_pd
         }
     }
     chat = RecordedChatModel([json.dumps(requirements), json.dumps(generated)])
-    builder = DeepSeekResumeDocumentBuilder(
-        DeepSeekJsonClient(chat), JsonPromptPayloadEncoder()
-    )
+    builder = recorded_resume_builder(chat)
 
     bundle = asyncio.run(
         builder.build(
@@ -205,9 +216,7 @@ def test_resume_graph_repairs_once_then_completes_roles_from_same_role_evidence(
     chat = RecordedChatModel(
         [json.dumps(requirements), json.dumps(incomplete), json.dumps(incomplete)]
     )
-    builder = DeepSeekResumeDocumentBuilder(
-        DeepSeekJsonClient(chat), JsonPromptPayloadEncoder()
-    )
+    builder = recorded_resume_builder(chat)
 
     bundle = asyncio.run(
         builder.build(
@@ -265,9 +274,7 @@ def test_resume_graph_removes_invented_metrics_and_ownership_after_one_repair():
     chat = RecordedChatModel(
         [json.dumps(requirements), json.dumps(invented), json.dumps(invented)]
     )
-    builder = DeepSeekResumeDocumentBuilder(
-        DeepSeekJsonClient(chat), JsonPromptPayloadEncoder()
-    )
+    builder = recorded_resume_builder(chat)
 
     bundle = asyncio.run(
         builder.build(
@@ -280,6 +287,78 @@ def test_resume_graph_removes_invented_metrics_and_ownership_after_one_repair():
     assert "50 engineers" not in rendered
     assert "Led 50" not in rendered
     assert "Built reliable Python APIs." in rendered
+
+
+def test_resume_graph_removes_cross_role_claims_and_preserves_every_role():
+    source = master_resume()
+    two_role_master = ResumeDocument(
+        record=source.record,
+        blocks=(
+            *source.blocks,
+            DocumentBlock(kind="heading_2", text="Engineering Manager, Other Co"),
+            DocumentBlock(kind="paragraph", text="2020 - 2022"),
+            DocumentBlock(kind="bulleted_list_item", text="Mentored engineers."),
+            DocumentBlock(kind="bulleted_list_item", text="Planned team delivery."),
+            DocumentBlock(kind="bulleted_list_item", text="Improved hiring systems."),
+            DocumentBlock(kind="bulleted_list_item", text="Coordinated releases."),
+            DocumentBlock(kind="bulleted_list_item", text="Supported team growth."),
+        ),
+    )
+    requirements = {
+        "requirements": [{
+            "id": "req-1", "text": "Build reliable Python services",
+            "type": "responsibility", "category": "Backend",
+            "importance": "required", "evidence": "reliable Python services",
+        }]
+    }
+    cross_role = {
+        "resume": {
+            "summary": "Original professional summary.",
+            "roles": [
+                {
+                    "sourceSection": "Software Engineer, Example Co",
+                    "bullets": [{
+                        "text": "Invented a cross-role management claim.",
+                        "evidenceIds": ["master-resume:block-17"],
+                        "requirementIds": [],
+                    }],
+                },
+                {
+                    "sourceSection": "Engineering Manager, Other Co",
+                    "bullets": [{
+                        "text": "Mentored engineers.",
+                        "evidenceIds": ["master-resume:block-17"],
+                        "requirementIds": [],
+                    }],
+                },
+            ],
+        }
+    }
+    chat = RecordedChatModel(
+        [json.dumps(requirements), json.dumps(cross_role), json.dumps(cross_role)]
+    )
+
+    bundle = asyncio.run(
+        recorded_resume_builder(chat).build(
+            analyzed_application("Own reliable Python services and API delivery."),
+            two_role_master,
+        )
+    )
+
+    rendered = " ".join(block.text for block in bundle.resume)
+    assert "Invented a cross-role management claim." not in rendered
+    for heading in (
+        "Software Engineer, Example Co",
+        "Engineering Manager, Other Co",
+    ):
+        start = next(i for i, block in enumerate(bundle.resume) if block.text == heading)
+        bullets = []
+        for block in bundle.resume[start + 1 :]:
+            if block.kind.startswith("heading_"):
+                break
+            if block.kind == "bulleted_list_item":
+                bullets.append(block.text)
+        assert len(bullets) >= 5
 
 
 @pytest.mark.parametrize(
@@ -332,9 +411,7 @@ def test_resume_builder_blocks_when_required_job_evidence_has_no_resume_support(
             )
         ]
     )
-    builder = DeepSeekResumeDocumentBuilder(
-        DeepSeekJsonClient(chat), JsonPromptPayloadEncoder()
-    )
+    builder = recorded_resume_builder(chat)
 
     with pytest.raises(ResumeEvidenceError, match="Insufficient Master Resume evidence"):
         asyncio.run(
