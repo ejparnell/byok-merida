@@ -4,7 +4,12 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from .workspace import ApplicationAnalysisDraft, ApplicationRecord, SkillSignal
+from .workspace import (
+    AnalysisModelResponse,
+    ApplicationAnalysisDraft,
+    ApplicationRecord,
+    SkillSignal,
+)
 from ...integrations.deepseek import (
     DeepSeekJsonClient,
     DeepSeekStructuredOutputError,
@@ -63,34 +68,29 @@ class DeepSeekApplicationAnalysisModel:
     def __init__(self, client: DeepSeekJsonClient):
         self._client = client
 
-    async def analyze(self, application: ApplicationRecord) -> ApplicationAnalysisDraft:
+    async def generate(
+        self, application: ApplicationRecord, *, repair_code: str | None = None
+    ) -> AnalysisModelResponse:
         job_content = (application.job_content or "").strip()
         if not job_content:
             raise AnalysisModelOutputError(
                 "missing_job_content", "Readable Job Content is required."
             )
         messages = _analysis_messages(job_content)
-        last_error: AnalysisModelOutputError | None = None
-        for attempt in range(2):
-            try:
-                payload = await self._client.request_json(messages)
-                return _validated_draft(payload, job_content)
-            except DeepSeekStructuredOutputError as error:
-                last_error = AnalysisModelOutputError(error.code, str(error))
-            except AnalysisModelOutputError as error:
-                last_error = error
-            if attempt == 0 and last_error is not None:
-                messages = [
-                    *messages,
-                    (
-                        "human",
-                        "Your JSON response failed validation. "
-                        f"Repair code: {last_error.code}. "
-                        "Return one corrected JSON object.",
-                    ),
-                ]
-        assert last_error is not None
-        raise last_error
+        if repair_code:
+            messages.append(
+                (
+                    "human",
+                    "Your JSON response failed validation. "
+                    f"Repair code: {repair_code}. Return one corrected JSON object.",
+                )
+            )
+        try:
+            return AnalysisModelResponse(
+                payload=await self._client.request_json(messages)
+            )
+        except DeepSeekStructuredOutputError as error:
+            return AnalysisModelResponse(error_code=error.code)
 
 
 def create_deepseek_analysis_model(
@@ -101,7 +101,9 @@ def create_deepseek_analysis_model(
     )
 
 
-def _validated_draft(payload: dict, job_content: str) -> ApplicationAnalysisDraft:
+def validate_analysis_payload(
+    payload: dict, job_content: str
+) -> ApplicationAnalysisDraft:
     try:
         validated = _ApplicationAnalysisPayload.model_validate(payload)
     except ValidationError as error:

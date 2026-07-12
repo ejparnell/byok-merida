@@ -46,7 +46,14 @@ class EvidenceMatch:
 class MatchingResult:
     score: int
     matches: tuple[EvidenceMatch, ...]
-    scoring_policy: str = SCORING_POLICY_VERSION
+    scoring_policy: str
+
+
+@dataclass(frozen=True)
+class ScoringPolicy:
+    version: str
+    strength_values: dict[EvidenceStrength, float]
+    importance_weights: dict[str, float]
 
 
 @dataclass(frozen=True)
@@ -65,32 +72,51 @@ if _POLICY.get("version") != "skill-normalization-v1":
     raise RuntimeError("Unsupported Matching normalization policy version.")
 _ALIASES: dict[str, str] = _POLICY["aliases"]
 _STOPWORDS = frozenset(_POLICY["stopwords"])
-_STRENGTH_VALUES: dict[EvidenceStrength, float] = {
-    "direct evidence": 1.0,
-    "adjacent evidence": 0.72,
-    "weak evidence": 0.25,
-    "no evidence": 0.0,
-}
+MATCHING_V1 = ScoringPolicy(
+    version=SCORING_POLICY_VERSION,
+    strength_values={
+        "direct evidence": 1.0,
+        "adjacent evidence": 0.72,
+        "weak evidence": 0.25,
+        "no evidence": 0.0,
+    },
+    importance_weights={
+        "required": 1.5,
+        "preferred": 0.8,
+        "signal": 0.65,
+        "default": 1.0,
+    },
+)
 
 
 class EvidenceMatchingEngine:
-    def score(
+    def match(
         self,
         targets: Sequence[MatchTarget],
         evidence_items: Sequence[EvidenceItem],
+        scoring_policy: ScoringPolicy,
     ) -> MatchingResult:
         if not targets:
             raise ValueError("At least one matching target is required.")
         matches = tuple(
             self._strongest_match(target, evidence_items) for target in targets
         )
-        weights = tuple(_importance_weight(target.importance) for target in targets)
+        weights = tuple(
+            scoring_policy.importance_weights.get(
+                target.importance, scoring_policy.importance_weights["default"]
+            )
+            for target in targets
+        )
         weighted_score = sum(
-            weight * _STRENGTH_VALUES[match.strength]
+            weight * scoring_policy.strength_values[match.strength]
             for weight, match in zip(weights, matches, strict=True)
         )
         score = round(100 * weighted_score / sum(weights))
-        return MatchingResult(score=max(0, min(100, score)), matches=matches)
+        return MatchingResult(
+            score=max(0, min(100, score)),
+            matches=matches,
+            scoring_policy=scoring_policy.version,
+        )
 
     def _strongest_match(
         self, target: MatchTarget, evidence_items: Sequence[EvidenceItem]
@@ -216,13 +242,3 @@ def _tfidf_cosine(
     left_norm = math.sqrt(sum(idf[token] ** 2 for token in left))
     right_norm = math.sqrt(sum(idf[token] ** 2 for token in right))
     return dot / (left_norm * right_norm)
-
-
-def _importance_weight(importance: str) -> float:
-    if importance == "required":
-        return 1.5
-    if importance == "preferred":
-        return 0.8
-    if importance == "signal":
-        return 0.65
-    return 1.0

@@ -1,17 +1,31 @@
 import asyncio
 import json
 import pytest
+import httpx
+from pathlib import Path
 from fastapi.testclient import TestClient
 
-from merida_api.features.applications.workspace import ApplicationRecord
+from dataclasses import replace
+
+from merida_api.features.applications.workspace import (
+    ApplicationAnalysisDocument,
+    ApplicationRecord,
+)
 from merida_api.core.settings import Settings
-from merida_api.features.applications.analysis_model import DeepSeekApplicationAnalysisModel
+from merida_api.app import create_app
+from merida_api.features.applications.analysis_graph import ApplicationAnalysisGraph
+from merida_api.features.applications.analysis_model import (
+    DeepSeekApplicationAnalysisModel,
+    validate_analysis_payload,
+)
 from merida_api.integrations.deepseek import DeepSeekJsonClient
 from merida_api.integrations.deepseek import DeepSeekProviderError
-from merida_api.matching import SCORING_POLICY_VERSION
+from merida_api.matching import MATCHING_V1, SCORING_POLICY_VERSION
 from merida_api.matching import EvidenceItem, EvidenceMatchingEngine
 from merida_api.features.applications.workspace import SkillSignal
 from fakes.app import create_test_app
+from fakes.models import FakeResumeDocumentBuilder
+from fakes.models import FakeApplicationAnalysisModel
 from fakes.workspace import FakeWorkspace
 
 
@@ -32,6 +46,45 @@ class ProviderFailure(Exception):
     def __init__(self, status_code: int):
         super().__init__(f"private provider error {status_code}")
         self.status_code = status_code
+
+
+class AnalysisStore:
+    def __init__(self, record: ApplicationRecord):
+        self.record = record
+        self.document = None
+        self.final_score = None
+
+    async def load_analysis_input(self, application_id: str):
+        assert application_id == self.record.id
+        return self.record
+
+    async def load_analysis_evidence(self):
+        return (
+            EvidenceItem(
+                id="master-evidence-1",
+                text="Built Python and React product systems.",
+                source_section="Software Engineer",
+            ),
+        )
+
+    async def append_application_analysis(self, application_id, document):
+        assert application_id == self.record.id
+        self.document = document
+
+    async def finalize_application_analysis(self, application_id, *, match_score):
+        assert application_id == self.record.id
+        self.final_score = match_score
+
+
+def run_graph(chat: RecordedChatModel, record: ApplicationRecord):
+    store = AnalysisStore(record)
+    graph = ApplicationAnalysisGraph(
+        store,
+        DeepSeekApplicationAnalysisModel(DeepSeekJsonClient(chat)),
+        EvidenceMatchingEngine(),
+    )
+    outcome = asyncio.run(graph.run(record, batch_run_id="batch-1"))
+    return outcome, store
 
 
 def application(job_content: str) -> ApplicationRecord:
@@ -83,13 +136,11 @@ def test_deepseek_analysis_returns_validated_evidence_without_model_score():
     )
     model = DeepSeekApplicationAnalysisModel(DeepSeekJsonClient(chat))
 
-    result = asyncio.run(
-        model.analyze(
-            application(
-                "Build reliable Python platform services with PostgreSQL and automated testing."
-            )
-        )
+    record = application(
+        "Build reliable Python platform services with PostgreSQL and automated testing."
     )
+    response = asyncio.run(model.generate(record))
+    result = validate_analysis_payload(response.payload or {}, record.job_content or "")
 
     assert result.summary == (
         "The role builds reliable platform services.",
@@ -107,35 +158,27 @@ def test_deepseek_analysis_returns_validated_evidence_without_model_score():
 
 def test_matching_calculates_score_from_master_resume_evidence():
     matcher = EvidenceMatchingEngine()
-    signals = (
-        SkillSignal(
-            name="Python",
-            category="programming_language",
-            importance="required",
-            evidence="Python",
-        ),
-        SkillSignal(
-            name="PostgreSQL",
-            category="database",
-            importance="preferred",
-            evidence="PostgreSQL",
-        ),
+    fixture = json.loads(
+        (Path(__file__).parent / "fixtures/matching.v1.json").read_text()
     )
-    evidence = (
+    case = fixture["cases"][0]
+    signals = tuple(SkillSignal(**signal) for signal in case["signals"])
+    evidence = tuple(
         EvidenceItem(
-            id="role-1-bullet-1",
-            text="Built Python APIs for production services.",
-            source_section="Software Engineer",
-        ),
+            id=item["id"],
+            text=item["text"],
+            source_section=item["sourceSection"],
+        )
+        for item in case["evidenceItems"]
     )
 
-    result = matcher.score(signals, evidence)
+    result = matcher.match(signals, evidence, MATCHING_V1)
 
-    assert result.score == 65
+    assert fixture["scoringPolicy"] == SCORING_POLICY_VERSION
+    assert result.score == case["expected"]["score"]
     assert result.scoring_policy == SCORING_POLICY_VERSION
-    assert [match.strength for match in result.matches] == [
-        "direct evidence",
-        "no evidence",
+    assert [match.strength for match in result.matches] == case["expected"][
+        "strengths"
     ]
 
 
@@ -159,13 +202,11 @@ def test_deepseek_analysis_repairs_invalid_structured_output_once():
         ]
     )
 
-    result = asyncio.run(
-        DeepSeekApplicationAnalysisModel(DeepSeekJsonClient(chat)).analyze(
-            application("Build production services with Python.")
-        )
+    result, _store = run_graph(
+        chat, application("Build production services with Python.")
     )
 
-    assert result.skill_signals[0].name == "Python"
+    assert result.result == "analyzed"
     assert len(chat.messages) == 2
     assert "invalid_json" in chat.messages[1][-1][1]
 
@@ -186,13 +227,11 @@ def test_deepseek_analysis_rejects_a_model_owned_match_score_then_repairs():
     valid = {key: value for key, value in invalid.items() if key != "matchScore"}
     chat = RecordedChatModel([json.dumps(invalid), json.dumps(valid)])
 
-    result = asyncio.run(
-        DeepSeekApplicationAnalysisModel(DeepSeekJsonClient(chat)).analyze(
-            application("Build production services with Python.")
-        )
+    result, _store = run_graph(
+        chat, application("Build production services with Python.")
     )
 
-    assert result.skill_signals[0].name == "Python"
+    assert result.result == "analyzed"
     assert "invalid_schema" in chat.messages[1][-1][1]
 
 
@@ -220,7 +259,7 @@ def test_deepseek_transport_retries_only_retryable_provider_failures():
         DeepSeekJsonClient(retrying_chat, sleep=record_sleep, jitter=lambda: 0)
     )
 
-    asyncio.run(model.analyze(application("Build Python services.")))
+    asyncio.run(model.generate(application("Build Python services.")))
 
     assert sleeps == [0.25]
     assert len(retrying_chat.messages) == 2
@@ -228,10 +267,33 @@ def test_deepseek_transport_retries_only_retryable_provider_failures():
     rejected_chat = RecordedChatModel([ProviderFailure(401)])
     rejected = DeepSeekApplicationAnalysisModel(DeepSeekJsonClient(rejected_chat))
     with pytest.raises(DeepSeekProviderError) as error:
-        asyncio.run(rejected.analyze(application("Build Python services.")))
+        asyncio.run(rejected.generate(application("Build Python services.")))
     assert error.value.code == "authentication_failed"
     assert "private provider error" not in str(error.value)
     assert len(rejected_chat.messages) == 1
+
+
+def test_deepseek_transport_normalizes_timeout_after_bounded_retries():
+    sleeps = []
+
+    async def record_sleep(delay: float):
+        sleeps.append(delay)
+
+    timeout = lambda: httpx.ReadTimeout(
+        "private timeout", request=httpx.Request("POST", "https://example.test")
+    )
+    chat = RecordedChatModel([timeout(), timeout(), timeout()])
+    model = DeepSeekApplicationAnalysisModel(
+        DeepSeekJsonClient(chat, sleep=record_sleep, jitter=lambda: 0)
+    )
+
+    with pytest.raises(DeepSeekProviderError) as error:
+        asyncio.run(model.generate(application("Build Python services.")))
+
+    assert error.value.code == "transport_unavailable"
+    assert error.value.retryable is True
+    assert sleeps == [0.25, 0.5]
+    assert len(chat.messages) == 3
 
 
 def test_asgi_analysis_uses_validated_deepseek_output_and_local_matching(tmp_path):
@@ -289,6 +351,30 @@ def test_asgi_analysis_uses_validated_deepseek_output_and_local_matching(tmp_pat
     assert response.json()["items"][0]["matchScore"] == 100
 
 
+def test_configured_product_composition_reports_real_analysis_ready(tmp_path):
+    settings = Settings(
+        notion_token="test-notion-token",
+        notion_database_id="applications-database",
+        notion_resume_database_id="resumes-database",
+        notion_notes_database_id="notes-database",
+        deepseek_api_key="test-deepseek-key",
+        export_path=tmp_path / "export",
+        recovery_journal_path=tmp_path / "recovery.json",
+    )
+    workspace = FakeWorkspace(tmp_path / "state.json")
+
+    with TestClient(
+        create_app(
+            settings,
+            workspace=workspace,
+            resume_builder=FakeResumeDocumentBuilder(),
+        )
+    ) as client:
+        health = client.get("/api/v1/health").json()
+
+    assert health["checks"]["analysis"] == "ready"
+
+
 @pytest.mark.parametrize(
     ("invalid_payload", "repair_code"),
     [
@@ -339,11 +425,111 @@ def test_analysis_repairs_invalid_summary_and_generic_trait_variants(
     chat = RecordedChatModel([json.dumps(invalid_payload), json.dumps(valid)])
     content = "Build Python services with strong communication skills."
 
-    result = asyncio.run(
-        DeepSeekApplicationAnalysisModel(DeepSeekJsonClient(chat)).analyze(
-            application(content)
-        )
+    result, _store = run_graph(chat, application(content))
+
+    assert result.result == "analyzed"
+    assert repair_code in chat.messages[1][-1][1]
+
+
+def test_graph_repairs_persisted_analysis_without_calling_deepseek():
+    record = replace(
+        application("Build Python services."),
+        analysis=ApplicationAnalysisDocument(
+            summary="One. Two. Three.",
+            match_score=84,
+            skill_signals=("Programming Languages: Python",),
+            heading="Application Analysis",
+        ),
+    )
+    chat = RecordedChatModel([])
+
+    outcome, store = run_graph(chat, record)
+
+    assert outcome.result == "repaired"
+    assert outcome.match_score == 84
+    assert store.final_score == 84
+    assert chat.messages == []
+
+
+def test_graph_returns_typed_failure_after_one_invalid_output_repair():
+    chat = RecordedChatModel(["not-json", "still-not-json"])
+
+    outcome, store = run_graph(chat, application("Build Python services."))
+
+    assert outcome.result == "failed"
+    assert outcome.errors == ("Application Analysis output failed validation.",)
+    assert store.document is None
+    assert store.final_score is None
+    assert len(chat.messages) == 2
+
+
+def test_graph_preserves_body_first_partial_state_when_property_commit_fails():
+    class FailingFinalizeStore(AnalysisStore):
+        async def finalize_application_analysis(self, application_id, *, match_score):
+            raise RuntimeError("private Notion failure")
+
+    record = application("Build Python services.")
+    store = FailingFinalizeStore(record)
+    chat = RecordedChatModel(
+        [
+            json.dumps(
+                {
+                    "summary": ["One.", "Two.", "Three."],
+                    "skillSignals": [
+                        {
+                            "name": "Python",
+                            "category": "programming_language",
+                            "importance": "required",
+                            "evidence": "Python",
+                        }
+                    ],
+                }
+            )
+        ]
+    )
+    graph = ApplicationAnalysisGraph(
+        store,
+        DeepSeekApplicationAnalysisModel(DeepSeekJsonClient(chat)),
+        EvidenceMatchingEngine(),
     )
 
-    assert result.skill_signals[0].name == "Python"
-    assert repair_code in chat.messages[1][-1][1]
+    outcome = asyncio.run(graph.run(record, batch_run_id="batch-1"))
+
+    assert outcome.result == "failed"
+    assert store.document is not None
+    assert store.final_score is None
+
+
+@pytest.mark.parametrize("model_kind", ["recorded_deepseek", "deterministic_fake"])
+def test_analysis_models_share_the_graph_output_contract(model_kind):
+    record = application("Build accessible React interfaces with automated tests.")
+    store = AnalysisStore(record)
+    if model_kind == "recorded_deepseek":
+        chat = RecordedChatModel(
+            [
+                json.dumps(
+                    {
+                        "summary": ["One.", "Two.", "Three."],
+                        "skillSignals": [
+                            {
+                                "name": "React",
+                                "category": "framework_library",
+                                "importance": "required",
+                                "evidence": "React",
+                            }
+                        ],
+                    }
+                )
+            ]
+        )
+        model = DeepSeekApplicationAnalysisModel(DeepSeekJsonClient(chat))
+    else:
+        model = FakeApplicationAnalysisModel()
+    graph = ApplicationAnalysisGraph(store, model, EvidenceMatchingEngine())
+
+    outcome = asyncio.run(graph.run(record, batch_run_id="batch-contract"))
+
+    assert outcome.result == "analyzed"
+    assert outcome.match_score is not None
+    assert store.document is not None
+    assert store.final_score == outcome.match_score

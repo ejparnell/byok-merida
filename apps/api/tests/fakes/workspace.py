@@ -11,7 +11,6 @@ from merida_api.features.applications.schemas import ConfirmedApplicationDraft
 from merida_api.features.applications.workspace import (
     ApplicationAnalysisDocument,
     ApplicationRecord,
-    SkillSignal,
 )
 from merida_api.features.resumes.workspace import (
     DocumentBlock,
@@ -164,10 +163,7 @@ class FakeWorkspace:
             analysis_document = ApplicationAnalysisDocument(
                 summary=str(analysis.get("summary") or ""),
                 match_score=analysis.get("matchScore", application.get("matchScore")),
-                skill_signals=tuple(
-                    SkillSignal(**signal) if isinstance(signal, dict) else signal
-                    for signal in (analysis.get("skillSignals") or ())
-                ),
+                skill_signals=tuple(analysis.get("skillSignals") or ()),
                 heading=analysis.get("heading", "Application Analysis"),
             )
         return ApplicationRecord(
@@ -225,17 +221,7 @@ class FakeWorkspace:
         application["analysis"] = {
             "summary": document.summary,
             "matchScore": document.match_score,
-            "skillSignals": [
-                signal
-                if isinstance(signal, str)
-                else {
-                    "name": signal.name,
-                    "category": signal.category,
-                    "importance": signal.importance,
-                    "evidence": signal.evidence,
-                }
-                for signal in document.skill_signals
-            ],
+            "skillSignals": [signal.text for signal in document.skill_signals],
         }
         self._save()
 

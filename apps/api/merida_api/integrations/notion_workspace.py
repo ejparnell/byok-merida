@@ -1241,19 +1241,10 @@ def _analysis_blocks(document: ApplicationAnalysisDocument) -> list[dict]:
         _block("heading_3", "Skill Signals"),
     ]
     blocks.extend(
-        _block("bulleted_list_item", _render_skill_signal(signal))
+        _block("bulleted_list_item", signal.text)
         for signal in document.skill_signals
     )
     return blocks
-
-
-def _render_skill_signal(signal) -> str:
-    if isinstance(signal, str):
-        return signal
-    return (
-        f"{signal.category} | {signal.importance} | "
-        f"{signal.name} | Evidence: {signal.evidence}"
-    )
 
 
 def _block_text(block: dict) -> str:

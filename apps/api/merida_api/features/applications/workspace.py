@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import date
-from typing import Literal
+from typing import Any, Literal
 
 
 ApplicationStatus = Literal[
@@ -43,11 +43,57 @@ class ApplicationAnalysisDraft:
 
 
 @dataclass(frozen=True)
+class AnalysisModelResponse:
+    payload: dict[str, Any] | None = None
+    error_code: str | None = None
+
+
+@dataclass(frozen=True)
+class PersistedSkillSignal:
+    text: str
+    name: str
+
+    @classmethod
+    def from_signal(cls, signal: SkillSignal) -> "PersistedSkillSignal":
+        return cls(
+            text=(
+                f"{signal.category} | {signal.importance} | "
+                f"{signal.name} | Evidence: {signal.evidence}"
+            ),
+            name=signal.name,
+        )
+
+    @classmethod
+    def from_text(cls, text: str) -> "PersistedSkillSignal":
+        value = str(text).strip()
+        name = value
+        if " | " in value:
+            fields = value.split(" | ")
+            if len(fields) >= 3:
+                name = fields[2]
+        elif ":" in value:
+            name = value.split(":", 1)[1].strip()
+        return cls(text=value, name=name)
+
+
+@dataclass(frozen=True)
 class ApplicationAnalysisDocument:
     summary: str
     match_score: int | None
-    skill_signals: tuple[SkillSignal | str, ...]
+    skill_signals: tuple[PersistedSkillSignal, ...]
     heading: Literal["Application Analysis", "Job Posting Analysis"]
+
+    def __post_init__(self):
+        object.__setattr__(
+            self,
+            "skill_signals",
+            tuple(
+                PersistedSkillSignal.from_text(signal)
+                if isinstance(signal, str)
+                else signal
+                for signal in self.skill_signals
+            ),
+        )
 
 
 @dataclass(frozen=True)

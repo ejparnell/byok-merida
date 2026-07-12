@@ -1,7 +1,6 @@
 from merida_api.features.applications.workspace import (
-    ApplicationAnalysisDraft,
+    AnalysisModelResponse,
     ApplicationRecord,
-    SkillSignal,
 )
 from merida_api.features.resumes.workspace import (
     DocumentBlock,
@@ -11,39 +10,47 @@ from merida_api.features.resumes.workspace import (
 
 
 class FakeApplicationAnalysisModel:
-    async def analyze(
-        self, application: ApplicationRecord
-    ) -> ApplicationAnalysisDraft:
+    async def generate(
+        self, application: ApplicationRecord, *, repair_code: str | None = None
+    ) -> AnalysisModelResponse:
+        del repair_code
         vocabulary = {
-            "React": "react",
-            "Python": "python",
-            "REST APIs": "rest api",
-            "PostgreSQL": "postgres",
-            "Testing": "test",
-            "CI": "ci",
-            "Accessibility": "accessib",
-            "Observability": "observab",
+            "React": ("react", "React"),
+            "Python": ("python", "Python"),
+            "REST APIs": ("rest api", "REST APIs"),
+            "PostgreSQL": ("postgres", "PostgreSQL"),
+            "Testing": ("test", "automated tests"),
+            "CI": ("ci", "CI"),
+            "Accessibility": ("accessib", "accessible"),
+            "Observability": ("observab", "observability"),
         }
         content = (application.job_content or "").lower()
         signals = tuple(
-            name for name, token in vocabulary.items() if token in content
+            (name, evidence)
+            for name, (token, evidence) in vocabulary.items()
+            if token in content
         )
-        signal_summary = ", ".join(signals) or "transferable engineering experience"
-        return ApplicationAnalysisDraft(
-            summary=(
-                f"{application.title} emphasizes {signal_summary}.",
-                "The analysis uses only readable Job Content and deterministic test evidence.",
-                "The durable Match Score is calculated outside the model.",
-            ),
-            skill_signals=tuple(
-                SkillSignal(
-                    name=name,
-                    category="other",
-                    importance="signal",
-                    evidence=name,
-                )
-                for name in signals
-            ),
+        signal_summary = (
+            ", ".join(name for name, _evidence in signals)
+            or "transferable engineering experience"
+        )
+        return AnalysisModelResponse(
+            payload={
+                "summary": [
+                    f"{application.title} emphasizes {signal_summary}.",
+                    "The analysis uses only readable Job Content and deterministic test evidence.",
+                    "The durable Match Score is calculated outside the model.",
+                ],
+                "skillSignals": [
+                    {
+                        "name": name,
+                        "category": "other",
+                        "importance": "signal",
+                        "evidence": evidence,
+                    }
+                    for name, evidence in signals
+                ],
+            }
         )
 
 
@@ -52,10 +59,7 @@ class FakeResumeDocumentBuilder:
         self, application: ApplicationRecord, master_resume: ResumeDocument
     ) -> ResumeArtifactBundle:
         signals = (
-            tuple(
-                signal if isinstance(signal, str) else signal.name
-                for signal in application.analysis.skill_signals
-            )
+            tuple(signal.name for signal in application.analysis.skill_signals)
             if application.analysis
             else ()
         )

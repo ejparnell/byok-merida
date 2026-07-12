@@ -57,11 +57,11 @@ class ApplicationAnalysis:
         async with self._coordinator.exclusive(
             "workflow:application-analysis",
             "Job Posting Analysis is already in progress.",
-        ):
-            return await self._run_batch(limit)
+        ) as batch_run:
+            return await self._run_batch(limit, batch_run.run_id)
 
     async def _run_batch(
-        self, limit: int
+        self, limit: int, batch_run_id: str
     ) -> ApplicationAnalysisCompletedResponse | ApplicationAnalysisBlockedResponse:
         readiness = await self._store.validate_analysis_workspace()
         if not readiness.ready:
@@ -89,7 +89,9 @@ class ApplicationAnalysis:
                     f"application:{queued.id}",
                     "This Application is already being updated.",
                 ):
-                    outcome = await self._item_graph.run(queued.id)
+                    outcome = await self._item_graph.run(
+                        queued, batch_run_id=batch_run_id
+                    )
                     application = outcome.application
                     if outcome.result == "skipped":
                         results.append(
@@ -97,6 +99,17 @@ class ApplicationAnalysis:
                                 application,
                                 outcome.result,
                                 outcome.match_score,
+                                list(outcome.errors),
+                            )
+                        )
+                        continue
+                    if outcome.result == "failed":
+                        failed += 1
+                        results.append(
+                            _result_item(
+                                application,
+                                "failed",
+                                None,
                                 list(outcome.errors),
                             )
                         )

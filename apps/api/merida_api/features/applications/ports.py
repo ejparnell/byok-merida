@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Callable, Protocol
 
 from .schemas import ConfirmedApplicationDraft
-from .workspace import ApplicationAnalysisDocument, ApplicationAnalysisDraft, ApplicationRecord
+from .workspace import AnalysisModelResponse, ApplicationAnalysisDocument, ApplicationRecord
 from ...shared.workspace import (
     QueuePage,
     WorkspaceReadiness,
@@ -44,6 +44,6 @@ class ApplicationAnalysisStore(Protocol):
 
 
 class ApplicationAnalysisModel(Protocol):
-    async def analyze(
-        self, application: ApplicationRecord
-    ) -> ApplicationAnalysisDraft: ...
+    async def generate(
+        self, application: ApplicationRecord, *, repair_code: str | None = None
+    ) -> AnalysisModelResponse: ...

@@ -20,10 +20,10 @@ class BlockingAnalysisModel:
         self.release = threading.Event()
         self._delegate = FakeApplicationAnalysisModel()
 
-    async def analyze(self, application):
+    async def generate(self, application, *, repair_code=None):
         self.started.set()
         assert await asyncio.to_thread(self.release.wait, 5)
-        return await self._delegate.analyze(application)
+        return await self._delegate.generate(application, repair_code=repair_code)
 
 
 class BlockingResumeBuilder:
