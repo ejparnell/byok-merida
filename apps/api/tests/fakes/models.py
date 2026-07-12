@@ -31,9 +31,8 @@ class FakeApplicationAnalysisModel:
         signal_summary = ", ".join(signals) or "transferable engineering experience"
         return ApplicationAnalysisDraft(
             summary=(
-                f"{application.title} emphasizes {signal_summary}. "
+                f"{application.title} emphasizes {signal_summary}.",
                 "The analysis uses only readable Job Content and deterministic test evidence.",
-                "Review the durable record in Notion before applying.",
                 "The durable Match Score is calculated outside the model.",
             ),
             skill_signals=tuple(
@@ -52,7 +51,14 @@ class FakeResumeDocumentBuilder:
     async def build(
         self, application: ApplicationRecord, master_resume: ResumeDocument
     ) -> ResumeArtifactBundle:
-        signals = application.analysis.skill_signals if application.analysis else ()
+        signals = (
+            tuple(
+                signal if isinstance(signal, str) else signal.name
+                for signal in application.analysis.skill_signals
+            )
+            if application.analysis
+            else ()
+        )
         score = application.match_score or 0
         return ResumeArtifactBundle(
             resume=(

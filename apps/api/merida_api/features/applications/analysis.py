@@ -1,4 +1,5 @@
 from .ports import ApplicationAnalysisModel, ApplicationAnalysisStore
+from .analysis_graph import ApplicationAnalysisGraph
 from .schemas import (
     AnalysisQueueItem,
     AnalysisResultItem,
@@ -7,7 +8,7 @@ from .schemas import (
     ApplicationAnalysisQueueBlockedResponse,
     ApplicationAnalysisQueueReadyResponse,
 )
-from .workspace import ApplicationAnalysisDocument, ApplicationRecord
+from .workspace import ApplicationRecord
 from ...shared.schemas import Pagination
 from ...shared.workspace import WorkspaceReadiness, workspace_validation_failures
 from ...shared.execution import ExecutionCoordinator
@@ -26,6 +27,9 @@ class ApplicationAnalysis:
         self._model = model
         self._coordinator = coordinator
         self._matcher = matcher or EvidenceMatchingEngine()
+        self._item_graph = ApplicationAnalysisGraph(
+            self._store, self._model, self._matcher
+        )
 
     async def get_queue(
         self, limit: int, cursor: str | None
@@ -85,57 +89,29 @@ class ApplicationAnalysis:
                     f"application:{queued.id}",
                     "This Application is already being updated.",
                 ):
-                    application = await self._store.load_analysis_input(queued.id)
-                    if (
-                        application.application_status != "To Apply"
-                        or application.analyzed
-                        or len((application.job_content or "").strip()) < 20
-                    ):
+                    outcome = await self._item_graph.run(queued.id)
+                    application = outcome.application
+                    if outcome.result == "skipped":
                         results.append(
                             _result_item(
                                 application,
-                                "skipped",
-                                application.match_score,
-                                ["Job Posting is no longer eligible for Analysis."],
+                                outcome.result,
+                                outcome.match_score,
+                                list(outcome.errors),
                             )
                         )
                         continue
-                    if application.analysis is not None:
-                        repair_score = (
-                            application.analysis.match_score
-                            if application.analysis.match_score is not None
-                            else application.match_score
-                        )
-                        await self._store.finalize_application_analysis(
-                            application.id,
-                            match_score=repair_score,
-                        )
-                        result = "repaired"
-                        score = repair_score
+                    if outcome.result == "repaired":
                         repaired += 1
-                    else:
-                        draft = await self._model.analyze(application)
-                        evidence = await self._store.load_analysis_evidence()
-                        matching = self._matcher.score(draft.skill_signals, evidence)
-                        document = ApplicationAnalysisDocument(
-                            summary=" ".join(draft.summary),
-                            match_score=matching.score,
-                            skill_signals=tuple(
-                                _persisted_skill_signal(signal)
-                                for signal in draft.skill_signals
-                            ),
-                            heading="Application Analysis",
-                        )
-                        await self._store.append_application_analysis(
-                            application.id, document
-                        )
-                        await self._store.finalize_application_analysis(
-                            application.id, match_score=document.match_score
-                        )
-                        result = "analyzed"
-                        score = document.match_score
                     succeeded += 1
-                    results.append(_result_item(application, result, score, []))
+                    results.append(
+                        _result_item(
+                            application,
+                            outcome.result,
+                            outcome.match_score,
+                            [],
+                        )
+                    )
             except Exception:
                 failed += 1
                 results.append(
@@ -195,11 +171,4 @@ def _blocked_queue(
         pagination=Pagination(limit=limit, next_cursor=None, has_more=False),
         validation_failures=workspace_validation_failures(readiness),
         errors=[issue.message for issue in readiness.errors],
-    )
-
-
-def _persisted_skill_signal(signal) -> str:
-    return (
-        f"{signal.category} | {signal.importance} | "
-        f"{signal.name} | Evidence: {signal.evidence}"
     )

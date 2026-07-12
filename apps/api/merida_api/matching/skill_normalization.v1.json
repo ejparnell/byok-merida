@@ -1,0 +1,28 @@
+{
+  "version": "skill-normalization-v1",
+  "aliases": {
+    "postgres sql": "postgresql",
+    "postgres": "postgresql",
+    "restful apis": "rest_api",
+    "restful api": "rest_api",
+    "rest apis": "rest_api",
+    "rest api": "rest_api",
+    "continuous integration": "ci",
+    "continuous delivery": "cd",
+    "continuous deployment": "cd",
+    "javascript": "js",
+    "typescript": "ts"
+  },
+  "stopwords": [
+    "a",
+    "an",
+    "and",
+    "for",
+    "in",
+    "of",
+    "on",
+    "the",
+    "to",
+    "with"
+  ]
+}

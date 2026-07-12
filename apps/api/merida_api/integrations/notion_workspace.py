@@ -20,7 +20,7 @@ from ..features.resumes.workspace import (
     ResumeRecord,
 )
 from ..shared.pagination import decode_cursor, encode_cursor
-from ..matching import EvidenceItem
+from ..matching import EvidenceItem, evidence_items_from_blocks
 from ..shared.workspace import (
     QueuePage,
     WorkspaceDataConflict,
@@ -292,19 +292,9 @@ class NotionWorkspace:
 
     async def load_analysis_evidence(self) -> tuple[EvidenceItem, ...]:
         master_resume = await self.load_master_resume()
-        section = "Master Resume"
-        evidence: list[EvidenceItem] = []
-        for index, block in enumerate(master_resume.blocks, start=1):
-            if block.kind in {"heading_1", "heading_2", "heading_3"}:
-                section = block.text
-            evidence.append(
-                EvidenceItem(
-                    id=f"{master_resume.record.id}:block-{index}",
-                    text=block.text,
-                    source_section=section,
-                )
-            )
-        return tuple(evidence)
+        return evidence_items_from_blocks(
+            master_resume.record.id, master_resume.blocks
+        )
 
     async def append_application_analysis(
         self, application_id: str, document: ApplicationAnalysisDocument
@@ -1251,9 +1241,19 @@ def _analysis_blocks(document: ApplicationAnalysisDocument) -> list[dict]:
         _block("heading_3", "Skill Signals"),
     ]
     blocks.extend(
-        _block("bulleted_list_item", signal) for signal in document.skill_signals
+        _block("bulleted_list_item", _render_skill_signal(signal))
+        for signal in document.skill_signals
     )
     return blocks
+
+
+def _render_skill_signal(signal) -> str:
+    if isinstance(signal, str):
+        return signal
+    return (
+        f"{signal.category} | {signal.importance} | "
+        f"{signal.name} | Evidence: {signal.evidence}"
+    )
 
 
 def _block_text(block: dict) -> str:

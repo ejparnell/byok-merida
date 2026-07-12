@@ -19,6 +19,7 @@ Completed:
 - task-specific DeepSeek Application Analysis structured-output adapter
 - evidence-validated Application Analysis drafts with one bounded repair attempt
 - deterministic `matching-v1` Match Score calculation against Master Resume evidence
+- one LangGraph invocation per Application Analysis item
 
 Not yet cut over:
 

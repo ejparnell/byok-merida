@@ -11,6 +11,7 @@ from merida_api.features.applications.schemas import ConfirmedApplicationDraft
 from merida_api.features.applications.workspace import (
     ApplicationAnalysisDocument,
     ApplicationRecord,
+    SkillSignal,
 )
 from merida_api.features.resumes.workspace import (
     DocumentBlock,
@@ -25,7 +26,7 @@ from merida_api.shared.workspace import (
     WorkspaceDataError,
     WorkspaceReadiness,
 )
-from merida_api.matching import EvidenceItem
+from merida_api.matching import EvidenceItem, evidence_items_from_blocks
 
 
 DEFAULT_TEST_FIXTURE = Path(__file__).resolve().parents[1] / "fixtures/workspace.v1.json"
@@ -163,7 +164,10 @@ class FakeWorkspace:
             analysis_document = ApplicationAnalysisDocument(
                 summary=str(analysis.get("summary") or ""),
                 match_score=analysis.get("matchScore", application.get("matchScore")),
-                skill_signals=tuple(analysis.get("skillSignals") or ()),
+                skill_signals=tuple(
+                    SkillSignal(**signal) if isinstance(signal, dict) else signal
+                    for signal in (analysis.get("skillSignals") or ())
+                ),
                 heading=analysis.get("heading", "Application Analysis"),
             )
         return ApplicationRecord(
@@ -210,19 +214,9 @@ class FakeWorkspace:
 
     async def load_analysis_evidence(self) -> tuple[EvidenceItem, ...]:
         master_resume = await self.load_master_resume()
-        section = "Master Resume"
-        evidence = []
-        for index, block in enumerate(master_resume.blocks, start=1):
-            if block.kind in {"heading_1", "heading_2", "heading_3"}:
-                section = block.text
-            evidence.append(
-                EvidenceItem(
-                    id=f"{master_resume.record.id}:block-{index}",
-                    text=block.text,
-                    source_section=section,
-                )
-            )
-        return tuple(evidence)
+        return evidence_items_from_blocks(
+            master_resume.record.id, master_resume.blocks
+        )
 
     async def append_application_analysis(
         self, application_id: str, document: ApplicationAnalysisDocument
@@ -231,7 +225,17 @@ class FakeWorkspace:
         application["analysis"] = {
             "summary": document.summary,
             "matchScore": document.match_score,
-            "skillSignals": list(document.skill_signals),
+            "skillSignals": [
+                signal
+                if isinstance(signal, str)
+                else {
+                    "name": signal.name,
+                    "category": signal.category,
+                    "importance": signal.importance,
+                    "evidence": signal.evidence,
+                }
+                for signal in document.skill_signals
+            ],
         }
         self._save()
 

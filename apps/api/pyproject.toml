@@ -25,6 +25,9 @@ dev = [
 where = ["."]
 include = ["merida_api*"]
 
+[tool.setuptools.package-data]
+"merida_api.matching" = ["*.json"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"

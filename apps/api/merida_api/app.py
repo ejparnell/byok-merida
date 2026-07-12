@@ -33,7 +33,7 @@ from .features.resumes.schemas import (
     GetResumeCreationQueueResponse,
 )
 from .integrations.notion_workspace import NotionWorkspace
-from .integrations.deepseek_analysis import create_deepseek_analysis_model
+from .features.applications.analysis_model import create_deepseek_analysis_model
 from .integrations.pdf_export import LocalPdfArtifacts
 from .shared.pagination import InvalidCursor
 from .shared.execution import ExecutionCoordinator, OperationConflict

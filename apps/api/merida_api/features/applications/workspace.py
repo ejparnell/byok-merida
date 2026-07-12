@@ -46,7 +46,7 @@ class ApplicationAnalysisDraft:
 class ApplicationAnalysisDocument:
     summary: str
     match_score: int | None
-    skill_signals: tuple[str, ...]
+    skill_signals: tuple[SkillSignal | str, ...]
     heading: Literal["Application Analysis", "Job Posting Analysis"]
 
 
