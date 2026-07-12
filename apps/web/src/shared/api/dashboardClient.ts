@@ -5,7 +5,7 @@ import {
   getHealth,
   getOperatorSettings,
   getResumeCreationQueue,
-  invokeData,
+  invokeApiData,
   resetDemo,
   runApplicationAnalysis,
 } from '@merida/api-client'
@@ -48,7 +48,6 @@ export function createDashboardClient(
     baseUrl:
       options.baseUrl || globalThis.location?.origin || 'http://127.0.0.1:8000',
     fetch: options.fetch,
-    responseStyle: 'data',
     throwOnError: true,
   })
 
@@ -61,38 +60,53 @@ export function createDashboardClient(
       resumeCursor?: string | null
     }) {
       const [health, settings, analysisQueue, resumeQueue] = await Promise.all([
-        invokeData<HealthResponse>(getHealth({ client: generatedClient })),
-        invokeData<OperatorSettingsResponse>(
-          getOperatorSettings({ client: generatedClient }),
+        invokeApiData(
+          getHealth<true>({ client: generatedClient, throwOnError: true }),
         ),
-        invokeData<GetApplicationAnalysisQueueResponse>(
-          getApplicationAnalysisQueue({
+        invokeApiData(
+          getOperatorSettings<true>({
             client: generatedClient,
-            query: queueQuery(analysisCursor),
+            throwOnError: true,
           }),
         ),
-        invokeData<GetResumeCreationQueueResponse>(
-          getResumeCreationQueue({
+        invokeApiData(
+          getApplicationAnalysisQueue<true>({
+            client: generatedClient,
+            query: queueQuery(analysisCursor),
+            throwOnError: true,
+          }),
+        ),
+        invokeApiData(
+          getResumeCreationQueue<true>({
             client: generatedClient,
             query: queueQuery(resumeCursor),
+            throwOnError: true,
           }),
         ),
       ])
       return { health, settings, analysisQueue, resumeQueue }
     },
     runAnalysis(limit: number) {
-      return invokeData<RunApplicationAnalysisResponse>(
-        runApplicationAnalysis({ client: generatedClient, body: { limit } }),
+      return invokeApiData(
+        runApplicationAnalysis<true>({
+          client: generatedClient,
+          body: { limit },
+          throwOnError: true,
+        }),
       )
     },
     createResume(applicationId: string) {
-      return invokeData<CreateResumeResponse>(
-        createResume({ client: generatedClient, body: { applicationId } }),
+      return invokeApiData(
+        createResume<true>({
+          client: generatedClient,
+          body: { applicationId },
+          throwOnError: true,
+        }),
       )
     },
     resetDemo() {
-      return invokeData<ResetDemoResponse>(
-        resetDemo({ client: generatedClient }),
+      return invokeApiData(
+        resetDemo<true>({ client: generatedClient, throwOnError: true }),
       )
     },
   }

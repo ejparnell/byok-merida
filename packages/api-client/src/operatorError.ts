@@ -31,9 +31,6 @@ export const invokeApi = async <T>(request: Promise<T>): Promise<T> => {
   }
 }
 
-// Hey API's generated SDK currently types configured `responseStyle: "data"`
-// clients as field-style results. Keep that generator mismatch inside the
-// shared client package so both consumers still receive generated response
-// types at their public seams.
-export const invokeData = async <T>(request: Promise<unknown>): Promise<T> =>
-  invokeApi(request) as Promise<T>
+export const invokeApiData = async <T extends { data: unknown }>(
+  request: Promise<T>,
+): Promise<T['data']> => (await invokeApi(request)).data

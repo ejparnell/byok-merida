@@ -2,7 +2,7 @@ import {
   confirmApplication,
   createClient,
   getHealth,
-  invokeData,
+  invokeApiData,
   prepareApplication,
 } from '@merida/api-client'
 import type {
@@ -32,28 +32,31 @@ export function createCaptureClient(
   const generatedClient = createClient({
     baseUrl: settings.backendUrl,
     fetch: options.fetch,
-    responseStyle: 'data',
     throwOnError: true,
   })
   const protectedHeaders = () => ({ 'X-Capture-Token': settings.captureToken })
 
   return {
     health: () =>
-      invokeData<HealthResponse>(getHealth({ client: generatedClient })),
+      invokeApiData(
+        getHealth<true>({ client: generatedClient, throwOnError: true }),
+      ),
     prepare: (evidence) =>
-      invokeData<PrepareApplicationResponse>(
-        prepareApplication({
+      invokeApiData(
+        prepareApplication<true>({
           client: generatedClient,
           body: { evidence },
           headers: protectedHeaders(),
+          throwOnError: true,
         }),
       ),
     confirm: (draft) =>
-      invokeData<ConfirmApplicationResponse>(
-        confirmApplication({
+      invokeApiData(
+        confirmApplication<true>({
           client: generatedClient,
           body: { draft },
           headers: protectedHeaders(),
+          throwOnError: true,
         }),
       ),
   }
