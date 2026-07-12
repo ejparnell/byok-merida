@@ -1,6 +1,7 @@
 from merida_api.features.applications.workspace import (
-    ApplicationAnalysisDocument,
+    ApplicationAnalysisDraft,
     ApplicationRecord,
+    SkillSignal,
 )
 from merida_api.features.resumes.workspace import (
     DocumentBlock,
@@ -12,7 +13,7 @@ from merida_api.features.resumes.workspace import (
 class FakeApplicationAnalysisModel:
     async def analyze(
         self, application: ApplicationRecord
-    ) -> ApplicationAnalysisDocument:
+    ) -> ApplicationAnalysisDraft:
         vocabulary = {
             "React": "react",
             "Python": "python",
@@ -27,17 +28,23 @@ class FakeApplicationAnalysisModel:
         signals = tuple(
             name for name, token in vocabulary.items() if token in content
         )
-        score = min(96, 58 + len(signals) * 6)
         signal_summary = ", ".join(signals) or "transferable engineering experience"
-        return ApplicationAnalysisDocument(
+        return ApplicationAnalysisDraft(
             summary=(
                 f"{application.title} emphasizes {signal_summary}. "
-                "The analysis uses only readable Job Content and deterministic test evidence. "
-                "Review the durable record in Notion before applying."
+                "The analysis uses only readable Job Content and deterministic test evidence.",
+                "Review the durable record in Notion before applying.",
+                "The durable Match Score is calculated outside the model.",
             ),
-            match_score=score,
-            skill_signals=signals,
-            heading="Application Analysis",
+            skill_signals=tuple(
+                SkillSignal(
+                    name=name,
+                    category="other",
+                    importance="signal",
+                    evidence=name,
+                )
+                for name in signals
+            ),
         )
 
 

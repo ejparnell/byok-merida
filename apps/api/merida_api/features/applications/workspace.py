@@ -11,6 +11,36 @@ ApplicationStatus = Literal[
     "Archived",
 ]
 
+SkillSignalCategory = Literal[
+    "database",
+    "api_integration",
+    "framework_library",
+    "programming_language",
+    "cloud_platform",
+    "testing_quality",
+    "architecture_systems",
+    "devops_tooling",
+    "workflow_collaboration",
+    "domain_knowledge",
+    "other",
+]
+
+SkillSignalImportance = Literal["required", "preferred", "signal"]
+
+
+@dataclass(frozen=True)
+class SkillSignal:
+    name: str
+    category: SkillSignalCategory
+    importance: SkillSignalImportance
+    evidence: str
+
+
+@dataclass(frozen=True)
+class ApplicationAnalysisDraft:
+    summary: tuple[str, str, str]
+    skill_signals: tuple[SkillSignal, ...]
+
 
 @dataclass(frozen=True)
 class ApplicationAnalysisDocument:

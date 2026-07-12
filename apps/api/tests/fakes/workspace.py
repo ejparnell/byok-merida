@@ -25,6 +25,7 @@ from merida_api.shared.workspace import (
     WorkspaceDataError,
     WorkspaceReadiness,
 )
+from merida_api.matching import EvidenceItem
 
 
 DEFAULT_TEST_FIXTURE = Path(__file__).resolve().parents[1] / "fixtures/workspace.v1.json"
@@ -206,6 +207,22 @@ class FakeWorkspace:
         if application is None:
             raise WorkspaceDataError("Application was not found.")
         return self._application_record(application)
+
+    async def load_analysis_evidence(self) -> tuple[EvidenceItem, ...]:
+        master_resume = await self.load_master_resume()
+        section = "Master Resume"
+        evidence = []
+        for index, block in enumerate(master_resume.blocks, start=1):
+            if block.kind in {"heading_1", "heading_2", "heading_3"}:
+                section = block.text
+            evidence.append(
+                EvidenceItem(
+                    id=f"{master_resume.record.id}:block-{index}",
+                    text=block.text,
+                    source_section=section,
+                )
+            )
+        return tuple(evidence)
 
     async def append_application_analysis(
         self, application_id: str, document: ApplicationAnalysisDocument

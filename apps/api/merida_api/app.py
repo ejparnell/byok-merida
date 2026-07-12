@@ -33,6 +33,7 @@ from .features.resumes.schemas import (
     GetResumeCreationQueueResponse,
 )
 from .integrations.notion_workspace import NotionWorkspace
+from .integrations.deepseek_analysis import create_deepseek_analysis_model
 from .integrations.pdf_export import LocalPdfArtifacts
 from .shared.pagination import InvalidCursor
 from .shared.execution import ExecutionCoordinator, OperationConflict
@@ -251,6 +252,11 @@ def create_app(
 ) -> FastAPI:
     settings = settings or Settings()
     workspace_injected = workspace is not None
+    if analysis_model is None and settings.deepseek_configured:
+        analysis_model = create_deepseek_analysis_model(
+            api_key=settings.deepseek_api_key,
+            model=settings.analysis_model,
+        )
     analysis_model_ready = analysis_model is not None
     resume_builder_ready = resume_builder is not None
     if workspace is None:

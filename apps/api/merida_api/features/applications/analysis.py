@@ -7,10 +7,11 @@ from .schemas import (
     ApplicationAnalysisQueueBlockedResponse,
     ApplicationAnalysisQueueReadyResponse,
 )
-from .workspace import ApplicationRecord
+from .workspace import ApplicationAnalysisDocument, ApplicationRecord
 from ...shared.schemas import Pagination
 from ...shared.workspace import WorkspaceReadiness, workspace_validation_failures
 from ...shared.execution import ExecutionCoordinator
+from ...matching import EvidenceMatchingEngine
 
 
 class ApplicationAnalysis:
@@ -19,10 +20,12 @@ class ApplicationAnalysis:
         store: ApplicationAnalysisStore,
         model: ApplicationAnalysisModel,
         coordinator: ExecutionCoordinator,
+        matcher: EvidenceMatchingEngine | None = None,
     ):
         self._store = store
         self._model = model
         self._coordinator = coordinator
+        self._matcher = matcher or EvidenceMatchingEngine()
 
     async def get_queue(
         self, limit: int, cursor: str | None
@@ -111,7 +114,18 @@ class ApplicationAnalysis:
                         score = repair_score
                         repaired += 1
                     else:
-                        document = await self._model.analyze(application)
+                        draft = await self._model.analyze(application)
+                        evidence = await self._store.load_analysis_evidence()
+                        matching = self._matcher.score(draft.skill_signals, evidence)
+                        document = ApplicationAnalysisDocument(
+                            summary=" ".join(draft.summary),
+                            match_score=matching.score,
+                            skill_signals=tuple(
+                                _persisted_skill_signal(signal)
+                                for signal in draft.skill_signals
+                            ),
+                            heading="Application Analysis",
+                        )
                         await self._store.append_application_analysis(
                             application.id, document
                         )
@@ -181,4 +195,11 @@ def _blocked_queue(
         pagination=Pagination(limit=limit, next_cursor=None, has_more=False),
         validation_failures=workspace_validation_failures(readiness),
         errors=[issue.message for issue in readiness.errors],
+    )
+
+
+def _persisted_skill_signal(signal) -> str:
+    return (
+        f"{signal.category} | {signal.importance} | "
+        f"{signal.name} | Evidence: {signal.evidence}"
     )

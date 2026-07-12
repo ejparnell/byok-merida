@@ -69,12 +69,12 @@ The product has no demo mode, fixture workspace, reset route, or runtime adapter
 
 ## Remaining Real-Runtime Cutover
 
-The FastAPI app always composes the real Notion workspace and reports blocked readiness when required configuration or DeepSeek workflow adapters are incomplete. It never falls back to deterministic product behavior. This is intentional: the existing Node implementation contains substantial evidence validation, compensation, and generation behavior that must be ported without weakening guardrails.
+The FastAPI app always composes the real Notion workspace. When DeepSeek is configured, it now composes the real task-specific Application Analysis adapter, validates structured evidence with one bounded repair attempt, and calculates Match Score locally through the versioned deterministic Matching policy. It never falls back to deterministic product behavior. Resume Creation remains blocked until its real model and evidence pipeline are ported without weakening guardrails.
 
 The remaining migration should proceed in vertical slices:
 
 1. implement Notion conformance for `CaptureStore`, then cut over real Capture;
-2. implement `ApplicationAnalysisStore` plus the DeepSeek Analysis model adapter and parity fixtures, then cut over Analysis;
+2. complete the remaining Application Analysis parity fixtures and bounded real-environment smoke evidence, then cut over Analysis;
 3. port Matching, evidence validation, Resume Draft generation, Notes rendering, and artifact compensation behind `ResumeCreationStore`, then cut over Resume Creation;
 4. run the versioned parity corpus against each real adapter before removing the Node route for that workflow;
 5. declare the single real runtime complete only when all readiness checks and cleanup fixtures pass.

@@ -16,14 +16,21 @@ Completed:
 - production React MV3 review-first side panel
 - PDF download through the shared artifact contract
 - public REST and UI-session tests
+- task-specific DeepSeek Application Analysis structured-output adapter
+- evidence-validated Application Analysis drafts with one bounded repair attempt
+- deterministic `matching-v1` Match Score calculation against Master Resume evidence
 
 Not yet cut over:
 
-- real Notion store adapters
-- real DeepSeek task-specific model adapters
-- Python ports of the full Matching and evidence-validation policies
+- real-environment conformance and smoke acceptance for each Notion store
+- real DeepSeek Resume Creation model adapters
+- the full Resume Creation Matching and evidence-validation policies
 - real Resume artifact commit and compensation
 - parity-based retirement of Node workflow routes
+
+Application Analysis now has its real DeepSeek adapter and deterministic matching
+dependency, but it remains behind the workflow cutover gate until the full Analysis
+parity corpus and bounded real-environment smoke run pass.
 
 ## Cutover Rule
 

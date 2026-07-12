@@ -2,11 +2,12 @@ from datetime import datetime
 from typing import Callable, Protocol
 
 from .schemas import ConfirmedApplicationDraft
-from .workspace import ApplicationAnalysisDocument, ApplicationRecord
+from .workspace import ApplicationAnalysisDocument, ApplicationAnalysisDraft, ApplicationRecord
 from ...shared.workspace import (
     QueuePage,
     WorkspaceReadiness,
 )
+from ...matching import EvidenceItem
 
 
 class CaptureStore(Protocol):
@@ -33,6 +34,7 @@ class ApplicationAnalysisStore(Protocol):
         self, *, limit: int, cursor: str | None
     ) -> QueuePage[ApplicationRecord]: ...
     async def load_analysis_input(self, application_id: str) -> ApplicationRecord: ...
+    async def load_analysis_evidence(self) -> tuple[EvidenceItem, ...]: ...
     async def append_application_analysis(
         self, application_id: str, document: ApplicationAnalysisDocument
     ) -> None: ...
@@ -44,4 +46,4 @@ class ApplicationAnalysisStore(Protocol):
 class ApplicationAnalysisModel(Protocol):
     async def analyze(
         self, application: ApplicationRecord
-    ) -> ApplicationAnalysisDocument: ...
+    ) -> ApplicationAnalysisDraft: ...

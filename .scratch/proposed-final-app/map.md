@@ -31,14 +31,15 @@ Produce a coherent, decision-complete implementation specification and dependenc
 - [Choose the target runtime and repository topology](issues/07-choose-runtime-repository-topology.md) — One polyglot monorepo now uses npm workspaces and one lockfile for TypeScript, one `uv`-locked FastAPI package for Python, committed generated API contracts, one-process production-shaped serving, isolated local data, namespaced final-app commands, and a single credential-free root verification gate while the prototype remains runnable.
 - [Set the concurrency, idempotency, and recovery boundaries](issues/08-set-concurrency-idempotency-recovery.md) — V1 now uses one FastAPI worker, fail-fast workflow and per-Application exclusion, unchanged domain-key idempotency, durable Notion completion markers, a content-free effect journal for Capture and Resume side effects, reverse compensation, restart reconciliation, and explicit manual recovery for ambiguous residue.
 - [Remove demo mode from the final app](issues/09-define-demo-mode-acceptance.md) — The final app now has one real-target composition; demo settings, fixtures, persistence, reset API, UI, and generated-client surface are removed, credential-free acceptance remains behind explicitly injected test fakes at the ASGI/OpenAPI seam, and workflows stay blocked until their real DeepSeek adapters complete the migration roadmap.
+- [Build the dependency-ordered migration and cutover roadmap](issues/10-build-migration-roadmap.md) — Migration now proceeds through one ASGI/OpenAPI-rooted acceptance gate: reconcile the real-only shell and shared infrastructure, then cut over Capture, Analysis, and Resume Creation in dependency order, complete bounded real-runtime acceptance, switch defaults, observe, and only then retire the still-runnable prototype.
 
 ## Not yet specified
 
-- The final structure and authority rules for the proposed documentation set, including the exact reconciliation edits, will become clear after the module, API, runtime, demo-removal, and migration decisions settle.
-- Distribution, installation, supported-platform, and release ergonomics remain fog until the target runtime and repository topology are chosen.
-- CI gates and operational runbooks remain fog until the migration roadmap reconciles real-runtime parity, recovery, and the credential-free fake-based acceptance contract. Portfolio presentation assets are not a product-runtime requirement.
-- The final implementation-ticket and commit breakdown remains fog until the migration roadmap identifies its vertical slices and cutover gates.
-- Prototype retirement, archival, and any post-cutover cleanup remain fog until the cutover roadmap is resolved.
+- Exact documentation edits are implementation work, but their authority is settled: reviewed contract docs govern behavior, the migration roadmap governs ordering, current prototype and proposed final-app operations stay separate during coexistence, and default cutover produces one current operator set while preserving historical prototype docs.
+- Distribution, installation, supported-platform, and release ergonomics are deferred implementation-ticket concerns for full real-runtime acceptance; they do not change the selected local-first, one-process production shape.
+- Exact CI and runbook files are implementation work, but their required gates are settled: credential-free root acceptance, generated-contract freshness, both React builds, parity and recovery coverage, bounded real-environment smoke evidence, and documented manual recovery.
+- Exact implementation-ticket sizing and commit boundaries will be derived from the roadmap's fixed slices when the work is converted to tickets; every ticket must declare blocking edges, fixture IDs, acceptance behavior, documentation impact, and fallback.
+- The prototype observation window's calendar duration remains an operational choice for the retirement slice; its required evidence and retirement gates are settled.
 
 ## Out of scope
 

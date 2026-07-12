@@ -20,6 +20,7 @@ from ..features.resumes.workspace import (
     ResumeRecord,
 )
 from ..shared.pagination import decode_cursor, encode_cursor
+from ..matching import EvidenceItem
 from ..shared.workspace import (
     QueuePage,
     WorkspaceDataConflict,
@@ -288,6 +289,22 @@ class NotionWorkspace:
             job_content=_read_top_level_section(blocks, "Job Content") or None,
             analysis=_select_analysis(blocks),
         )
+
+    async def load_analysis_evidence(self) -> tuple[EvidenceItem, ...]:
+        master_resume = await self.load_master_resume()
+        section = "Master Resume"
+        evidence: list[EvidenceItem] = []
+        for index, block in enumerate(master_resume.blocks, start=1):
+            if block.kind in {"heading_1", "heading_2", "heading_3"}:
+                section = block.text
+            evidence.append(
+                EvidenceItem(
+                    id=f"{master_resume.record.id}:block-{index}",
+                    text=block.text,
+                    source_section=section,
+                )
+            )
+        return tuple(evidence)
 
     async def append_application_analysis(
         self, application_id: str, document: ApplicationAnalysisDocument
