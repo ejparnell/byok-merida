@@ -41,8 +41,10 @@ app-data/
 
 ## Backend Layout
 
-This is the logical ownership layout established by the module-seam decision.
-The runtime-topology decision will settle exact package roots and build files.
+This is the logical ownership layout established by the module-seam decision
+and the resolved runtime-topology decision. The backend is one `uv`-locked
+installable Python project. The dashboard, extension, API client, and shared UI
+are private npm workspace packages under one root lockfile.
 
 ```text
 apps/api/merida_api/
@@ -188,7 +190,24 @@ packages/
     typescript/
 ```
 
-`packages/api-client` should be generated from FastAPI OpenAPI. Manual wrappers can live next to generated code, but generated files should be treated as disposable build output.
+`packages/api-client` is generated from FastAPI OpenAPI. Manual wrappers live
+next to generated source, but generated source is never edited by hand.
+
+The canonical OpenAPI document and generated TypeScript source are committed so
+contract changes are reviewable. Compiled client bundles, dashboard assets, and
+extension assets are disposable ignored outputs. `final:check-generated`
+regenerates the contract and fails on drift.
+
+## Runtime And Commands
+
+- Python 3.14.2 is the preferred runtime; compatibility CI covers 3.10 through 3.14.
+- Node 22.18 or newer is required by the generated-client toolchain.
+- `uv.lock` is the Python resolution authority and the root `package-lock.json` is the TypeScript resolution authority.
+- `final:dev` coordinates the reloadable FastAPI and dashboard processes; extension development uses an MV3 watch build.
+- `final:build` produces the dashboard and independently loadable extension.
+- `final:start` runs one FastAPI process that serves `/api/v1`, `/dashboard`, and PDF downloads.
+- `test:final` verifies generated-client freshness, strict TypeScript, consumer tests, FastAPI tests, and both production builds without private credentials.
+- Prototype `start` and `test` commands retain their existing meaning until final cutover.
 
 ## Module Interfaces
 

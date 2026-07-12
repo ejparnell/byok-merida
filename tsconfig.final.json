@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": { "types": ["chrome", "node", "react", "react-dom"] },
+  "include": [
+    "packages/api-client/src",
+    "packages/ui/src",
+    "apps/web/src",
+    "apps/web/vite.config.ts",
+    "apps/extension/src",
+    "apps/extension/vite.config.ts"
+  ],
+  "exclude": ["**/*.test.ts"]
+}

@@ -8,23 +8,32 @@ const EMPTY_STATE = {
   errors: [],
 }
 
-const readableJobContent = (evidence) => {
+const operatorError = (error: unknown) => error as Error
+
+const readableJobContent = (evidence: any) => {
   const semanticText = String(evidence.semanticHtml || '')
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
-  return evidence.selectedText?.trim() || evidence.visibleText?.trim() || semanticText
+  return (
+    evidence.selectedText?.trim() ||
+    evidence.visibleText?.trim() ||
+    semanticText
+  )
 }
 
-export function createCaptureSession(client, onChange = () => {}) {
-  let state = { ...EMPTY_STATE }
+export function createCaptureSession(
+  client: any,
+  onChange: (state: any) => void = () => {},
+) {
+  let state: any = { ...EMPTY_STATE }
 
-  const publish = (patch) => {
+  const publish = (patch: any) => {
     state = { ...state, ...patch }
     onChange(state)
   }
 
-  const performPrepare = async (evidence, source) => {
+  const performPrepare = async (evidence: any, source: any) => {
     publish({ phase: 'reading', errors: [], result: null })
     try {
       publish({ phase: 'parsing' })
@@ -39,41 +48,60 @@ export function createCaptureSession(client, onChange = () => {}) {
       })
       return response.result
     } catch (error) {
-      publish({ phase: state.review ? 'reviewing' : 'idle', errors: [error.message || 'Application could not be prepared.'] })
+      publish({
+        phase: state.review ? 'reviewing' : 'idle',
+        errors: [
+          operatorError(error).message || 'Application could not be prepared.',
+        ],
+      })
       return 'failed'
     }
   }
 
   return {
     getState: () => state,
-    subscribe(next) {
+    subscribe(next: (state: any) => void) {
       onChange = next
       next(state)
     },
-    async prepare(evidence, source, { discard = false } = {}) {
+    async prepare(
+      evidence: any,
+      source: any,
+      { discard = false }: { discard?: boolean } = {},
+    ) {
       if (state.phase === 'reviewing' && state.dirty && !discard) {
         return 'discard_confirmation_required'
       }
       return performPrepare(evidence, source)
     },
-    updateReview(field, value) {
+    updateReview(field: string, value: string) {
       if (!state.review) return
-      publish({ review: { ...state.review, [field]: value }, dirty: true, errors: [] })
+      publish({
+        review: { ...state.review, [field]: value },
+        dirty: true,
+        errors: [],
+      })
     },
-    sourceChanged(source) {
+    sourceChanged(source: { tabId: number; url: string }) {
       if (!state.source) return false
-      const changed = state.source.tabId !== source.tabId || state.source.url !== source.url
+      const changed =
+        state.source.tabId !== source.tabId || state.source.url !== source.url
       if (changed) publish({ sourceChanged: true })
       return changed
     },
     async confirm() {
-      if (!state.review || !state.evidence || state.phase === 'confirming') return null
+      if (!state.review || !state.evidence || state.phase === 'confirming')
+        return null
       const required = ['companyName', 'role', 'jobUrl']
-      const missing = required.filter((field) => !String(state.review[field] || '').trim())
+      const missing = required.filter(
+        (field) => !String(state.review[field] || '').trim(),
+      )
       const jobContent = readableJobContent(state.evidence)
       if (jobContent.length < 20) missing.push('jobContent')
       if (missing.length) {
-        publish({ errors: [`Required fields are missing: ${missing.join(', ')}.`] })
+        publish({
+          errors: [`Required fields are missing: ${missing.join(', ')}.`],
+        })
         return { ok: false, result: 'needs_review', missing }
       }
       publish({ phase: 'confirming', errors: [] })
@@ -82,11 +110,20 @@ export function createCaptureSession(client, onChange = () => {}) {
         if (result.ok) {
           publish({ phase: 'complete', result, evidence: null, dirty: false })
         } else {
-          publish({ phase: 'reviewing', result, errors: result.errors || ['Application could not be created.'] })
+          publish({
+            phase: 'reviewing',
+            result,
+            errors: result.errors || ['Application could not be created.'],
+          })
         }
         return result
       } catch (error) {
-        publish({ phase: 'reviewing', errors: [error.message || 'Application could not be created.'] })
+        publish({
+          phase: 'reviewing',
+          errors: [
+            operatorError(error).message || 'Application could not be created.',
+          ],
+        })
         return null
       }
     },

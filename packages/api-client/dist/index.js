@@ -1,4 +1,4 @@
-//#region packages/api-client/src/generated/core/bodySerializer.gen.ts
+//#region src/generated/core/bodySerializer.gen.ts
 var jsonBodySerializer = { bodySerializer: (body) => JSON.stringify(body, (_key, value) => typeof value === "bigint" ? value.toString() : value) };
 Object.entries({
 	$body_: "body",
@@ -7,7 +7,7 @@ Object.entries({
 	$query_: "query"
 });
 //#endregion
-//#region packages/api-client/src/generated/core/serverSentEvents.gen.ts
+//#region src/generated/core/serverSentEvents.gen.ts
 function createSseClient({ onRequest, onSseError, onSseEvent, responseTransformer, responseValidator, sseDefaultRetryDelay, sseMaxRetryAttempts, sseMaxRetryDelay, sseSleepFn, url, ...options }) {
 	let lastEventId;
 	const sleep = sseSleepFn ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
@@ -100,7 +100,7 @@ function createSseClient({ onRequest, onSseError, onSseEvent, responseTransforme
 	return { stream: createStream() };
 }
 //#endregion
-//#region packages/api-client/src/generated/core/pathSerializer.gen.ts
+//#region src/generated/core/pathSerializer.gen.ts
 var separatorArrayExplode = (style) => {
 	switch (style) {
 		case "label": return ".";
@@ -179,7 +179,7 @@ var serializeObjectParam = ({ allowReserved, explode, name, style, value, valueO
 	return style === "label" || style === "matrix" ? separator + joinedValues : joinedValues;
 };
 //#endregion
-//#region packages/api-client/src/generated/core/utils.gen.ts
+//#region src/generated/core/utils.gen.ts
 var PATH_PARAM_RE = /\{[^{}]+\}/g;
 var defaultPathSerializer = ({ path, url: _url }) => {
 	let url = _url;
@@ -253,7 +253,7 @@ function getValidRequestBody(options) {
 	if (hasBody) return options.body;
 }
 //#endregion
-//#region packages/api-client/src/generated/core/auth.gen.ts
+//#region src/generated/core/auth.gen.ts
 var getAuthToken = async (auth, callback) => {
 	const token = typeof callback === "function" ? await callback(auth) : callback;
 	if (!token) return;
@@ -262,7 +262,7 @@ var getAuthToken = async (auth, callback) => {
 	return token;
 };
 //#endregion
-//#region packages/api-client/src/generated/client/utils.gen.ts
+//#region src/generated/client/utils.gen.ts
 var createQuerySerializer = ({ parameters = {}, ...args } = {}) => {
 	const querySerializer = (queryParams) => {
 		const search = [];
@@ -434,7 +434,7 @@ var createConfig = (override = {}) => ({
 	...override
 });
 //#endregion
-//#region packages/api-client/src/generated/client/client.gen.ts
+//#region src/generated/client/client.gen.ts
 var createClient = (config = {}) => {
 	let _config = mergeConfigs(createConfig(), config);
 	const getConfig = () => ({ ..._config });
@@ -604,10 +604,10 @@ var createClient = (config = {}) => {
 	};
 };
 //#endregion
-//#region packages/api-client/src/generated/client.gen.ts
+//#region src/generated/client.gen.ts
 var client = createClient(createConfig());
 //#endregion
-//#region packages/api-client/src/generated/sdk.gen.ts
+//#region src/generated/sdk.gen.ts
 /**
 * Get Analysis Queue
 */
@@ -716,7 +716,7 @@ var downloadResumePdf = (options) => (options.client ?? client).get({
 	...options
 });
 //#endregion
-//#region packages/api-client/src/operatorError.ts
+//#region src/operatorError.ts
 var toOperatorError = (error) => {
 	if (error instanceof Error) return error;
 	const payload = error;

@@ -125,7 +125,11 @@ def create_app(
     settings = settings or Settings()
     if workspace is None:
         workspace = (
-            DemoWorkspace(settings.demo_state_path, settings.export_path)
+            DemoWorkspace(
+                settings.demo_state_path,
+                settings.export_path,
+                fixture_path=settings.demo_fixture_path,
+            )
             if settings.merida_mode == "demo"
             else NotionWorkspace(
                 token=settings.notion_token,

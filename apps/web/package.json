@@ -1,0 +1,16 @@
+{
+  "name": "@merida/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5173",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@merida/api-client": "0.1.0",
+    "@merida/ui": "0.1.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
+  }
+}

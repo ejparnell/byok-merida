@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createDashboardSession } from './dashboardSession.js'
+import { createDashboardSession } from './dashboardSession.ts'
 
 test('analysis completion resets both queue cursors and keeps a safe final result', async () => {
   const calls = []
@@ -11,13 +11,29 @@ test('analysis completion resets both queue cursors and keeps a safe final resul
       return {
         health: { checks: { analysis: 'ready', resumes: 'ready' } },
         settings: { models: { analysis: 'demo', resumes: 'demo' } },
-        analysisQueue: { queueCount: 1, items: [], pagination: { nextCursor: null } },
-        resumeQueue: { queueCount: 0, items: [], pagination: { nextCursor: null } },
+        analysisQueue: {
+          queueCount: 1,
+          items: [],
+          pagination: { nextCursor: null },
+        },
+        resumeQueue: {
+          queueCount: 0,
+          items: [],
+          pagination: { nextCursor: null },
+        },
       }
     },
     runAnalysis: async (limit) => {
       calls.push(['run', limit])
-      return { ok: true, result: 'completed', processed: 1, succeeded: 1, failed: 0, repaired: 0, items: [] }
+      return {
+        ok: true,
+        result: 'completed',
+        processed: 1,
+        succeeded: 1,
+        failed: 0,
+        repaired: 0,
+        items: [],
+      }
     },
   }
   const session = createDashboardSession(client)
@@ -37,8 +53,16 @@ test('resume completion keeps output links after the queue refresh', async () =>
     loadDashboard: async () => ({
       health: { checks: { analysis: 'ready', resumes: 'ready' } },
       settings: { models: { analysis: 'demo', resumes: 'demo' } },
-      analysisQueue: { queueCount: 0, items: [], pagination: { nextCursor: null } },
-      resumeQueue: { queueCount: 0, items: [], pagination: { nextCursor: null } },
+      analysisQueue: {
+        queueCount: 0,
+        items: [],
+        pagination: { nextCursor: null },
+      },
+      resumeQueue: {
+        queueCount: 0,
+        items: [],
+        pagination: { nextCursor: null },
+      },
     }),
     createResume: async () => ({
       ok: true,
@@ -53,7 +77,10 @@ test('resume completion keeps output links after the queue refresh', async () =>
   await session.createResume('app-1')
 
   assert.equal(session.getState().activeResumeId, null)
-  assert.equal(session.getState().resumeResults['app-1'].pdf.downloadUrl, '/api/v1/resumes/resume-1/pdf')
+  assert.equal(
+    session.getState().resumeResults['app-1'].pdf.downloadUrl,
+    '/api/v1/resumes/resume-1/pdf',
+  )
 })
 
 test('invalid queue cursors recover once by loading both first pages', async () => {
@@ -69,8 +96,16 @@ test('invalid queue cursors recover once by loading both first pages', async () 
       return {
         health: { checks: { analysis: 'ready', resumes: 'ready' } },
         settings: { models: { analysis: 'demo', resumes: 'demo' } },
-        analysisQueue: { queueCount: 0, items: [], pagination: { nextCursor: null } },
-        resumeQueue: { queueCount: 0, items: [], pagination: { nextCursor: null } },
+        analysisQueue: {
+          queueCount: 0,
+          items: [],
+          pagination: { nextCursor: null },
+        },
+        resumeQueue: {
+          queueCount: 0,
+          items: [],
+          pagination: { nextCursor: null },
+        },
       }
     },
   }
@@ -95,12 +130,34 @@ test('empty analysis and already-created resume outcomes preserve valid cursors'
       return {
         health: { checks: { analysis: 'ready', resumes: 'ready' } },
         settings: { models: { analysis: 'demo', resumes: 'demo' } },
-        analysisQueue: { queueCount: 0, items: [], pagination: { nextCursor: null } },
-        resumeQueue: { queueCount: 0, items: [], pagination: { nextCursor: null } },
+        analysisQueue: {
+          queueCount: 0,
+          items: [],
+          pagination: { nextCursor: null },
+        },
+        resumeQueue: {
+          queueCount: 0,
+          items: [],
+          pagination: { nextCursor: null },
+        },
       }
     },
-    runAnalysis: async () => ({ ok: true, result: 'completed', processed: 0, succeeded: 0, failed: 0, repaired: 0, items: [] }),
-    createResume: async () => ({ ok: true, result: 'already_created', resume: { url: 'https://example.test/resume' }, note: null, pdf: null }),
+    runAnalysis: async () => ({
+      ok: true,
+      result: 'completed',
+      processed: 0,
+      succeeded: 0,
+      failed: 0,
+      repaired: 0,
+      items: [],
+    }),
+    createResume: async () => ({
+      ok: true,
+      result: 'already_created',
+      resume: { url: 'https://example.test/resume' },
+      note: null,
+      pdf: null,
+    }),
   }
   const session = createDashboardSession(client)
   session.setCursors('analysis-page', 'resume-page')
@@ -122,11 +179,25 @@ test('created resume resets only the Resume Creation Queue cursor', async () => 
       return {
         health: { checks: { analysis: 'ready', resumes: 'ready' } },
         settings: { models: { analysis: 'demo', resumes: 'demo' } },
-        analysisQueue: { queueCount: 0, items: [], pagination: { nextCursor: null } },
-        resumeQueue: { queueCount: 0, items: [], pagination: { nextCursor: null } },
+        analysisQueue: {
+          queueCount: 0,
+          items: [],
+          pagination: { nextCursor: null },
+        },
+        resumeQueue: {
+          queueCount: 0,
+          items: [],
+          pagination: { nextCursor: null },
+        },
       }
     },
-    createResume: async () => ({ ok: true, result: 'created', resume: { url: 'https://example.test/resume' }, note: { url: 'https://example.test/note' }, pdf: { downloadUrl: '/api/v1/resumes/resume-1/pdf' } }),
+    createResume: async () => ({
+      ok: true,
+      result: 'created',
+      resume: { url: 'https://example.test/resume' },
+      note: { url: 'https://example.test/note' },
+      pdf: { downloadUrl: '/api/v1/resumes/resume-1/pdf' },
+    }),
   }
   const session = createDashboardSession(client)
   session.setCursors('analysis-page', 'resume-page')
@@ -144,11 +215,27 @@ test('failure-only analysis preserves valid queue cursors', async () => {
       return {
         health: { checks: { analysis: 'ready', resumes: 'ready' } },
         settings: { models: { analysis: 'demo', resumes: 'demo' } },
-        analysisQueue: { queueCount: 1, items: [], pagination: { nextCursor: null } },
-        resumeQueue: { queueCount: 0, items: [], pagination: { nextCursor: null } },
+        analysisQueue: {
+          queueCount: 1,
+          items: [],
+          pagination: { nextCursor: null },
+        },
+        resumeQueue: {
+          queueCount: 0,
+          items: [],
+          pagination: { nextCursor: null },
+        },
       }
     },
-    runAnalysis: async () => ({ ok: true, result: 'completed', processed: 1, succeeded: 0, failed: 1, repaired: 0, items: [{ result: 'failed' }] }),
+    runAnalysis: async () => ({
+      ok: true,
+      result: 'completed',
+      processed: 1,
+      succeeded: 0,
+      failed: 1,
+      repaired: 0,
+      items: [{ result: 'failed' }],
+    }),
   }
   const session = createDashboardSession(client)
   session.setCursors('analysis-page', 'resume-page')

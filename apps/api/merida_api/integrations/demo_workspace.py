@@ -78,27 +78,41 @@ def initial_demo_state() -> dict:
 
 
 class DemoWorkspace:
-    def __init__(self, state_path: Path, export_path: Path):
+    def __init__(
+        self,
+        state_path: Path,
+        _export_path: Path | None = None,
+        *,
+        fixture_path: Path | None = None,
+    ):
         self._state_path = state_path
+        self._fixture_path = fixture_path
         self._lock = asyncio.Lock()
         self._state = self._load()
 
     def _load(self) -> dict:
         if self._state_path.exists():
             return json.loads(self._state_path.read_text())
-        state = initial_demo_state()
+        state = self._initial_state()
         self._save(state)
         return state
+
+    def _initial_state(self) -> dict:
+        if self._fixture_path is None:
+            return initial_demo_state()
+        return json.loads(self._fixture_path.read_text())
 
     def _save(self, state: dict | None = None) -> None:
         if state is not None:
             self._state = state
         self._state_path.parent.mkdir(parents=True, exist_ok=True)
-        self._state_path.write_text(json.dumps(self._state, indent=2) + "\n")
+        temporary_path = self._state_path.with_suffix(f"{self._state_path.suffix}.tmp")
+        temporary_path.write_text(json.dumps(self._state, indent=2) + "\n")
+        temporary_path.replace(self._state_path)
 
     async def reset(self) -> dict:
         async with self._lock:
-            self._save(initial_demo_state())
+            self._save(self._initial_state())
         return {"ok": True, "result": "reset", "validationFailures": [], "errors": []}
 
     @staticmethod

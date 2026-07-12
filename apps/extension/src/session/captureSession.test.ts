@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createCaptureSession } from './captureSession.js'
+import { createCaptureSession } from './captureSession.ts'
 
 test('reviewed fields survive a failed confirmation and are sent with in-memory job content', async () => {
   const client = {
@@ -18,7 +18,11 @@ test('reviewed fields survive a failed confirmation and are sent with in-memory 
     }),
     confirm: async (draft) => {
       assert.equal(draft.jobContent, 'Build reliable systems with Python')
-      return { ok: false, status: 'blocked', errors: ['Workspace unavailable'] }
+      return {
+        ok: false,
+        status: 'blocked',
+        errors: ['Workspace unavailable'],
+      }
     },
   }
   const evidence = {
@@ -43,14 +47,26 @@ test('starting a new capture requires discard confirmation when review is dirty'
     prepare: async () => ({
       ok: true,
       result: 'prepared',
-      draft: { jobUrl: 'https://example.test/job', companyName: 'Example', role: 'Engineer', location: '', jobContentPreview: 'Content' },
+      draft: {
+        jobUrl: 'https://example.test/job',
+        companyName: 'Example',
+        role: 'Engineer',
+        location: '',
+        jobContentPreview: 'Content',
+      },
     }),
   }
   const session = createCaptureSession(client)
-  await session.prepare({ url: 'https://example.test/job', visibleText: 'Content' }, { tabId: 1, url: 'https://example.test/job' })
+  await session.prepare(
+    { url: 'https://example.test/job', visibleText: 'Content' },
+    { tabId: 1, url: 'https://example.test/job' },
+  )
   session.updateReview('companyName', 'Edited Example')
 
-  const outcome = await session.prepare({ url: 'https://other.test/job', visibleText: 'Other' }, { tabId: 2, url: 'https://other.test/job' })
+  const outcome = await session.prepare(
+    { url: 'https://other.test/job', visibleText: 'Other' },
+    { tabId: 2, url: 'https://other.test/job' },
+  )
 
   assert.equal(outcome, 'discard_confirmation_required')
   assert.equal(session.getState().review.companyName, 'Edited Example')
@@ -62,7 +78,13 @@ test('semantic-only evidence is converted to readable in-memory Job Content on c
     prepare: async () => ({
       ok: true,
       result: 'prepared',
-      draft: { jobUrl: 'https://example.test/job', companyName: 'Example', role: 'Engineer', location: null, jobContentPreview: 'Build reliable systems.' },
+      draft: {
+        jobUrl: 'https://example.test/job',
+        companyName: 'Example',
+        role: 'Engineer',
+        location: null,
+        jobContentPreview: 'Build reliable systems.',
+      },
     }),
     confirm: async (draft) => {
       confirmed = draft
@@ -72,7 +94,8 @@ test('semantic-only evidence is converted to readable in-memory Job Content on c
   const session = createCaptureSession(client)
   const evidence = {
     url: 'https://example.test/job',
-    semanticHtml: '<article><h1>Engineer</h1><p>Build reliable systems.</p></article>',
+    semanticHtml:
+      '<article><h1>Engineer</h1><p>Build reliable systems.</p></article>',
   }
 
   await session.prepare(evidence, { tabId: 1, url: evidence.url })

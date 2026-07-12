@@ -1,7 +1,11 @@
 from pathlib import Path
 from typing import Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
 
 
 class Settings(BaseSettings):
@@ -27,8 +31,14 @@ class Settings(BaseSettings):
     analysis_model: str = "deepseek-v4-flash"
     resume_model: str = "deepseek-v4-pro"
 
-    demo_state_path: Path = Path("app-data/demo/state.json")
-    export_path: Path = Path("app-data/export")
+    demo_fixture_path: Path = REPOSITORY_ROOT / "app-data/demo/fixtures/state.v1.json"
+    demo_state_path: Path = REPOSITORY_ROOT / "app-data/demo/state.json"
+    export_path: Path = REPOSITORY_ROOT / "app-data/export"
+
+    @field_validator("demo_fixture_path", "demo_state_path", "export_path", mode="after")
+    @classmethod
+    def resolve_repository_path(cls, value: Path) -> Path:
+        return value if value.is_absolute() else (REPOSITORY_ROOT / value).resolve()
 
     @property
     def notion_configured(self) -> bool:

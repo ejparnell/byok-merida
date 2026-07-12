@@ -1,0 +1,48 @@
+{
+  "applications": [
+    {
+      "id": "app-northstar",
+      "companyName": "Northstar Labs",
+      "role": "Senior Frontend Engineer",
+      "jobUrl": "https://jobs.example.test/northstar/frontend",
+      "jobContent": "Build accessible React interfaces, REST APIs, design systems, and reliable automated tests.",
+      "applicationStatus": "To Apply",
+      "dateFound": "2026-07-01",
+      "analyzed": false,
+      "matchScore": null,
+      "analysis": null,
+      "resumeId": null
+    },
+    {
+      "id": "app-lantern",
+      "companyName": "Lantern Health",
+      "role": "Full Stack Engineer",
+      "jobUrl": "https://jobs.example.test/lantern/full-stack",
+      "jobContent": "Develop Python services, REST APIs, React workflows, PostgreSQL data models, and integration tests.",
+      "applicationStatus": "To Apply",
+      "dateFound": "2026-07-02",
+      "analyzed": false,
+      "matchScore": null,
+      "analysis": null,
+      "resumeId": null
+    },
+    {
+      "id": "app-orbit",
+      "companyName": "Orbit Works",
+      "role": "Platform Engineer",
+      "jobUrl": "https://jobs.example.test/orbit/platform",
+      "jobContent": "Own Python platform services, API reliability, CI workflows, observability, and cloud operations.",
+      "applicationStatus": "To Apply",
+      "dateFound": "2026-07-03",
+      "analyzed": true,
+      "matchScore": 88,
+      "analysis": {
+        "summary": "The role aligns with backend systems, API design, and delivery automation.",
+        "skillSignals": ["Python", "REST APIs", "CI"]
+      },
+      "resumeId": null
+    }
+  ],
+  "resumes": {},
+  "notes": {}
+}

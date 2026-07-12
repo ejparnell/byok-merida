@@ -10,8 +10,12 @@ __pycache__/
 *.pyc
 *.egg-info/
 .pytest_cache/
+.cache/
 apps/*-prototype/
 apps/web/dist/
 apps/extension/dist/
+packages/api-client/dist/
 app-data/demo/state.json
+app-data/demo/state.json.tmp
 app-data/export/*.pdf
+*.tsbuildinfo

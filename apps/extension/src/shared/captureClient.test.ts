@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createCaptureClient } from './captureClient.js'
+import { createCaptureClient } from './captureClient.ts'
 
 test('extension adapter sends the capture token only to protected operations', async () => {
   const requests = []
@@ -24,8 +24,17 @@ test('extension adapter sends the capture token only to protected operations', a
   )
 
   await client.health()
-  await client.prepare({ url: 'https://example.test/job', visibleText: 'Readable job content for testing.' })
-  await client.confirm({ jobUrl: 'https://example.test/job', companyName: 'Example', role: 'Engineer', location: null, jobContent: 'Readable job content for testing.' })
+  await client.prepare({
+    url: 'https://example.test/job',
+    visibleText: 'Readable job content for testing.',
+  })
+  await client.confirm({
+    jobUrl: 'https://example.test/job',
+    companyName: 'Example',
+    role: 'Engineer',
+    location: null,
+    jobContent: 'Readable job content for testing.',
+  })
 
   assert.equal(requests.length, 3)
   assert.equal(requests[0].headers.has('X-Capture-Token'), false)

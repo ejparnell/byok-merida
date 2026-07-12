@@ -20,14 +20,21 @@ Demo mode is complete and is the default. The existing real Notion and DeepSeek 
 ## Run The Implemented App
 
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install -e 'apps/api[dev]'
-npm install
+npm run final:setup
 npm run final:build
 npm run final:start
 ```
 
 Open `http://127.0.0.1:8000/dashboard`. Load `apps/extension/dist` as an unpacked Chrome extension and set its Capture token to the backend `CAPTURE_TOKEN` value.
+
+The final-app toolchain uses Python 3.14.2 locally, supports Python 3.10 through
+3.14 in compatibility CI, requires Node 22.18 or newer, uses `uv` for the one
+Python lockfile, and uses npm workspaces with one root lockfile for the web app,
+extension, generated API client, and shared UI.
+
+During migration, `npm start` and `npm test` continue to run the frozen
+prototype. Final-app work stays under `final:*`; `npm run test:final` is the
+credential-free acceptance gate.
 
 The final app keeps the useful product shape that already works:
 

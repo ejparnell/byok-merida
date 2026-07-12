@@ -3,35 +3,53 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "packageManager": "npm@11.11.0",
   "workspaces": [
+    "apps/web",
+    "apps/extension",
     "packages/*"
   ],
   "scripts": {
     "start": "node src/backend/start.js",
     "start:node": "node src/backend/server.js",
     "start:fit-runtime": "python3 src/features/resumes/ml/server.py",
-    "final:api": ".venv/bin/uvicorn merida_api.main:app --app-dir apps/api --host 127.0.0.1 --port 8000 --reload",
-    "final:web": "vite apps/web --host 127.0.0.1 --port 5173",
-    "final:extension": "vite apps/extension --host 127.0.0.1 --port 5174",
-    "final:openapi": ".venv/bin/python apps/api/scripts/export_openapi.py packages/api-client/openapi.json",
-    "final:client": "npm run final:openapi && openapi-ts --file openapi-ts.config.mjs && vite build --config packages/api-client/vite.config.js",
-    "final:typecheck": "npm run final:client && tsc -p packages/api-client/tsconfig.json --noEmit",
-    "final:build": "npm run final:client && vite build apps/web && vite build apps/extension",
-    "final:start": ".venv/bin/uvicorn merida_api.main:app --app-dir apps/api --host 127.0.0.1 --port 8000",
-    "test:final": "npm run final:typecheck && vite build apps/web && vite build apps/extension && node --test apps/web/src/features/dashboard/dashboardSession.test.js apps/web/src/shared/api/dashboardClient.test.js apps/extension/src/session/captureSession.test.js apps/extension/src/shared/activeTabEvidence.test.js apps/extension/src/shared/captureClient.test.js && .venv/bin/pytest apps/api/tests",
+    "final:setup": "node scripts/final-setup.mjs",
+    "final:dev": "node scripts/final-dev.mjs",
+    "final:api": "uv --cache-dir .cache/uv run --project apps/api uvicorn merida_api.main:app --app-dir apps/api --host 127.0.0.1 --port 8000 --reload",
+    "final:web": "npm run final:client && npm run dev --workspace @merida/web",
+    "final:extension": "npm run final:client && npm run dev --workspace @merida/extension",
+    "final:openapi": "uv --cache-dir .cache/uv run --project apps/api python apps/api/scripts/export_openapi.py packages/api-client/openapi.json",
+    "final:generate": "npm run final:openapi && openapi-ts --file openapi-ts.config.mjs",
+    "final:check-generated": "npm run final:generate && git diff --exit-code -- packages/api-client/openapi.json packages/api-client/src/generated",
+    "final:client": "npm run final:generate && npm run build --workspace @merida/api-client",
+    "final:typecheck": "npm run final:generate && tsc --project tsconfig.final.json",
+    "final:lint": "eslint apps/web/src apps/extension/src packages/ui/src scripts && prettier --check package.json apps/web/package.json apps/extension/package.json packages/api-client/package.json packages/ui/package.json tsconfig.base.json tsconfig.final.json apps/web/tsconfig.json apps/extension/tsconfig.json packages/api-client/tsconfig.json packages/ui/tsconfig.json eslint.config.js .prettierrc.json scripts apps/web/src apps/extension/src packages/ui/src",
+    "final:format": "prettier --write package.json apps/web/package.json apps/extension/package.json packages/api-client/package.json packages/ui/package.json tsconfig.base.json tsconfig.final.json apps/web/tsconfig.json apps/extension/tsconfig.json packages/api-client/tsconfig.json packages/ui/tsconfig.json eslint.config.js .prettierrc.json scripts apps/web/src apps/extension/src packages/ui/src",
+    "final:test": "npm run build --workspace @merida/api-client && node --test apps/web/src/features/dashboard/dashboardSession.test.ts apps/web/src/shared/api/dashboardClient.test.ts apps/extension/src/session/captureSession.test.ts apps/extension/src/shared/activeTabEvidence.test.ts apps/extension/src/shared/captureClient.test.ts && uv --cache-dir .cache/uv run --project apps/api pytest",
+    "final:build": "npm run final:client && npm run build --workspace @merida/web && npm run build --workspace @merida/extension",
+    "final:start": "uv --cache-dir .cache/uv run --project apps/api uvicorn merida_api.main:app --app-dir apps/api --host 127.0.0.1 --port 8000",
+    "test:final": "npm run final:check-generated && npm run final:typecheck && npm run final:lint && npm run final:test && npm run final:build",
     "prototype:frontend": "vite apps/web-prototype --host 127.0.0.1 --port 4173",
     "prototype:extension": "vite apps/extension-prototype --host 127.0.0.1 --port 4174",
     "setup:ml": "python3 -m venv .venv && .venv/bin/python -m pip install -r src/features/resumes/ml/requirements.txt",
     "test": "node --test test/parity/*.test.js src/backend/test/*.test.js src/features/jobPostings/test/*.test.js src/features/notes/test/*.test.js src/features/resumes/test/*.test.js && python3 -m unittest discover -s src/features/resumes/ml/test"
   },
   "devDependencies": {
+    "@eslint/js": "9.39.5",
     "@hey-api/openapi-ts": "0.99.0",
+    "@types/chrome": "0.1.33",
+    "@types/node": "22.19.11",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.3",
+    "eslint": "9.39.5",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "prettier": "3.9.5",
     "typescript": "5.9.3",
+    "typescript-eslint": "8.63.0",
     "vite": "8.1.4"
-  },
-  "dependencies": {
-    "react": "19.2.7",
-    "react-dom": "19.2.7"
   }
 }
