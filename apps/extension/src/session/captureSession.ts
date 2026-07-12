@@ -1,3 +1,27 @@
+import type {
+  ConfirmApplicationResponse,
+  ConfirmedApplicationDraft,
+  PrepareApplicationRequest,
+  PrepareApplicationResponse,
+  PreparedApplicationDraft,
+} from '@merida/api-client'
+import type { CaptureClient } from '../shared/captureClient.ts'
+
+export type CaptureSource = { tabId: number; url: string }
+export type CapturePhase =
+  'idle' | 'reading' | 'parsing' | 'reviewing' | 'confirming' | 'complete'
+
+export type CaptureState = {
+  phase: CapturePhase
+  evidence: PrepareApplicationRequest['evidence'] | null
+  source: CaptureSource | null
+  review: PreparedApplicationDraft | null
+  dirty: boolean
+  result: ConfirmApplicationResponse | null
+  errors: string[]
+  sourceChanged: boolean
+}
+
 const EMPTY_STATE = {
   phase: 'idle',
   evidence: null,
@@ -6,11 +30,14 @@ const EMPTY_STATE = {
   dirty: false,
   result: null,
   errors: [],
-}
+  sourceChanged: false,
+} satisfies CaptureState
 
 const operatorError = (error: unknown) => error as Error
 
-const readableJobContent = (evidence: any) => {
+const readableJobContent = (
+  evidence: PrepareApplicationRequest['evidence'],
+) => {
   const semanticText = String(evidence.semanticHtml || '')
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
@@ -23,17 +50,20 @@ const readableJobContent = (evidence: any) => {
 }
 
 export function createCaptureSession(
-  client: any,
-  onChange: (state: any) => void = () => {},
-) {
-  let state: any = { ...EMPTY_STATE }
+  client: CaptureClient,
+  onChange: (state: CaptureState) => void = () => {},
+): CaptureSession {
+  let state: CaptureState = { ...EMPTY_STATE }
 
-  const publish = (patch: any) => {
+  const publish = (patch: Partial<CaptureState>) => {
     state = { ...state, ...patch }
     onChange(state)
   }
 
-  const performPrepare = async (evidence: any, source: any) => {
+  const performPrepare = async (
+    evidence: PrepareApplicationRequest['evidence'],
+    source: CaptureSource,
+  ) => {
     publish({ phase: 'reading', errors: [], result: null })
     try {
       publish({ phase: 'parsing' })
@@ -60,13 +90,13 @@ export function createCaptureSession(
 
   return {
     getState: () => state,
-    subscribe(next: (state: any) => void) {
+    subscribe(next: (state: CaptureState) => void) {
       onChange = next
       next(state)
     },
     async prepare(
-      evidence: any,
-      source: any,
+      evidence: PrepareApplicationRequest['evidence'],
+      source: CaptureSource,
       { discard = false }: { discard?: boolean } = {},
     ) {
       if (state.phase === 'reviewing' && state.dirty && !discard) {
@@ -74,7 +104,7 @@ export function createCaptureSession(
       }
       return performPrepare(evidence, source)
     },
-    updateReview(field: string, value: string) {
+    updateReview(field: keyof PreparedApplicationDraft, value: string) {
       if (!state.review) return
       publish({
         review: { ...state.review, [field]: value },
@@ -82,7 +112,7 @@ export function createCaptureSession(
         errors: [],
       })
     },
-    sourceChanged(source: { tabId: number; url: string }) {
+    sourceChanged(source: CaptureSource) {
       if (!state.source) return false
       const changed =
         state.source.tabId !== source.tabId || state.source.url !== source.url
@@ -92,9 +122,14 @@ export function createCaptureSession(
     async confirm() {
       if (!state.review || !state.evidence || state.phase === 'confirming')
         return null
-      const required = ['companyName', 'role', 'jobUrl']
-      const missing = required.filter(
-        (field) => !String(state.review[field] || '').trim(),
+      const review = state.review
+      const required: Array<keyof PreparedApplicationDraft> = [
+        'companyName',
+        'role',
+        'jobUrl',
+      ]
+      const missing: string[] = required.filter(
+        (field) => !String(review[field] || '').trim(),
       )
       const jobContent = readableJobContent(state.evidence)
       if (jobContent.length < 20) missing.push('jobContent')
@@ -106,7 +141,14 @@ export function createCaptureSession(
       }
       publish({ phase: 'confirming', errors: [] })
       try {
-        const result = await client.confirm({ ...state.review, jobContent })
+        const draft: ConfirmedApplicationDraft = {
+          companyName: review.companyName!.trim(),
+          role: review.role!.trim(),
+          location: review.location,
+          jobUrl: review.jobUrl.trim(),
+          jobContent,
+        }
+        const result = await client.confirm(draft)
         if (result.ok) {
           publish({ phase: 'complete', result, evidence: null, dirty: false })
         } else {
@@ -131,4 +173,26 @@ export function createCaptureSession(
       publish({ ...EMPTY_STATE })
     },
   }
+}
+
+export interface CaptureSession {
+  getState(): CaptureState
+  subscribe(next: (state: CaptureState) => void): void
+  prepare(
+    evidence: PrepareApplicationRequest['evidence'],
+    source: CaptureSource,
+    options?: { discard?: boolean },
+  ): Promise<
+    | PrepareApplicationResponse['result']
+    | 'failed'
+    | 'discard_confirmation_required'
+  >
+  updateReview(field: keyof PreparedApplicationDraft, value: string): void
+  sourceChanged(source: CaptureSource): boolean
+  confirm(): Promise<
+    | ConfirmApplicationResponse
+    | { ok: false; result: 'needs_review'; missing: string[] }
+    | null
+  >
+  clear(): void
 }

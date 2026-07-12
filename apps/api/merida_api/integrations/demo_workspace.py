@@ -26,55 +26,13 @@ from ..shared.workspace import (
 )
 
 
+DEFAULT_DEMO_FIXTURE = (
+    Path(__file__).resolve().parents[4] / "app-data/demo/fixtures/state.v1.json"
+)
+
+
 def initial_demo_state() -> dict:
-    return {
-        "applications": [
-            {
-                "id": "app-northstar",
-                "companyName": "Northstar Labs",
-                "role": "Senior Frontend Engineer",
-                "jobUrl": "https://jobs.example.test/northstar/frontend",
-                "jobContent": "Build accessible React interfaces, REST APIs, design systems, and reliable automated tests.",
-                "applicationStatus": "To Apply",
-                "dateFound": "2026-07-01",
-                "analyzed": False,
-                "matchScore": None,
-                "analysis": None,
-                "resumeId": None,
-            },
-            {
-                "id": "app-lantern",
-                "companyName": "Lantern Health",
-                "role": "Full Stack Engineer",
-                "jobUrl": "https://jobs.example.test/lantern/full-stack",
-                "jobContent": "Develop Python services, REST APIs, React workflows, PostgreSQL data models, and integration tests.",
-                "applicationStatus": "To Apply",
-                "dateFound": "2026-07-02",
-                "analyzed": False,
-                "matchScore": None,
-                "analysis": None,
-                "resumeId": None,
-            },
-            {
-                "id": "app-orbit",
-                "companyName": "Orbit Works",
-                "role": "Platform Engineer",
-                "jobUrl": "https://jobs.example.test/orbit/platform",
-                "jobContent": "Own Python platform services, API reliability, CI workflows, observability, and cloud operations.",
-                "applicationStatus": "To Apply",
-                "dateFound": "2026-07-03",
-                "analyzed": True,
-                "matchScore": 88,
-                "analysis": {
-                    "summary": "The role aligns with backend systems, API design, and delivery automation.",
-                    "skillSignals": ["Python", "REST APIs", "CI"],
-                },
-                "resumeId": None,
-            },
-        ],
-        "resumes": {},
-        "notes": {},
-    }
+    return json.loads(DEFAULT_DEMO_FIXTURE.read_text())
 
 
 class DemoWorkspace:
@@ -83,7 +41,7 @@ class DemoWorkspace:
         state_path: Path,
         _export_path: Path | None = None,
         *,
-        fixture_path: Path | None = None,
+        fixture_path: Path = DEFAULT_DEMO_FIXTURE,
     ):
         self._state_path = state_path
         self._fixture_path = fixture_path
@@ -98,8 +56,6 @@ class DemoWorkspace:
         return state
 
     def _initial_state(self) -> dict:
-        if self._fixture_path is None:
-            return initial_demo_state()
         return json.loads(self._fixture_path.read_text())
 
     def _save(self, state: dict | None = None) -> None:

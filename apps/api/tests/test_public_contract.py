@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
@@ -808,3 +809,35 @@ def test_emitted_openapi_matches_the_accepted_client_contract(tmp_path):
         emitted = client.get("/openapi.json").json()
 
     assert emitted == accepted
+
+
+def test_production_start_rejects_a_missing_dashboard_build(tmp_path):
+    settings = Settings(
+        merida_mode="demo",
+        demo_state_path=tmp_path / "state.json",
+        export_path=tmp_path / "export",
+    )
+
+    with pytest.raises(RuntimeError, match="dashboard build is missing"):
+        create_app(
+            settings,
+            dashboard_dist=tmp_path / "missing-dashboard",
+            require_dashboard=True,
+        )
+
+
+def test_dashboard_history_fallback_serves_the_built_app(tmp_path):
+    dashboard_dist = tmp_path / "dashboard"
+    dashboard_dist.mkdir()
+    dashboard_dist.joinpath("index.html").write_text("<main>Merida dashboard</main>")
+    settings = Settings(
+        merida_mode="demo",
+        demo_state_path=tmp_path / "state.json",
+        export_path=tmp_path / "export",
+    )
+
+    with TestClient(create_app(settings, dashboard_dist=dashboard_dist)) as client:
+        response = client.get("/dashboard/application-analysis")
+
+    assert response.status_code == 200
+    assert response.text == "<main>Merida dashboard</main>"

@@ -17,7 +17,7 @@ function collectFromPage() {
   }
 }
 
-export async function collectCaptureEvidence() {
+export async function collectCaptureEvidence(): Promise<CollectedCaptureEvidence> {
   if (!globalThis.chrome?.tabs || !globalThis.chrome?.scripting) {
     return {
       evidence: {
@@ -76,4 +76,11 @@ export async function collectCaptureEvidence() {
     semanticHtml,
   }
   return { evidence, source: { tabId: tab.id, url: tab.url } }
+}
+import type { PrepareApplicationRequest } from '@merida/api-client'
+import type { CaptureSource } from '../session/captureSession.ts'
+
+export type CollectedCaptureEvidence = {
+  evidence: PrepareApplicationRequest['evidence']
+  source: CaptureSource
 }

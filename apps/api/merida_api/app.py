@@ -121,6 +121,8 @@ def create_app(
     settings: Settings | None = None,
     *,
     workspace=None,
+    dashboard_dist: Path | None = None,
+    require_dashboard: bool = False,
 ) -> FastAPI:
     settings = settings or Settings()
     if workspace is None:
@@ -424,18 +426,28 @@ def create_app(
             raise HTTPException(status_code=404, detail={"code": "demo_not_active", "message": "Demo mode is not active."})
         return await workspace.reset()
 
-    web_dist = Path(__file__).resolve().parents[2] / "web" / "dist"
-    if web_dist.exists():
+    web_dist = dashboard_dist or Path(__file__).resolve().parents[2] / "web" / "dist"
+    dashboard_index = web_dist / "index.html"
+    if require_dashboard and not dashboard_index.is_file():
+        raise RuntimeError(
+            "The dashboard build is missing. Run `npm run final:build` before `npm run final:start`."
+        )
+    if dashboard_index.is_file():
         assets = web_dist / "assets"
         if assets.exists():
             app.mount("/assets", StaticFiles(directory=assets), name="web-assets")
 
         @app.get("/dashboard", include_in_schema=False)
         async def dashboard():
-            return FileResponse(web_dist / "index.html")
+            return FileResponse(dashboard_index)
+
+        @app.get("/dashboard/{client_path:path}", include_in_schema=False)
+        async def dashboard_history_fallback(client_path: str):
+            del client_path
+            return FileResponse(dashboard_index)
 
     @app.get("/", include_in_schema=False)
     async def root():
-        return RedirectResponse("/dashboard" if web_dist.exists() else "/docs")
+        return RedirectResponse("/dashboard" if dashboard_index.is_file() else "/docs")
 
     return app

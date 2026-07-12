@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import { cx, Spinner, StatusBadge, StatusDot } from '@merida/ui'
+import type {
+  CreateResumeResponse,
+  RunApplicationAnalysisResponse,
+} from '@merida/api-client'
 
 import { createDashboardSession } from './features/dashboard/dashboardSession.ts'
+import type {
+  DashboardSession,
+  DashboardState,
+} from './features/dashboard/dashboardSession.ts'
 import { createDashboardClient } from './shared/api/dashboardClient.ts'
 
 function Brand() {
@@ -17,7 +26,19 @@ function ArrowIcon() {
   return <span aria-hidden="true">↗</span>
 }
 
-function Section({ eyebrow, title, meta, status, children }: any) {
+function Section({
+  eyebrow,
+  title,
+  meta,
+  status,
+  children,
+}: {
+  eyebrow: string
+  title: string
+  meta: string
+  status: string
+  children: ReactNode
+}) {
   return (
     <section className="section-panel">
       <header className="section-header">
@@ -37,7 +58,10 @@ function Section({ eyebrow, title, meta, status, children }: any) {
   )
 }
 
-function Readiness({ health, settings }: any) {
+function Readiness({
+  health,
+  settings,
+}: Pick<DashboardState, 'health' | 'settings'>) {
   const segments = [
     ['Settings', health?.checks?.settings],
     ['Notion', health?.checks?.notion],
@@ -105,12 +129,14 @@ function Readiness({ health, settings }: any) {
           </div>
         </div>
       </div>
-      {health?.errors?.length > 0 && <ErrorCallout errors={health.errors} />}
+      {Boolean(health?.errors.length) && (
+        <ErrorCallout errors={health?.errors} />
+      )}
     </section>
   )
 }
 
-function ErrorCallout({ errors }: any) {
+function ErrorCallout({ errors }: { errors?: string[] }) {
   if (!errors?.length) return null
   return (
     <div className="error-callout" role="alert">
@@ -121,7 +147,7 @@ function ErrorCallout({ errors }: any) {
   )
 }
 
-function EmptyState({ kind }: any) {
+function EmptyState({ kind }: { kind: 'Applications' | 'Resumes' }) {
   return (
     <div className="empty-state">
       <span>Queue clear</span>
@@ -135,7 +161,11 @@ function EmptyState({ kind }: any) {
   )
 }
 
-function QueueIdentity({ item }: any) {
+function QueueIdentity({
+  item,
+}: {
+  item: { companyName: string; role: string }
+}) {
   return (
     <div className="queue-identity">
       <span className="company-avatar">
@@ -149,7 +179,17 @@ function QueueIdentity({ item }: any) {
   )
 }
 
-function QueuePagination({ pagination, onFirst, onNext, disabled }: any) {
+function QueuePagination({
+  pagination,
+  onFirst,
+  onNext,
+  disabled,
+}: {
+  pagination?: { hasMore: boolean; nextCursor: string | null }
+  onFirst: () => void
+  onNext: () => void
+  disabled: boolean
+}) {
   if (!pagination?.hasMore && !disabled) return null
   return (
     <div className="pagination">
@@ -167,7 +207,13 @@ function QueuePagination({ pagination, onFirst, onNext, disabled }: any) {
   )
 }
 
-function AnalysisResult({ result, onDismiss }: any) {
+function AnalysisResult({
+  result,
+  onDismiss,
+}: {
+  result: RunApplicationAnalysisResponse | null
+  onDismiss: () => void
+}) {
   if (!result) return null
   return (
     <div
@@ -192,7 +238,7 @@ function AnalysisResult({ result, onDismiss }: any) {
       </div>
       {result.items?.length > 0 && (
         <ul>
-          {result.items.map((item: any) => (
+          {result.items.map((item) => (
             <li key={item.applicationId}>
               <span>
                 {item.role} at {item.companyName}
@@ -210,7 +256,17 @@ function AnalysisResult({ result, onDismiss }: any) {
   )
 }
 
-function AnalysisSection({ state, session, batchLimit, setBatchLimit }: any) {
+function AnalysisSection({
+  state,
+  session,
+  batchLimit,
+  setBatchLimit,
+}: {
+  state: DashboardState
+  session: DashboardSession
+  batchLimit: number
+  setBatchLimit: (value: number) => void
+}) {
   const queue = state.analysisQueue
   const ready = state.health?.checks?.analysis === 'ready'
   const runDisabled = !ready || !queue?.queueCount || state.analysisRunning
@@ -234,7 +290,7 @@ function AnalysisSection({ state, session, batchLimit, setBatchLimit }: any) {
               min="1"
               max="10"
               value={batchLimit}
-              onChange={(event) => setBatchLimit(event.target.value)}
+              onChange={(event) => setBatchLimit(Number(event.target.value))}
             />
           </label>
           <button
@@ -260,7 +316,7 @@ function AnalysisSection({ state, session, batchLimit, setBatchLimit }: any) {
           <span>Eligible Application</span>
           <span>Status</span>
         </div>
-        {queue?.items?.map((item: any) => (
+        {queue?.items?.map((item) => (
           <div className="queue-row" key={item.applicationId}>
             <QueueIdentity item={item} />
             <StatusBadge status="ready">Ready</StatusBadge>
@@ -278,7 +334,10 @@ function AnalysisSection({ state, session, batchLimit, setBatchLimit }: any) {
           session.load()
         }}
         onNext={() => {
-          session.setCursors(queue.pagination.nextCursor, state.resumeCursor)
+          session.setCursors(
+            queue?.pagination.nextCursor ?? null,
+            state.resumeCursor,
+          )
           session.load()
         }}
       />
@@ -290,7 +349,7 @@ function AnalysisSection({ state, session, batchLimit, setBatchLimit }: any) {
   )
 }
 
-function ResultLinks({ result }: any) {
+function ResultLinks({ result }: { result: CreateResumeResponse | null }) {
   if (!result) return null
   if (!result.ok)
     return (
@@ -330,7 +389,13 @@ function ResultLinks({ result }: any) {
   )
 }
 
-function ResumeSection({ state, session }: any) {
+function ResumeSection({
+  state,
+  session,
+}: {
+  state: DashboardState
+  session: DashboardSession
+}) {
   const queue = state.resumeQueue
   const ready = state.health?.checks?.resumes === 'ready'
   return (
@@ -352,7 +417,7 @@ function ResumeSection({ state, session }: any) {
           <span>Match</span>
           <span>Action</span>
         </div>
-        {queue?.items?.map((item: any) => {
+        {queue?.items?.map((item) => {
           const active = state.activeResumeId === item.applicationId
           return (
             <div className="queue-row" key={item.applicationId}>
@@ -385,7 +450,10 @@ function ResumeSection({ state, session }: any) {
           session.load()
         }}
         onNext={() => {
-          session.setCursors(state.analysisCursor, queue.pagination.nextCursor)
+          session.setCursors(
+            state.analysisCursor,
+            queue?.pagination.nextCursor ?? null,
+          )
           session.load()
         }}
       />
@@ -397,7 +465,7 @@ function ResumeSection({ state, session }: any) {
 }
 
 export function App() {
-  const [state, setState] = useState<any>(null)
+  const [state, setState] = useState<DashboardState | null>(null)
   const [batchLimit, setBatchLimit] = useState(5)
   const [theme, setTheme] = useState(
     () => localStorage.getItem('merida-theme') || 'light',

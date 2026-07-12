@@ -28,9 +28,10 @@ npm run final:start
 Open `http://127.0.0.1:8000/dashboard`. Load `apps/extension/dist` as an unpacked Chrome extension and set its Capture token to the backend `CAPTURE_TOKEN` value.
 
 The final-app toolchain uses Python 3.14.2 locally, supports Python 3.10 through
-3.14 in compatibility CI, requires Node 22.18 or newer, uses `uv` for the one
-Python lockfile, and uses npm workspaces with one root lockfile for the web app,
-extension, generated API client, and shared UI.
+3.14 in compatibility CI, requires Node 22.18 or newer with npm 11.11 or newer,
+and requires `uv` 0.11.28 or newer for the one Python lockfile. npm workspaces
+use one root lockfile for the web app, extension, generated API client, and
+shared UI.
 
 During migration, `npm start` and `npm test` continue to run the frozen
 prototype. Final-app work stays under `final:*`; `npm run test:final` is the

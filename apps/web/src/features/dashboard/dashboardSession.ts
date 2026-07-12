@@ -1,12 +1,47 @@
+import type {
+  CreateResumeResponse,
+  RunApplicationAnalysisResponse,
+} from '@merida/api-client'
+import type {
+  DashboardClient,
+  DashboardSnapshot,
+} from '../../shared/api/dashboardClient.ts'
+
 const clampLimit = (value: unknown) =>
   Math.max(1, Math.min(10, Number(value) || 5))
 const operatorError = (error: unknown) => error as Error & { code?: string }
 
+export type DashboardState = {
+  loading: boolean
+  health: DashboardSnapshot['health'] | null
+  settings: DashboardSnapshot['settings'] | null
+  analysisQueue: DashboardSnapshot['analysisQueue'] | null
+  resumeQueue: DashboardSnapshot['resumeQueue'] | null
+  analysisCursor: string | null
+  resumeCursor: string | null
+  analysisRunning: boolean
+  analysisResult: RunApplicationAnalysisResponse | null
+  activeResumeId: string | null
+  resumeResults: Record<string, CreateResumeResponse>
+  errors: string[]
+}
+
+export interface DashboardSession {
+  getState(): DashboardState
+  subscribe(next: (state: DashboardState) => void): void
+  setCursors(analysisCursor: string | null, resumeCursor: string | null): void
+  load(options?: { reset?: boolean }): Promise<DashboardSnapshot | null>
+  runAnalysis(limit: unknown): Promise<RunApplicationAnalysisResponse | null>
+  createResume(applicationId: string): Promise<CreateResumeResponse | null>
+  dismissAnalysisResult(): void
+  dismissResumeResult(applicationId: string): void
+}
+
 export function createDashboardSession(
-  client: any,
-  onChange: (state: any) => void = () => {},
-) {
-  let state: any = {
+  client: DashboardClient,
+  onChange: (state: DashboardState) => void = () => {},
+): DashboardSession {
+  let state: DashboardState = {
     loading: false,
     health: null,
     settings: null,
@@ -21,7 +56,7 @@ export function createDashboardSession(
     errors: [],
   }
 
-  const publish = (patch: any) => {
+  const publish = (patch: Partial<DashboardState>) => {
     state = { ...state, ...patch }
     onChange(state)
   }
@@ -58,7 +93,7 @@ export function createDashboardSession(
 
   return {
     getState: () => state,
-    subscribe(next: (state: any) => void) {
+    subscribe(next: (state: DashboardState) => void) {
       onChange = next
       next(state)
     },

@@ -2,14 +2,33 @@ import {
   confirmApplication,
   createClient,
   getHealth,
-  invokeApi,
+  invokeData,
   prepareApplication,
 } from '@merida/api-client'
+import type {
+  ConfirmApplicationRequest,
+  ConfirmApplicationResponse,
+  HealthResponse,
+  PrepareApplicationRequest,
+  PrepareApplicationResponse,
+} from '@merida/api-client'
+
+export type ExtensionSettings = { backendUrl: string; captureToken: string }
+
+export interface CaptureClient {
+  health(): Promise<HealthResponse>
+  prepare(
+    evidence: PrepareApplicationRequest['evidence'],
+  ): Promise<PrepareApplicationResponse>
+  confirm(
+    draft: ConfirmApplicationRequest['draft'],
+  ): Promise<ConfirmApplicationResponse>
+}
 
 export function createCaptureClient(
-  settings: { backendUrl: string; captureToken: string },
+  settings: ExtensionSettings,
   options: { fetch?: typeof fetch } = {},
-) {
+): CaptureClient {
   const generatedClient = createClient({
     baseUrl: settings.backendUrl,
     fetch: options.fetch,
@@ -19,23 +38,23 @@ export function createCaptureClient(
   const protectedHeaders = () => ({ 'X-Capture-Token': settings.captureToken })
 
   return {
-    health: (): Promise<any> =>
-      invokeApi(getHealth({ client: generatedClient })) as Promise<any>,
-    prepare: (evidence: any): Promise<any> =>
-      invokeApi(
+    health: () =>
+      invokeData<HealthResponse>(getHealth({ client: generatedClient })),
+    prepare: (evidence) =>
+      invokeData<PrepareApplicationResponse>(
         prepareApplication({
           client: generatedClient,
           body: { evidence },
           headers: protectedHeaders(),
         }),
-      ) as Promise<any>,
-    confirm: (draft: any): Promise<any> =>
-      invokeApi(
+      ),
+    confirm: (draft) =>
+      invokeData<ConfirmApplicationResponse>(
         confirmApplication({
           client: generatedClient,
           body: { draft },
           headers: protectedHeaders(),
         }),
-      ) as Promise<any>,
+      ),
   }
 }

@@ -1,9 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { RefObject } from 'react'
 import { cx, Spinner, StatusDot } from '@merida/ui'
+import type {
+  ConfirmApplicationResponse,
+  PreparedApplicationDraft,
+} from '@merida/api-client'
 
 import { createCaptureSession } from './session/captureSession.ts'
+import type {
+  CapturePhase,
+  CaptureSession,
+  CaptureState,
+} from './session/captureSession.ts'
 import { collectCaptureEvidence } from './shared/activeTabEvidence.ts'
+import type { CollectedCaptureEvidence } from './shared/activeTabEvidence.ts'
 import { createCaptureClient } from './shared/captureClient.ts'
+import type {
+  CaptureClient,
+  ExtensionSettings,
+} from './shared/captureClient.ts'
 import {
   getExtensionSettings,
   saveExtensionSettings,
@@ -19,7 +34,42 @@ function Brand() {
   )
 }
 
-function SettingsSheet({ settings, onSave, onClose }: any) {
+type ExtensionHealth = {
+  phase: 'checking' | 'ready' | 'blocked' | 'offline'
+  errors: string[]
+}
+
+async function readCaptureHealth(
+  activeClient: CaptureClient,
+  captureToken: string,
+): Promise<ExtensionHealth> {
+  if (!captureToken) {
+    return {
+      phase: 'blocked',
+      errors: ['Add a Capture token in extension settings.'],
+    }
+  }
+  try {
+    const result = await activeClient.health()
+    const ready = result.mode === 'demo' || result.checks.notion === 'ready'
+    return {
+      phase: ready ? 'ready' : 'blocked',
+      errors: ready ? [] : result.errors,
+    }
+  } catch (error) {
+    return { phase: 'offline', errors: [(error as Error).message] }
+  }
+}
+
+function SettingsSheet({
+  settings,
+  onSave,
+  onClose,
+}: {
+  settings: ExtensionSettings
+  onSave: (settings: ExtensionSettings) => void
+  onClose: () => void
+}) {
   const [draft, setDraft] = useState(settings)
   return (
     <div className="sheet-backdrop">
@@ -79,7 +129,7 @@ function SettingsSheet({ settings, onSave, onClose }: any) {
   )
 }
 
-function Progress({ phase }: any) {
+function Progress({ phase }: { phase: CapturePhase }) {
   const parsing = phase === 'parsing'
   const confirming = phase === 'confirming'
   return (
@@ -108,7 +158,7 @@ function Progress({ phase }: any) {
   )
 }
 
-function ErrorCallout({ errors }: any) {
+function ErrorCallout({ errors }: { errors?: string[] }) {
   if (!errors?.length) return null
   return (
     <div className="error-callout" role="alert">
@@ -119,7 +169,13 @@ function ErrorCallout({ errors }: any) {
   )
 }
 
-function Idle({ onFill, disabled = false }: any) {
+function Idle({
+  onFill,
+  disabled = false,
+}: {
+  onFill: () => void
+  disabled?: boolean
+}) {
   return (
     <div className="idle-view">
       <div className="source-card">
@@ -149,11 +205,24 @@ function Idle({ onFill, disabled = false }: any) {
   )
 }
 
-function ReviewForm({ state, session, onNewCapture, fieldRef }: any) {
+function ReviewForm({
+  state,
+  session,
+  onNewCapture,
+  fieldRef,
+}: {
+  state: CaptureState
+  session: CaptureSession
+  onNewCapture: () => void
+  fieldRef: RefObject<HTMLInputElement | null>
+}) {
   const review = state.review
   if (!review) return null
   const update = (event: React.ChangeEvent<HTMLInputElement>) =>
-    session.updateReview(event.target.name, event.target.value)
+    session.updateReview(
+      event.target.name as keyof PreparedApplicationDraft,
+      event.target.value,
+    )
   return (
     <form
       className="review-form"
@@ -226,7 +295,18 @@ function ReviewForm({ state, session, onNewCapture, fieldRef }: any) {
   )
 }
 
-function Complete({ result, onReset }: any) {
+type CompletedCapture = Exclude<
+  ConfirmApplicationResponse,
+  { result: 'blocked' }
+>
+
+function Complete({
+  result,
+  onReset,
+}: {
+  result: CompletedCapture
+  onReset: () => void
+}) {
   const application = result.application
   return (
     <div className="complete-view" role="status">
@@ -269,7 +349,13 @@ function Complete({ result, onReset }: any) {
   )
 }
 
-function DiscardDialog({ onCancel, onDiscard }: any) {
+function DiscardDialog({
+  onCancel,
+  onDiscard,
+}: {
+  onCancel: () => void
+  onDiscard: () => void
+}) {
   return (
     <div className="dialog-backdrop">
       <section role="dialog" aria-modal="true" aria-labelledby="discard-title">
@@ -288,14 +374,18 @@ function DiscardDialog({ onCancel, onDiscard }: any) {
 }
 
 export function App() {
-  const [settings, setSettings] = useState({
+  const [settings, setSettings] = useState<ExtensionSettings>({
     backendUrl: 'http://127.0.0.1:8000',
     captureToken: '',
   })
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [health, setHealth] = useState<any>({ phase: 'checking', errors: [] })
-  const [sessionState, setSessionState] = useState<any>(null)
-  const [pendingEvidence, setPendingEvidence] = useState<any>(null)
+  const [health, setHealth] = useState<ExtensionHealth>({
+    phase: 'checking',
+    errors: [],
+  })
+  const [sessionState, setSessionState] = useState<CaptureState | null>(null)
+  const [pendingEvidence, setPendingEvidence] =
+    useState<CollectedCaptureEvidence | null>(null)
   const [discardOpen, setDiscardOpen] = useState(false)
   const firstField = useRef<HTMLInputElement>(null)
   const client = useMemo(() => createCaptureClient(settings), [settings])
@@ -304,52 +394,19 @@ export function App() {
     [client],
   )
 
-  const refresh = async (activeClient = client) => {
-    if (!settings.captureToken) {
-      setHealth({
-        phase: 'blocked',
-        errors: ['Add a Capture token in extension settings.'],
-      })
-      return
-    }
+  const refresh = async (
+    activeClient = client,
+    captureToken = settings.captureToken,
+  ) => {
     setHealth({ phase: 'checking', errors: [] })
-    try {
-      const result = await activeClient.health()
-      const captureReady =
-        result.checks?.notion === 'ready' || result.mode === 'demo'
-      setHealth({
-        phase: captureReady ? 'ready' : 'blocked',
-        errors: captureReady ? [] : result.errors,
-      })
-    } catch (error) {
-      setHealth({ phase: 'offline', errors: [(error as Error).message] })
-    }
+    setHealth(await readCaptureHealth(activeClient, captureToken))
   }
 
   useEffect(() => {
-    getExtensionSettings().then((loaded) => {
+    getExtensionSettings().then(async (loaded) => {
       setSettings(loaded)
       const loadedClient = createCaptureClient(loaded)
-      if (!loaded.captureToken)
-        setHealth({
-          phase: 'blocked',
-          errors: ['Add a Capture token in extension settings.'],
-        })
-      else
-        loadedClient
-          .health()
-          .then((result) =>
-            setHealth({
-              phase:
-                result.mode === 'demo' || result.checks?.notion === 'ready'
-                  ? 'ready'
-                  : 'blocked',
-              errors: result.errors || [],
-            }),
-          )
-          .catch((error) =>
-            setHealth({ phase: 'offline', errors: [error.message] }),
-          )
+      setHealth(await readCaptureHealth(loadedClient, loaded.captureToken))
     })
   }, [])
 
@@ -373,34 +430,12 @@ export function App() {
     }
   }
 
-  const saveSettings = async (next: {
-    backendUrl: string
-    captureToken: string
-  }) => {
+  const saveSettings = async (next: ExtensionSettings) => {
     const saved = await saveExtensionSettings(next)
     setSettings(saved)
     setSettingsOpen(false)
     const nextClient = createCaptureClient(saved)
-    if (!saved.captureToken)
-      setHealth({
-        phase: 'blocked',
-        errors: ['Add a Capture token in extension settings.'],
-      })
-    else
-      nextClient
-        .health()
-        .then((result) =>
-          setHealth({
-            phase:
-              result.mode === 'demo' || result.checks?.notion === 'ready'
-                ? 'ready'
-                : 'blocked',
-            errors: result.errors || [],
-          }),
-        )
-        .catch((error) =>
-          setHealth({ phase: 'offline', errors: [error.message] }),
-        )
+    setHealth(await readCaptureHealth(nextClient, saved.captureToken))
   }
 
   const state = sessionState || session.getState()
@@ -502,9 +537,11 @@ export function App() {
             onNewCapture={() => collectAndPrepare()}
           />
         )}
-        {state.phase === 'complete' && (
-          <Complete result={state.result} onReset={() => session.clear()} />
-        )}
+        {state.phase === 'complete' &&
+          state.result &&
+          state.result.result !== 'blocked' && (
+            <Complete result={state.result} onReset={() => session.clear()} />
+          )}
       </div>
       {settingsOpen && (
         <SettingsSheet
