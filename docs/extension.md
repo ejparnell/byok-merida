@@ -240,6 +240,16 @@ The side panel may remain open while the active tab or source-page URL changes.
 
 The extension should treat Capture Evidence as belonging to the tab and URL from which it was collected. Before confirmation, if the active tab has changed, keep the existing review form but clearly identify that it belongs to the previously captured source page.
 
+The source-mismatch warning represents the current active tab and URL, not navigation history. Remove it if the user returns to the Source Page that owns the Review.
+
+Persistent web access lets the open side panel read a newly navigated HTTP(S) source page without being reopened. Navigation must not itself start a capture or replace a Review.
+
+Source Availability is separate from backend readiness. If the active page is genuinely unreadable, show a source-page-specific notice while preserving backend readiness and any Review; re-evaluate automatically when the active tab or URL changes.
+
+If the user selects **Fill Form** while a Source Page is still navigating, show a waiting state and defer evidence collection until that navigation completes. Do not construct a partial Review; if the page cannot become ready within 15 seconds, show a retryable `Page is still loading` state.
+
+A pending capture is bound to the tab and URL that existed when the user selected **Fill Form**. If either changes before the page becomes ready, cancel that pending capture and return to ready state for the newly active page; do not retarget it automatically.
+
 Do not silently replace an in-progress review when:
 
 - the user switches tabs
@@ -285,7 +295,9 @@ Use `chrome.storage.local` for extension settings. Never render the stored captu
 | ---------------------- | ---------------------------------------------------------------------------------------- |
 | Initial loading        | Show compact readiness loading state.                                                    |
 | Ready and idle         | Enable **Fill Form**.                                                                    |
-| Restricted Chrome page | Explain that Chrome does not allow the page to be read and disable capture for that tab. |
+| Restricted Chrome page | Explain that Chrome does not allow the page to be read, preserve backend readiness and any Review, and re-evaluate source availability after navigation. |
+| Waiting for page       | Keep the panel open and defer a user-initiated capture until the current navigation finishes. |
+| Page still loading    | End the 15-second wait without creating a Review and offer a retry for the current Source Page. |
 | Reading page           | Disable capture actions and show collection progress.                                    |
 | Parsing                | Keep actions disabled and show parsing progress.                                         |
 | Reviewing              | Show editable fields and enable confirmation when required values are present.           |
@@ -324,7 +336,8 @@ Keep Chrome and transport details behind small interfaces.
 
 | Module              | Interface                                                             | Hides                                                                                                            |
 | ------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Active Tab Evidence | `collectCaptureEvidence()`                                            | Active-tab lookup, scripting permissions, frame reads, selected text, visible text, semantic HTML, and metadata. |
+| Source Access       | `getSourceAccess()`, `observeSourceAccess()`, `waitForSourceReady(source)` | Active-tab changes, page-scheme classification, navigation readiness, and browser-specific source-access errors. |
+| Active Tab Evidence | `collectCaptureEvidence(source)`                                      | Script injection, frame reads, selected text, visible text, semantic HTML, and metadata.                          |
 | Capture Evidence    | `createCaptureEvidence(raw)`                                          | Frame normalization, empty-content filtering, and backend request shape.                                         |
 | Extension Settings  | `getExtensionSettings()`, `saveExtensionSettings()`                   | Chrome storage, local defaults, and masked token handling.                                                       |
 | Capture Client      | `health()`, `parse(evidence)`, `capture(evidence)`, `confirm(parsed)` | Backend URL, `X-Capture-Token`, JSON handling, and response normalization.                                       |
@@ -342,11 +355,12 @@ The extension should use Chrome Manifest V3 with:
 - `scripting`
 - `sidePanel`
 - `storage`
+- persistent HTTP(S) host permissions for Source Pages
 - local backend host permissions
 
 Clicking the extension action should open the side panel for the active tab. The user-action permission path must remain synchronous enough for `chrome.sidePanel.open()` to retain Chrome's required user gesture.
 
-Host permissions should be limited to documented local backend origins. The extension should not request broad remote host access for Notion or DeepSeek because those calls belong to FastAPI.
+Persistent HTTP(S) host access is an intentional install-time permission so Capture can continue after cross-site navigation without closing and reopening the panel. It authorizes reading Source Pages only; the extension must not call Notion or DeepSeek directly because those calls belong to FastAPI.
 
 ## Privacy And Logging Rules
 
@@ -378,6 +392,13 @@ The React extension should have focused tests for:
 - initial readiness states
 - missing capture-token behavior
 - active-tab and restricted-page failures
+- capture after cross-site navigation while the side panel remains open
+- a source-page access failure that does not block backend readiness
+- automatic source-availability recovery after returning to a readable page
+- delayed collection during an in-progress source-page navigation
+- clearing a source-mismatch warning after returning to the Review's Source Page
+- cancellation of a pending capture when its Source Page changes
+- retryable page-readiness timeout after 15 seconds
 - Capture Evidence normalization
 - review-first parse and form population
 - required-field validation

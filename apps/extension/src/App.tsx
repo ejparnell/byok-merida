@@ -21,6 +21,12 @@ import {
   getExtensionSettings,
   saveExtensionSettings,
 } from './shared/extensionSettings.ts'
+import {
+  getSourceAccess,
+  observeSourceAccess,
+  waitForSourceReady,
+} from './shared/sourceAccess.ts'
+import type { SourceAccess } from './shared/sourceAccess.ts'
 
 function Brand() {
   return (
@@ -100,30 +106,37 @@ function SettingsSheet({
   )
 }
 
-function Progress({ phase }: { phase: CapturePhase }) {
+function Progress({ phase }: { phase: CapturePhase | 'waiting' }) {
+  const waiting = phase === 'waiting'
   const parsing = phase === 'parsing'
   const confirming = phase === 'confirming'
   return (
     <div className="progress" role="status" aria-live="polite">
       <Spinner />
       <span>
-        {confirming
-          ? 'Saving reviewed Application'
-          : parsing
-            ? 'Finding review fields'
-            : 'Collecting source evidence'}
+        {waiting
+          ? 'Waiting for current page'
+          : confirming
+            ? 'Saving reviewed Application'
+            : parsing
+              ? 'Finding review fields'
+              : 'Collecting source evidence'}
       </span>
       <h1>
-        {confirming
-          ? 'Creating in Notion'
-          : parsing
-            ? 'Parsing Application'
-            : 'Reading current page'}
+        {waiting
+          ? 'Waiting for page'
+          : confirming
+            ? 'Creating in Notion'
+            : parsing
+              ? 'Parsing Application'
+              : 'Reading current page'}
       </h1>
       <p>
-        {confirming
-          ? 'Your edits remain available if the request fails.'
-          : 'Merida keeps full page content only in this side-panel session.'}
+        {waiting
+          ? 'Merida will stop waiting after 15 seconds so you can retry.'
+          : confirming
+            ? 'Your edits remain available if the request fails.'
+            : 'Merida keeps full page content only in this side-panel session.'}
       </p>
     </div>
   )
@@ -140,18 +153,41 @@ function ErrorCallout({ errors }: { errors?: string[] }) {
   )
 }
 
-function Idle({ onFill, errors }: { onFill: () => void; errors?: string[] }) {
+function Idle({
+  onFill,
+  errors,
+  sourceAccess,
+}: {
+  onFill: () => void
+  errors?: string[]
+  sourceAccess: SourceAccess | null
+}) {
+  const restricted = sourceAccess?.status === 'restricted'
+  const waiting = sourceAccess?.status === 'waiting'
   return (
     <div className="idle-view">
       <div className="source-card">
         <span>Current source</span>
-        <strong>Active Chrome tab</strong>
+        <strong>
+          {restricted
+            ? 'Source page unavailable'
+            : waiting
+              ? 'Source page loading'
+              : sourceAccess
+                ? 'Active Chrome tab'
+                : 'Checking active tab'}
+        </strong>
         <p>
           Read the job posting, review important fields, then create it in
           Notion.
         </p>
       </div>
-      <button className="primary large" type="button" onClick={onFill}>
+      <button
+        className="primary large"
+        type="button"
+        onClick={onFill}
+        disabled={!sourceAccess || restricted}
+      >
         Fill form <span aria-hidden="true">→</span>
       </button>
       <ErrorCallout errors={errors} />
@@ -170,10 +206,12 @@ function ReviewForm({
   state,
   session,
   onNewCapture,
+  sourceErrors,
 }: {
   state: CaptureState
   session: CaptureSession
   onNewCapture: () => void
+  sourceErrors?: string[]
 }) {
   const review = state.review
   if (!review) return null
@@ -253,7 +291,7 @@ function ReviewForm({
           session until you confirm.
         </small>
       </label>
-      <ErrorCallout errors={state.errors} />
+      <ErrorCallout errors={[...state.errors, ...(sourceErrors || [])]} />
       <button className="primary large" type="submit">
         Create in Notion <span aria-hidden="true">→</span>
       </button>
@@ -356,6 +394,9 @@ export function App() {
   const [pendingEvidence, setPendingEvidence] =
     useState<CollectedCaptureEvidence | null>(null)
   const [discardOpen, setDiscardOpen] = useState(false)
+  const [sourceAccess, setSourceAccess] = useState<SourceAccess | null>(null)
+  const [sourceErrors, setSourceErrors] = useState<string[]>([])
+  const [pendingCapture, setPendingCapture] = useState(false)
   const client = useMemo(() => createCaptureClient(settings), [settings])
   const [session] = useState<CaptureSession>(() =>
     createCaptureSession(client, setSessionState),
@@ -381,11 +422,68 @@ export function App() {
     })
   }, [])
 
+  useEffect(() => {
+    const stop = observeSourceAccess((next) => {
+      setSourceAccess(next)
+      if (next.status !== 'restricted') setSourceErrors([])
+    })
+    const refreshSourceAccess = () => {
+      void getSourceAccess().then(setSourceAccess)
+    }
+    window.addEventListener('focus', refreshSourceAccess)
+    return () => {
+      stop()
+      window.removeEventListener('focus', refreshSourceAccess)
+    }
+  }, [])
+
   const collectAndPrepare = async ({ discard = false } = {}) => {
     if (health.phase !== 'ready') return
+
+    let collected = pendingEvidence
+    if (!collected) {
+      setSourceErrors([])
+      const access = await getSourceAccess()
+      setSourceAccess(access)
+      if (access.status === 'restricted') {
+        setSourceErrors([access.error])
+        return
+      }
+
+      let source = access.source
+      if (access.status === 'waiting') {
+        setPendingCapture(true)
+        const outcome = await waitForSourceReady(source)
+        setPendingCapture(false)
+        if (outcome.status === 'timeout') {
+          setSourceErrors(['Page is still loading. Try Fill Form again.'])
+          return
+        }
+        if (outcome.status === 'cancelled') return
+        source = outcome.source
+      }
+
+      try {
+        session.beginReading()
+        collected = await collectCaptureEvidence(source)
+        const currentAccess = await getSourceAccess()
+        setSourceAccess(currentAccess)
+        if (
+          currentAccess.status !== 'ready' ||
+          currentAccess.source.tabId !== source.tabId ||
+          currentAccess.source.url !== source.url
+        ) {
+          session.cancelReading()
+          return
+        }
+      } catch (error) {
+        session.cancelReading()
+        setSourceErrors([(error as Error).message])
+        return
+      }
+    }
+
     try {
-      if (!pendingEvidence) session.beginReading()
-      const collected = pendingEvidence || (await collectCaptureEvidence())
       const outcome = await session.prepare(
         collected.evidence,
         collected.source,
@@ -398,8 +496,8 @@ export function App() {
         setPendingEvidence(null)
       }
     } catch (error) {
-      session.clear()
-      setHealth({ phase: 'blocked', errors: [(error as Error).message] })
+      session.cancelReading()
+      setSourceErrors([(error as Error).message])
     }
   }
 
@@ -413,32 +511,9 @@ export function App() {
 
   const state = sessionState || session.getState()
   useEffect(() => {
-    if (state.phase !== 'reviewing' || !globalThis.chrome?.tabs)
-      return undefined
-    const checkSource = async () => {
-      const [tab] = await chrome.tabs.query({
-        active: true,
-        currentWindow: true,
-      })
-      if (tab?.id && tab.url)
-        session.sourceChanged({ tabId: tab.id, url: tab.url })
-    }
-    const onActivated = () => checkSource()
-    const onUpdated = (
-      _tabId: number,
-      changeInfo: chrome.tabs.OnUpdatedInfo,
-    ) => {
-      if (changeInfo.url) checkSource()
-    }
-    chrome.tabs.onActivated.addListener(onActivated)
-    chrome.tabs.onUpdated.addListener(onUpdated)
-    window.addEventListener('focus', checkSource)
-    return () => {
-      chrome.tabs.onActivated.removeListener(onActivated)
-      chrome.tabs.onUpdated.removeListener(onUpdated)
-      window.removeEventListener('focus', checkSource)
-    }
-  }, [state.phase, session])
+    if (state.phase === 'reviewing' && sourceAccess?.source)
+      session.sourceChanged(sourceAccess.source)
+  }, [state.phase, session, sourceAccess])
   useEffect(() => {
     if (state.phase === 'reviewing' && state.missingFields.length) {
       const field = state.missingFields[0]
@@ -509,14 +584,33 @@ export function App() {
         {['reading', 'parsing', 'confirming'].includes(state.phase) && (
           <Progress phase={state.phase} />
         )}
-        {state.phase === 'idle' && health.phase === 'ready' && (
-          <Idle onFill={() => collectAndPrepare()} errors={state.errors} />
-        )}
-        {state.phase === 'reviewing' && (
+        {pendingCapture && <Progress phase="waiting" />}
+        {state.phase === 'idle' &&
+          health.phase === 'ready' &&
+          !pendingCapture && (
+            <Idle
+              onFill={() => collectAndPrepare()}
+              errors={[
+                ...state.errors,
+                ...(sourceAccess?.status === 'restricted'
+                  ? [sourceAccess.error]
+                  : []),
+                ...sourceErrors,
+              ]}
+              sourceAccess={sourceAccess}
+            />
+          )}
+        {state.phase === 'reviewing' && !pendingCapture && (
           <ReviewForm
             state={state}
             session={session}
             onNewCapture={() => collectAndPrepare()}
+            sourceErrors={[
+              ...(sourceAccess?.status === 'restricted'
+                ? [sourceAccess.error]
+                : []),
+              ...sourceErrors,
+            ]}
           />
         )}
         {state.phase === 'complete' &&

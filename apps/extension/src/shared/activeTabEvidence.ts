@@ -1,3 +1,7 @@
+import type { PrepareApplicationRequest } from '@merida/api-client'
+import { RESTRICTED_PAGE_MESSAGE } from './sourceAccess.ts'
+import type { SourceReference } from './sourceAccess.ts'
+
 function collectFromPage() {
   const metadata: Record<string, string> = {}
   document.querySelectorAll('meta[name], meta[property]').forEach((element) => {
@@ -93,26 +97,26 @@ function collectFromPage() {
   }
 }
 
-export async function collectCaptureEvidence(): Promise<CollectedCaptureEvidence> {
-  if (!globalThis.chrome?.tabs || !globalThis.chrome?.scripting) {
+export async function collectCaptureEvidence(
+  source: SourceReference,
+): Promise<CollectedCaptureEvidence> {
+  if (!globalThis.chrome?.scripting) {
     throw new Error(
       'Chrome page access is unavailable. Open the installed Merida side panel on a job posting page.',
     )
   }
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-  if (
-    !tab?.id ||
-    !tab.url ||
-    /^(chrome|edge|about|chrome-extension):/.test(tab.url)
-  ) {
-    throw new Error(
-      'Chrome does not allow this page to be read. Open a job posting webpage and try again.',
-    )
+  let results: Array<{
+    frameId?: number
+    result?: ReturnType<typeof collectFromPage>
+  }>
+  try {
+    results = await chrome.scripting.executeScript({
+      target: { tabId: source.tabId, allFrames: true },
+      func: collectFromPage,
+    })
+  } catch {
+    throw new Error(RESTRICTED_PAGE_MESSAGE)
   }
-  const results = await chrome.scripting.executeScript({
-    target: { tabId: tab.id, allFrames: true },
-    func: collectFromPage,
-  })
   const frames = results
     .map((result) => result.result)
     .filter((frame): frame is NonNullable<typeof frame> => Boolean(frame))
@@ -147,12 +151,10 @@ export async function collectCaptureEvidence(): Promise<CollectedCaptureEvidence
     semanticHtml,
     metadataText,
   }
-  return { evidence, source: { tabId: tab.id, url: tab.url } }
+  return { evidence, source }
 }
-import type { PrepareApplicationRequest } from '@merida/api-client'
-import type { CaptureSource } from '../session/captureSession.ts'
 
 export type CollectedCaptureEvidence = {
   evidence: PrepareApplicationRequest['evidence']
-  source: CaptureSource
+  source: SourceReference
 }

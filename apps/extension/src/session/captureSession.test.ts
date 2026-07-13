@@ -217,6 +217,57 @@ test('reading cannot bypass discard confirmation for a dirty review', async () =
   assert.equal(session.getState().review.companyName, 'Edited Example')
 })
 
+test('source mismatch clears when the Review source becomes active again', async () => {
+  const session = createCaptureSession({
+    prepare: async () => ({
+      ok: true,
+      result: 'prepared',
+      draft: {
+        jobUrl: 'https://example.test/job',
+        companyName: 'Example',
+        role: 'Engineer',
+        location: '',
+        jobContentPreview: 'Content',
+      },
+    }),
+  })
+  const source = { tabId: 1, url: 'https://example.test/job' }
+  await session.prepare({ url: source.url, visibleText: 'Content' }, source)
+
+  session.sourceChanged({ tabId: 2, url: 'https://other.test/job' })
+  assert.equal(session.getState().sourceChanged, true)
+
+  session.sourceChanged(source)
+  assert.equal(session.getState().sourceChanged, false)
+})
+
+test('cancelling a page read restores the preserved Review', async () => {
+  const session = createCaptureSession({
+    prepare: async () => ({
+      ok: true,
+      result: 'prepared',
+      draft: {
+        jobUrl: 'https://example.test/job',
+        companyName: 'Example',
+        role: 'Engineer',
+        location: '',
+        jobContentPreview: 'Content',
+      },
+    }),
+  })
+  await session.prepare(
+    { url: 'https://example.test/job', visibleText: 'Content' },
+    { tabId: 1, url: 'https://example.test/job' },
+  )
+
+  session.beginReading()
+  session.cancelReading()
+
+  const state = session.getState()
+  assert.equal(state.phase, 'reviewing')
+  assert.equal(state.review?.companyName, 'Example')
+})
+
 test('semantic-only evidence is converted to readable in-memory Job Content on confirm', async () => {
   let confirmed = null
   const client = {

@@ -28,7 +28,7 @@
     "check:no-demo": "node scripts/check-no-demo-surface.mjs",
     "check:no-demo-builds": "node scripts/check-no-demo-surface.mjs --include-builds",
     "check:final-only": "node scripts/check-final-only.mjs",
-    "test:unit": "npm run build --workspace @merida/api-client && npm run check:no-demo && node --test apps/web/src/features/dashboard/dashboardSession.test.ts apps/web/src/shared/api/dashboardClient.test.ts apps/extension/src/session/captureSession.test.ts apps/extension/src/shared/activeTabEvidence.test.ts apps/extension/src/shared/background.test.ts apps/extension/src/shared/captureClient.test.ts apps/extension/src/shared/captureHealth.test.ts && node scripts/python.mjs -m pytest apps/api/tests",
+    "test:unit": "npm run build --workspace @merida/api-client && npm run check:no-demo && node --test apps/web/src/features/dashboard/dashboardSession.test.ts apps/web/src/shared/api/dashboardClient.test.ts apps/extension/src/session/captureSession.test.ts apps/extension/src/shared/activeTabEvidence.test.ts apps/extension/src/shared/sourceAccess.test.ts apps/extension/src/shared/background.test.ts apps/extension/src/shared/captureClient.test.ts apps/extension/src/shared/captureHealth.test.ts && node scripts/python.mjs -m pytest apps/api/tests",
     "build": "npm run client && npm run build --workspace @merida/web && npm run build --workspace @merida/extension && npm run check:no-demo-builds",
     "start": "node scripts/python.mjs -m merida_api.cli",
     "recovery": "node scripts/python.mjs -m merida_api.cli recovery",

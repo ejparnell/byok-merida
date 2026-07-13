@@ -10,7 +10,7 @@ Merida uses `Application` for the pursuit record and `Job Posting` for the captu
 - **Matching** — owns deterministic evidence matching, normalization, and versioned scoring under `apps/api/merida_api/matching/`.
 - **Integrations** — adapts the workflow-owned interfaces to Notion, DeepSeek, local PDF storage, and provider-safe errors under `apps/api/merida_api/integrations/`.
 - **Dashboard** — owns the process-console interaction state under `apps/web/src/features/dashboard/`.
-- **Extension Capture** — owns active-tab evidence, local extension settings, and review-session state under `apps/extension/src/`.
+- **[Extension Capture](apps/extension/CONTEXT.md)** — owns active-tab evidence, local extension settings, and review-session state under `apps/extension/src/`.
 
 ## Shared contracts
 

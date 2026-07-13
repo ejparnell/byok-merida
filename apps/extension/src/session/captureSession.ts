@@ -6,8 +6,9 @@ import type {
   PreparedApplicationDraft,
 } from '@merida/api-client'
 import type { CaptureClient } from '../shared/captureClient.ts'
+import type { ObservedSource, SourceReference } from '../shared/sourceAccess.ts'
 
-export type CaptureSource = { tabId: number; url: string }
+export type CaptureSource = SourceReference
 export type CapturePhase =
   'idle' | 'reading' | 'parsing' | 'reviewing' | 'confirming' | 'complete'
 
@@ -130,6 +131,10 @@ export function createCaptureSession(
       if (state.phase === 'reviewing' && state.dirty) return
       publish({ phase: 'reading', errors: [], result: null })
     },
+    cancelReading() {
+      if (state.phase !== 'reading') return
+      publish({ phase: state.review ? 'reviewing' : 'idle' })
+    },
     async prepare(
       evidence: PrepareApplicationRequest['evidence'],
       source: CaptureSource,
@@ -150,11 +155,11 @@ export function createCaptureSession(
         missingFields: [],
       })
     },
-    sourceChanged(source: CaptureSource) {
+    sourceChanged(source: ObservedSource) {
       if (!state.source) return
       const changed =
         state.source.tabId !== source.tabId || state.source.url !== source.url
-      if (changed) publish({ sourceChanged: true })
+      if (changed !== state.sourceChanged) publish({ sourceChanged: changed })
     },
     async confirm() {
       if (!state.review || !state.evidence || state.phase === 'confirming')
@@ -226,6 +231,7 @@ export interface CaptureSession {
   getState(): CaptureState
   setClient(client: CaptureClient): void
   beginReading(): void
+  cancelReading(): void
   prepare(
     evidence: PrepareApplicationRequest['evidence'],
     source: CaptureSource,
@@ -236,7 +242,7 @@ export interface CaptureSession {
     | 'discard_confirmation_required'
   >
   updateReview(field: keyof ReviewDraft, value: string): void
-  sourceChanged(source: CaptureSource): void
+  sourceChanged(source: ObservedSource): void
   confirm(): Promise<
     | ConfirmApplicationResponse
     | { ok: false; result: 'needs_review'; missing: string[] }

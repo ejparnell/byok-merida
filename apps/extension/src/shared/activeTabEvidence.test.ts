@@ -20,8 +20,66 @@ test('active-tab evidence fails truthfully when Chrome page APIs are unavailable
 
   try {
     await assert.rejects(
-      collectCaptureEvidence(),
+      collectCaptureEvidence({ tabId: 7, url: 'https://example.test/job' }),
       /Chrome page access is unavailable/,
+    )
+  } finally {
+    globalThis.chrome = previousChrome
+  }
+})
+
+test('active-tab evidence reads the Source Page provided by Source Access', async () => {
+  const previousChrome = globalThis.chrome
+  globalThis.chrome = {
+    scripting: {
+      executeScript: async () => [
+        {
+          frameId: 0,
+          result: {
+            url: 'https://jobs.example.test/roles/123',
+            title: 'Platform Engineer',
+            selectedText: '',
+            visibleText: 'Build reliable systems.',
+            semanticHtml: '',
+            metadataText: '',
+            structuredJobTitle: 'Platform Engineer',
+            structuredCompanyName: 'Example',
+            structuredLocation: 'Remote',
+          },
+        },
+      ],
+    },
+  }
+
+  try {
+    const collected = await collectCaptureEvidence({
+      tabId: 7,
+      url: 'https://jobs.example.test/roles/123',
+    })
+    assert.equal(collected.source.tabId, 7)
+    assert.equal(collected.source.url, 'https://jobs.example.test/roles/123')
+  } finally {
+    globalThis.chrome = previousChrome
+  }
+})
+
+test('active-tab evidence normalizes Chrome injection failures', async () => {
+  const previousChrome = globalThis.chrome
+  globalThis.chrome = {
+    scripting: {
+      executeScript: async () => {
+        throw new Error('Cannot access contents of the page')
+      },
+    },
+  }
+
+  try {
+    await assert.rejects(
+      collectCaptureEvidence({
+        tabId: 7,
+        url: 'https://jobs.example.test/roles/123',
+      }),
+      /Chrome does not allow this page to be read/,
     )
   } finally {
     globalThis.chrome = previousChrome
@@ -53,7 +111,10 @@ test('active-tab evidence carries structured job metadata into the API request',
   }
 
   try {
-    const { evidence } = await collectCaptureEvidence()
+    const { evidence } = await collectCaptureEvidence({
+      tabId: 7,
+      url: 'https://example.test/job',
+    })
     assert.equal(evidence.structuredJobTitle, 'Platform Engineer')
     assert.equal(evidence.structuredCompanyName, 'Example')
     assert.equal(evidence.structuredLocation, 'Remote')
@@ -84,7 +145,10 @@ test('active-tab evidence respects per-field and combined API limits', async () 
   }
 
   try {
-    const { evidence } = await collectCaptureEvidence()
+    const { evidence } = await collectCaptureEvidence({
+      tabId: 7,
+      url: 'https://example.test/job',
+    })
     assert.equal(evidence.selectedText.length, 120_000)
     assert.ok(evidence.visibleText.length <= 120_000)
     assert.ok(evidence.semanticHtml.length <= 120_000)
@@ -147,7 +211,10 @@ test('final capture fixture is enforced through the extension collector', async 
   }
 
   try {
-    const collected = await collectCaptureEvidence()
+    const collected = await collectCaptureEvidence({
+      tabId: 7,
+      url: observation.expectedOutcome.capturedUrl,
+    })
     assert.equal(collected.source.url, observation.expectedOutcome.capturedUrl)
     assert.equal(
       collected.evidence.structuredCompanyName,
