@@ -45,7 +45,7 @@ test('reviewed fields survive a failed confirmation and are sent with in-memory 
       },
     }),
     confirm: async (draft) => {
-      assert.equal(draft.jobContent, 'Build reliable systems with Python')
+      assert.equal(draft.jobContent, 'Edited job content with enough detail')
       return {
         ok: false,
         status: 'blocked',
@@ -61,13 +61,99 @@ test('reviewed fields survive a failed confirmation and are sent with in-memory 
   const session = createCaptureSession(client)
   await session.prepare(evidence, { tabId: 7, url: evidence.url })
   session.updateReview('role', 'Senior Engineer')
+  session.updateReview('jobContent', 'Edited job content with enough detail')
 
   await session.confirm()
 
   const state = session.getState()
   assert.equal(state.phase, 'reviewing')
   assert.equal(state.review.role, 'Senior Engineer')
+  assert.equal(state.review.jobContent, 'Edited job content with enough detail')
   assert.deepEqual(state.errors, ['Workspace unavailable'])
+})
+
+test('edited Job Content is sent in confirmation and cleared after success', async () => {
+  let confirmed = null
+  const session = createCaptureSession({
+    prepare: async () => ({
+      ok: true,
+      result: 'prepared',
+      draft: {
+        jobUrl: 'https://example.test/job',
+        companyName: 'Example',
+        role: 'Engineer',
+        location: null,
+        jobContentPreview: 'Original preview',
+      },
+    }),
+    confirm: async (draft) => {
+      confirmed = draft
+      return { ok: true, result: 'created', application: { id: 'app-1' } }
+    },
+  })
+  await session.prepare(
+    {
+      url: 'https://example.test/job',
+      visibleText: 'Original readable Job Content with enough detail.',
+    },
+    { tabId: 1, url: 'https://example.test/job' },
+  )
+  assert.equal(
+    session.getState().review.jobContent,
+    'Original readable Job Content with enough detail.',
+  )
+
+  session.updateReview(
+    'jobContent',
+    'Edited readable Job Content that should be saved to Notion.',
+  )
+  await session.confirm()
+
+  assert.equal(
+    confirmed.jobContent,
+    'Edited readable Job Content that should be saved to Notion.',
+  )
+  assert.equal(session.getState().review, null)
+  assert.equal(session.getState().evidence, null)
+})
+
+test('edited Job Content must remain readable before confirmation', async () => {
+  let confirmCalled = false
+  const session = createCaptureSession({
+    prepare: async () => ({
+      ok: true,
+      result: 'prepared',
+      draft: {
+        jobUrl: 'https://example.test/job',
+        companyName: 'Example',
+        role: 'Engineer',
+        location: null,
+        jobContentPreview: 'Original preview',
+      },
+    }),
+    confirm: async () => {
+      confirmCalled = true
+      return { ok: true, result: 'created', application: { id: 'app-1' } }
+    },
+  })
+  await session.prepare(
+    {
+      url: 'https://example.test/job',
+      visibleText: 'Original readable Job Content with enough detail.',
+    },
+    { tabId: 1, url: 'https://example.test/job' },
+  )
+
+  session.updateReview('jobContent', 'Too short')
+  const result = await session.confirm()
+
+  assert.equal(confirmCalled, false)
+  assert.deepEqual(result, {
+    ok: false,
+    result: 'needs_review',
+    missing: ['jobContent'],
+  })
+  assert.deepEqual(session.getState().missingFields, ['jobContent'])
 })
 
 test('starting a new capture requires discard confirmation when review is dirty', async () => {

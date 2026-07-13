@@ -164,7 +164,6 @@ button {
 }
 .source-card > span,
 .review-heading > span,
-.content-preview > span,
 .settings-sheet header span,
 .dialog-backdrop section > span {
   color: #85887f;
@@ -328,23 +327,29 @@ button {
   font-size: var(--type-base);
 }
 .review-form input:focus,
+.review-form textarea:focus,
 .settings-sheet input:focus {
   border-color: #85932f;
   box-shadow: 0 0 0 3px rgb(216 233 75 / 18%);
 }
-.content-preview {
-  max-height: 140px;
-  overflow: auto;
-  padding: 14px;
-  border: 1px solid #dedbd2;
-  border-radius: 5px;
-  background: #f5f3ed;
-}
-.content-preview p {
-  margin: 7px 0 0;
-  color: #5f635c;
+.content-editor textarea {
+  width: 100%;
+  min-height: 220px;
+  padding: 10px 11px;
+  border: 1px solid #d5d2c9;
+  border-radius: 4px;
+  outline: 0;
+  resize: vertical;
+  background: #fffefa;
+  color: #1b1e1a;
+  font: inherit;
   font-size: var(--type-body);
-  line-height: 1.65;
+  line-height: 1.55;
+}
+.content-editor small {
+  color: #70736c;
+  font-size: var(--type-meta);
+  line-height: 1.45;
 }
 .source-warning,
 .error-callout {

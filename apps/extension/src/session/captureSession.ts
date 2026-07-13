@@ -11,11 +11,18 @@ export type CaptureSource = { tabId: number; url: string }
 export type CapturePhase =
   'idle' | 'reading' | 'parsing' | 'reviewing' | 'confirming' | 'complete'
 
+export type ReviewDraft = Omit<
+  PreparedApplicationDraft,
+  'jobContentPreview'
+> & {
+  jobContent: string
+}
+
 export type CaptureState = {
   phase: CapturePhase
   evidence: PrepareApplicationRequest['evidence'] | null
   source: CaptureSource | null
-  review: PreparedApplicationDraft | null
+  review: ReviewDraft | null
   dirty: boolean
   result: ConfirmApplicationResponse | null
   errors: string[]
@@ -53,6 +60,17 @@ const readableJobContent = (
   )
 }
 
+const createReviewDraft = (
+  draft: PreparedApplicationDraft,
+  evidence: PrepareApplicationRequest['evidence'],
+): ReviewDraft => ({
+  jobUrl: draft.jobUrl,
+  companyName: draft.companyName,
+  role: draft.role,
+  location: draft.location,
+  jobContent: readableJobContent(evidence),
+})
+
 export function createCaptureSession(
   client: CaptureClient,
   onChange: (state: CaptureState) => void = () => {},
@@ -79,7 +97,7 @@ export function createCaptureSession(
         phase: 'reviewing',
         evidence,
         source,
-        review: { ...response.draft },
+        review: createReviewDraft(response.draft, evidence),
         dirty: false,
         reviewReasons: response.reviewReasons || [],
         missingFields: response.missingFields || [],
@@ -122,7 +140,7 @@ export function createCaptureSession(
       }
       return performPrepare(evidence, source)
     },
-    updateReview(field: keyof PreparedApplicationDraft, value: string) {
+    updateReview(field: keyof ReviewDraft, value: string) {
       if (!state.review) return
       publish({
         review: { ...state.review, [field]: value },
@@ -142,15 +160,11 @@ export function createCaptureSession(
       if (!state.review || !state.evidence || state.phase === 'confirming')
         return null
       const review = state.review
-      const required: Array<keyof PreparedApplicationDraft> = [
-        'companyName',
-        'role',
-        'jobUrl',
-      ]
+      const required = ['companyName', 'role', 'jobUrl'] as const
       const missing: string[] = required.filter(
         (field) => !String(review[field] || '').trim(),
       )
-      const jobContent = readableJobContent(state.evidence)
+      const jobContent = review.jobContent.trim()
       if (jobContent.length < 20) missing.push('jobContent')
       if (missing.length) {
         publish({
@@ -170,7 +184,11 @@ export function createCaptureSession(
         }
         const result = await activeClient.confirm(draft)
         if (result.ok) {
-          publish({ phase: 'complete', result, evidence: null, dirty: false })
+          publish({
+            ...EMPTY_STATE,
+            phase: 'complete',
+            result,
+          })
         } else {
           const validationErrors = (result.validationFailures || []).map(
             (failure) => failure.message,
@@ -217,7 +235,7 @@ export interface CaptureSession {
     | 'failed'
     | 'discard_confirmation_required'
   >
-  updateReview(field: keyof PreparedApplicationDraft, value: string): void
+  updateReview(field: keyof ReviewDraft, value: string): void
   sourceChanged(source: CaptureSource): void
   confirm(): Promise<
     | ConfirmApplicationResponse

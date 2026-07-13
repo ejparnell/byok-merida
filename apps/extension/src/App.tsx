@@ -1,15 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Spinner, StatusDot } from '@merida/ui'
-import type {
-  ConfirmApplicationResponse,
-  PreparedApplicationDraft,
-} from '@merida/api-client'
+import type { ConfirmApplicationResponse } from '@merida/api-client'
 
 import { createCaptureSession } from './session/captureSession.ts'
 import type {
   CapturePhase,
   CaptureSession,
   CaptureState,
+  ReviewDraft,
 } from './session/captureSession.ts'
 import { collectCaptureEvidence } from './shared/activeTabEvidence.ts'
 import type { CollectedCaptureEvidence } from './shared/activeTabEvidence.ts'
@@ -179,9 +177,11 @@ function ReviewForm({
 }) {
   const review = state.review
   if (!review) return null
-  const update = (event: React.ChangeEvent<HTMLInputElement>) =>
+  const update = (
+    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) =>
     session.updateReview(
-      event.target.name as keyof PreparedApplicationDraft,
+      event.target.name as keyof ReviewDraft,
       event.target.value,
     )
   return (
@@ -237,13 +237,22 @@ function ReviewForm({
         </span>
         <input name="jobUrl" value={review.jobUrl || ''} onChange={update} />
       </label>
-      <div className="content-preview">
-        <span>Job Content preview</span>
-        <p>
-          {review.jobContentPreview ||
-            'Readable Job Content is retained in memory for confirmation.'}
-        </p>
-      </div>
+      <label className="content-editor">
+        <span>
+          Job Content <em>Required</em>
+        </span>
+        <textarea
+          name="jobContent"
+          value={review.jobContent}
+          onChange={update}
+          rows={12}
+          aria-describedby="job-content-help"
+        />
+        <small id="job-content-help">
+          Edit the content that will be saved to Notion. It stays in this review
+          session until you confirm.
+        </small>
+      </label>
       <ErrorCallout errors={state.errors} />
       <button className="primary large" type="submit">
         Create in Notion <span aria-hidden="true">→</span>
@@ -433,7 +442,11 @@ export function App() {
   useEffect(() => {
     if (state.phase === 'reviewing' && state.missingFields.length) {
       const field = state.missingFields[0]
-      document.querySelector<HTMLInputElement>(`[name="${field}"]`)?.focus()
+      document
+        .querySelector<HTMLInputElement | HTMLTextAreaElement>(
+          `[name="${field}"]`,
+        )
+        ?.focus()
     }
   }, [state.phase, state.missingFields])
   const readyLabel =

@@ -145,7 +145,7 @@ Fields:
 | Role         | Editable and required before confirmation.                                                                               |
 | Location     | Editable when present. Missing Location does not block confirmation unless the backend contract later makes it required. |
 | Job URL      | Editable and required. Defaults to the canonical URL returned by the backend.                                            |
-| Job Content  | Show a readable preview for review. Full captured content stays in the current in-memory capture session.                |
+| Job Content  | Editable and required. Starts with the full readable captured content and stays in the current in-memory review session. |
 
 The form should not expose:
 
@@ -166,7 +166,7 @@ Capture owns the required creation fields and Capture Defaults. Application mana
 
 The primary form action should be labeled **Create in Notion**.
 
-Clicking it should call `POST /api/v1/applications/confirm` with the reviewed parsed fields and the Job Content retained for the current capture session.
+Clicking it should call `POST /api/v1/applications/confirm` with the reviewed parsed fields and the edited Job Content retained for the current capture session.
 
 Before sending:
 
