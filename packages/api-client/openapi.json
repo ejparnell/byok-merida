@@ -980,6 +980,269 @@
         "title": "CaptureEvidence",
         "type": "object"
       },
+      "CaptureMatchApplication": {
+        "additionalProperties": false,
+        "properties": {
+          "applicationStatus": {
+            "enum": [
+              "To Apply",
+              "Applied",
+              "Rejected",
+              "Not Interested",
+              "Archived"
+            ],
+            "title": "Applicationstatus",
+            "type": "string"
+          },
+          "companyName": {
+            "title": "Companyname",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "companyName",
+          "role",
+          "applicationStatus",
+          "url"
+        ],
+        "title": "CaptureMatchApplication",
+        "type": "object"
+      },
+      "CaptureMatchesBlockedResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "matches": {
+            "items": {
+              "$ref": "#/components/schemas/CaptureMatchApplication"
+            },
+            "title": "Matches",
+            "type": "array"
+          },
+          "ok": {
+            "const": false,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "result": {
+            "const": "blocked",
+            "title": "Result",
+            "type": "string"
+          },
+          "status": {
+            "const": "blocked",
+            "title": "Status",
+            "type": "string"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "status",
+          "result",
+          "matches"
+        ],
+        "title": "CaptureMatchesBlockedResponse",
+        "type": "object"
+      },
+      "CaptureMatchesEmptyResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "matches": {
+            "items": {
+              "$ref": "#/components/schemas/CaptureMatchApplication"
+            },
+            "title": "Matches",
+            "type": "array"
+          },
+          "ok": {
+            "const": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "result": {
+            "const": "unmatched",
+            "title": "Result",
+            "type": "string"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "result",
+          "matches"
+        ],
+        "title": "CaptureMatchesEmptyResponse",
+        "type": "object"
+      },
+      "CaptureMatchesFoundResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "matches": {
+            "items": {
+              "$ref": "#/components/schemas/CaptureMatchApplication"
+            },
+            "title": "Matches",
+            "type": "array"
+          },
+          "ok": {
+            "const": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "result": {
+            "const": "matched",
+            "title": "Result",
+            "type": "string"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "result",
+          "matches"
+        ],
+        "title": "CaptureMatchesFoundResponse",
+        "type": "object"
+      },
+      "CaptureMatchesResponse": {
+        "discriminator": {
+          "mapping": {
+            "blocked": "#/components/schemas/CaptureMatchesBlockedResponse",
+            "matched": "#/components/schemas/CaptureMatchesFoundResponse",
+            "unmatched": "#/components/schemas/CaptureMatchesEmptyResponse"
+          },
+          "propertyName": "result"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/CaptureMatchesFoundResponse"
+          },
+          {
+            "$ref": "#/components/schemas/CaptureMatchesEmptyResponse"
+          },
+          {
+            "$ref": "#/components/schemas/CaptureMatchesBlockedResponse"
+          }
+        ],
+        "title": "CaptureMatchesResponse"
+      },
       "CapturedApplication": {
         "additionalProperties": false,
         "properties": {
@@ -2729,6 +2992,87 @@
           }
         },
         "summary": "Run Application Analysis"
+      }
+    },
+    "/api/v1/applications/capture-matches": {
+      "get": {
+        "operationId": "getApplicationCaptureMatches",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "companyName",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Companyname",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Role",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Capture-Token",
+            "required": true,
+            "schema": {
+              "title": "X-Capture-Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureMatchesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          }
+        },
+        "summary": "Get Application Capture Matches"
       }
     },
     "/api/v1/applications/confirm": {

@@ -1,4 +1,5 @@
 import type {
+  CaptureMatchApplication,
   ConfirmApplicationResponse,
   ConfirmedApplicationDraft,
   PrepareApplicationRequest,
@@ -19,6 +20,13 @@ export type ReviewDraft = Omit<
   jobContent: string
 }
 
+export type CaptureMatch =
+  | { status: 'incomplete' }
+  | { status: 'checking' }
+  | { status: 'unmatched' }
+  | { status: 'matched'; matches: CaptureMatchApplication[] }
+  | { status: 'unavailable'; error: string }
+
 export type CaptureState = {
   phase: CapturePhase
   evidence: PrepareApplicationRequest['evidence'] | null
@@ -30,6 +38,7 @@ export type CaptureState = {
   reviewReasons: string[]
   missingFields: string[]
   sourceChanged: boolean
+  captureMatch: CaptureMatch
 }
 
 const EMPTY_STATE = {
@@ -43,6 +52,7 @@ const EMPTY_STATE = {
   reviewReasons: [],
   missingFields: [],
   sourceChanged: false,
+  captureMatch: { status: 'incomplete' },
 } satisfies CaptureState
 
 const operatorError = (error: unknown) => error as Error
@@ -78,10 +88,76 @@ export function createCaptureSession(
 ): CaptureSession {
   let state: CaptureState = { ...EMPTY_STATE }
   let activeClient = client
+  let captureMatchRequest = 0
+  let captureMatchTimer: ReturnType<typeof setTimeout> | null = null
 
   const publish = (patch: Partial<CaptureState>) => {
     state = { ...state, ...patch }
     onChange(state)
+  }
+
+  const cancelCaptureMatch = () => {
+    captureMatchRequest += 1
+    if (captureMatchTimer) clearTimeout(captureMatchTimer)
+    captureMatchTimer = null
+  }
+
+  const matchInput = (review: ReviewDraft | null) => {
+    const companyName = review?.companyName?.trim() || ''
+    const role = review?.role?.trim() || ''
+    return companyName && role ? { companyName, role } : null
+  }
+
+  const startCaptureMatch = (
+    review: ReviewDraft | null,
+    { debounce = false }: { debounce?: boolean } = {},
+  ): void => {
+    cancelCaptureMatch()
+    const input = matchInput(review)
+    if (!input) return
+
+    const request = ++captureMatchRequest
+    const run = async () => {
+      try {
+        const response = await activeClient.matches(
+          input.companyName,
+          input.role,
+        )
+        const current = matchInput(state.review)
+        if (
+          request !== captureMatchRequest ||
+          !current ||
+          current.companyName !== input.companyName ||
+          current.role !== input.role
+        )
+          return
+        if (!response.ok) {
+          publish({
+            captureMatch: {
+              status: 'unavailable',
+              error: response.errors[0] || 'Couldn’t check Notion.',
+            },
+          })
+          return
+        }
+        publish(
+          response.result === 'matched'
+            ? { captureMatch: { status: 'matched', matches: response.matches } }
+            : { captureMatch: { status: 'unmatched' } },
+        )
+      } catch (error) {
+        if (request !== captureMatchRequest) return
+        publish({
+          captureMatch: {
+            status: 'unavailable',
+            error: operatorError(error).message || 'Couldn’t check Notion.',
+          },
+        })
+      }
+    }
+
+    if (debounce) captureMatchTimer = setTimeout(() => void run(), 300)
+    else void run()
   }
 
   const performPrepare = async (
@@ -94,11 +170,15 @@ export function createCaptureSession(
       const validationErrors = (response.validationFailures || []).map(
         (failure) => failure.message,
       )
+      const review = createReviewDraft(response.draft, evidence)
+      const captureMatch: CaptureMatch = matchInput(review)
+        ? { status: 'checking' }
+        : { status: 'incomplete' }
       publish({
         phase: 'reviewing',
         evidence,
         source,
-        review: createReviewDraft(response.draft, evidence),
+        review,
         dirty: false,
         reviewReasons: response.reviewReasons || [],
         missingFields: response.missingFields || [],
@@ -107,7 +187,9 @@ export function createCaptureSession(
           ...validationErrors,
           ...(response.errors || []),
         ],
+        captureMatch,
       })
+      if (captureMatch.status === 'checking') startCaptureMatch(review)
       return response.result
     } catch (error) {
       publish({
@@ -147,13 +229,30 @@ export function createCaptureSession(
     },
     updateReview(field: keyof ReviewDraft, value: string) {
       if (!state.review) return
+      const review = { ...state.review, [field]: value }
+      const updatesCaptureMatch = field === 'companyName' || field === 'role'
+      const captureMatch: CaptureMatch = updatesCaptureMatch
+        ? matchInput(review)
+          ? { status: 'checking' }
+          : { status: 'incomplete' }
+        : state.captureMatch
       publish({
-        review: { ...state.review, [field]: value },
+        review,
         dirty: true,
         errors: [],
         reviewReasons: [],
         missingFields: [],
+        captureMatch,
       })
+      if (updatesCaptureMatch && captureMatch.status === 'checking')
+        startCaptureMatch(review, { debounce: true })
+    },
+    retryCaptureMatch() {
+      const captureMatch: CaptureMatch = matchInput(state.review)
+        ? { status: 'checking' }
+        : { status: 'incomplete' }
+      publish({ captureMatch })
+      if (captureMatch.status === 'checking') startCaptureMatch(state.review)
     },
     sourceChanged(source: ObservedSource) {
       if (!state.source) return
@@ -189,6 +288,7 @@ export function createCaptureSession(
         }
         const result = await activeClient.confirm(draft)
         if (result.ok) {
+          cancelCaptureMatch()
           publish({
             ...EMPTY_STATE,
             phase: 'complete',
@@ -222,6 +322,7 @@ export function createCaptureSession(
       }
     },
     clear() {
+      cancelCaptureMatch()
       publish({ ...EMPTY_STATE })
     },
   }
@@ -242,6 +343,7 @@ export interface CaptureSession {
     | 'discard_confirmation_required'
   >
   updateReview(field: keyof ReviewDraft, value: string): void
+  retryCaptureMatch(): void
   sourceChanged(source: ObservedSource): void
   confirm(): Promise<
     | ConfirmApplicationResponse

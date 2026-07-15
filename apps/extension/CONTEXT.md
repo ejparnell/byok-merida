@@ -35,3 +35,7 @@ _Avoid_: Background capture, follow-navigation capture
 **Review**:
 The editable, in-memory Application draft derived from one Source Page before it is written to Notion.
 _Avoid_: Application, saved record
+
+**Capture Match**:
+The pre-save finding that a non-archived Notion Application has an equivalent Company Name and Role to the current Review, including recognized formatting and abbreviation variants. It informs whether to create a new Application but does not itself change a record.
+_Avoid_: Application Status, applied, duplicate

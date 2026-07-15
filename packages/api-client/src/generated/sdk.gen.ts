@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ConfirmApplicationData, ConfirmApplicationErrors, ConfirmApplicationResponses, CreateResumeData, CreateResumeErrors, CreateResumeResponses, DownloadResumePdfData, DownloadResumePdfErrors, DownloadResumePdfResponses, GetApplicationAnalysisHealthData, GetApplicationAnalysisHealthErrors, GetApplicationAnalysisHealthResponses, GetApplicationAnalysisQueueData, GetApplicationAnalysisQueueErrors, GetApplicationAnalysisQueueResponses, GetHealthData, GetHealthErrors, GetHealthResponses, GetNotionHealthData, GetNotionHealthErrors, GetNotionHealthResponses, GetOperatorSettingsData, GetOperatorSettingsErrors, GetOperatorSettingsResponses, GetResumeCreationHealthData, GetResumeCreationHealthErrors, GetResumeCreationHealthResponses, GetResumeCreationQueueData, GetResumeCreationQueueErrors, GetResumeCreationQueueResponses, PrepareApplicationData, PrepareApplicationErrors, PrepareApplicationResponses, RunApplicationAnalysisData, RunApplicationAnalysisErrors, RunApplicationAnalysisResponses } from './types.gen';
+import type { ConfirmApplicationData, ConfirmApplicationErrors, ConfirmApplicationResponses, CreateResumeData, CreateResumeErrors, CreateResumeResponses, DownloadResumePdfData, DownloadResumePdfErrors, DownloadResumePdfResponses, GetApplicationAnalysisHealthData, GetApplicationAnalysisHealthErrors, GetApplicationAnalysisHealthResponses, GetApplicationAnalysisQueueData, GetApplicationAnalysisQueueErrors, GetApplicationAnalysisQueueResponses, GetApplicationCaptureMatchesData, GetApplicationCaptureMatchesErrors, GetApplicationCaptureMatchesResponses, GetHealthData, GetHealthErrors, GetHealthResponses, GetNotionHealthData, GetNotionHealthErrors, GetNotionHealthResponses, GetOperatorSettingsData, GetOperatorSettingsErrors, GetOperatorSettingsResponses, GetResumeCreationHealthData, GetResumeCreationHealthErrors, GetResumeCreationHealthResponses, GetResumeCreationQueueData, GetResumeCreationQueueErrors, GetResumeCreationQueueResponses, PrepareApplicationData, PrepareApplicationErrors, PrepareApplicationResponses, RunApplicationAnalysisData, RunApplicationAnalysisErrors, RunApplicationAnalysisResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -34,6 +34,11 @@ export const runApplicationAnalysis = <ThrowOnError extends boolean = false>(opt
         ...options.headers
     }
 });
+
+/**
+ * Get Application Capture Matches
+ */
+export const getApplicationCaptureMatches = <ThrowOnError extends boolean = false>(options: Options<GetApplicationCaptureMatchesData, ThrowOnError>): RequestResult<GetApplicationCaptureMatchesResponses, GetApplicationCaptureMatchesErrors, ThrowOnError> => (options.client ?? client).get<GetApplicationCaptureMatchesResponses, GetApplicationCaptureMatchesErrors, ThrowOnError>({ url: '/api/v1/applications/capture-matches', ...options });
 
 /**
  * Confirm Application

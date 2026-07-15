@@ -1,6 +1,7 @@
 import {
   confirmApplication,
   createClient,
+  getApplicationCaptureMatches,
   getHealth,
   invokeApiData,
   prepareApplication,
@@ -8,6 +9,7 @@ import {
 import type {
   ConfirmApplicationRequest,
   ConfirmApplicationResponse,
+  CaptureMatchesResponse,
   HealthResponse,
   PrepareApplicationRequest,
   PrepareApplicationResponse,
@@ -17,6 +19,7 @@ export type ExtensionSettings = { backendUrl: string; captureToken: string }
 
 export interface CaptureClient {
   health(): Promise<HealthResponse>
+  matches(companyName: string, role: string): Promise<CaptureMatchesResponse>
   prepare(
     evidence: PrepareApplicationRequest['evidence'],
   ): Promise<PrepareApplicationResponse>
@@ -40,6 +43,15 @@ export function createCaptureClient(
     health: () =>
       invokeApiData(
         getHealth<true>({ client: generatedClient, throwOnError: true }),
+      ),
+    matches: (companyName, role) =>
+      invokeApiData(
+        getApplicationCaptureMatches<true>({
+          client: generatedClient,
+          query: { companyName, role },
+          headers: protectedHeaders(),
+          throwOnError: true,
+        }),
       ),
     prepare: (evidence) =>
       invokeApiData(

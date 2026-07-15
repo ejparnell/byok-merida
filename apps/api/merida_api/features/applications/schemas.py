@@ -5,6 +5,7 @@ from pydantic import Field, RootModel, field_validator, model_validator
 from pydantic_core import PydanticCustomError
 
 from ...shared.schemas import ApiModel, CommonResponse, Pagination
+from .workspace import ApplicationStatus
 
 
 class CaptureEvidence(ApiModel):
@@ -83,6 +84,47 @@ class ConfirmedApplicationDraft(ApiModel):
 
 class ConfirmApplicationRequest(ApiModel):
     draft: ConfirmedApplicationDraft
+
+
+class CaptureMatchApplication(ApiModel):
+    id: str
+    title: str
+    company_name: str = Field(alias="companyName")
+    role: str
+    application_status: ApplicationStatus = Field(alias="applicationStatus")
+    url: str
+
+
+class CaptureMatchesFoundResponse(CommonResponse):
+    ok: Literal[True]
+    result: Literal["matched"]
+    matches: list[CaptureMatchApplication]
+
+
+class CaptureMatchesEmptyResponse(CommonResponse):
+    ok: Literal[True]
+    result: Literal["unmatched"]
+    matches: list[CaptureMatchApplication]
+
+
+class CaptureMatchesBlockedResponse(CommonResponse):
+    ok: Literal[False]
+    status: Literal["blocked"]
+    result: Literal["blocked"]
+    matches: list[CaptureMatchApplication]
+
+
+class CaptureMatchesResponse(
+    RootModel[
+        Annotated[
+            CaptureMatchesFoundResponse
+            | CaptureMatchesEmptyResponse
+            | CaptureMatchesBlockedResponse,
+            Field(discriminator="result"),
+        ]
+    ]
+):
+    pass
 
 
 class RunApplicationAnalysisRequest(ApiModel):

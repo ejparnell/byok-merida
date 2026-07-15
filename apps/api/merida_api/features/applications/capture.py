@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from .ports import CaptureStore
+from .capture_matches import find_capture_matches
 from .schemas import (
     ApplicationAlreadyCapturedResponse,
     ApplicationCaptureBlockedResponse,
@@ -33,6 +34,13 @@ class ApplicationCapture:
 
     async def validate_readiness(self):
         return await self._store.validate_capture_workspace()
+
+    async def find_matches(
+        self, company_name: str, role: str
+    ) -> tuple[ApplicationRecord, ...]:
+        return find_capture_matches(
+            await self._store.list_active_applications(), company_name, role
+        )
 
     async def prepare(
         self, evidence: CaptureEvidence

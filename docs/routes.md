@@ -91,7 +91,7 @@ Technical and request failures should use HTTP status codes:
 
 The v1 app is a local operator app.
 
-- Chrome extension write routes require `X-Capture-Token`.
+- Protected Chrome extension capture routes require `X-Capture-Token`.
 - Dashboard routes do not use the capture token.
 - Dashboard routes are intended for the local same-origin React app talking to the local FastAPI backend.
 - No user login or multi-user auth is planned for v1.
@@ -353,6 +353,7 @@ Capture sets new Applications to `Application Status = To Apply`. Analysis and R
 | HTTP verb | Route                   | Simple explanation                                              |
 | --------- | ----------------------- | --------------------------------------------------------------- |
 | `POST`    | `/applications/prepare` | Parses captured page evidence without writing to the workspace. |
+| `GET`     | `/applications/capture-matches` | Finds existing Applications matching reviewed Company Name and Role. |
 | `POST`    | `/applications/confirm` | Writes a user-reviewed parsed Application to the workspace.     |
 
 ### `POST /applications/prepare`
@@ -398,6 +399,37 @@ Success:
 An incomplete but reviewable parse is also HTTP `200` with `ok: true`, result
 `needs_review`, `needsReview: true`, typed `missingFields`, safe
 `reviewReasons`, and the partial draft. Prepare never writes to the workspace.
+
+### `GET /applications/capture-matches`
+
+The extension calls this protected, read-only route after a Review is prepared
+or its Company Name or Role changes. It compares both fields against active
+Applications using deterministic formatting and abbreviation normalization;
+it excludes archived pages and Applications whose status is `Archived`.
+
+The route returns `matched` with safe record summaries, `unmatched` with an
+empty `matches` list, or a typed `blocked` response when Notion cannot be
+checked. It never returns Job Content or creates, updates, archives, or
+otherwise manages Notion records. A match is advisory: confirmation remains
+available and the canonical Job URL duplicate rule is unchanged.
+
+```json
+{
+  "ok": true,
+  "result": "matched",
+  "matches": [
+    {
+      "id": "app_123",
+      "title": "Senior Engineer at ExampleCo",
+      "companyName": "ExampleCo",
+      "role": "Senior Engineer",
+      "applicationStatus": "Applied",
+      "url": "https://notion.so/example-application"
+    }
+  ],
+  "errors": []
+}
+```
 
 ### `POST /applications/confirm`
 
@@ -778,6 +810,6 @@ Failure:
 - Stable operation IDs determine SDK function names, and named Pydantic models determine exported TypeScript names.
 - The generated package owns URL/query encoding, JSON serialization, response decoding, typed technical errors, and PDF typing.
 - The dashboard adapter configures same-origin transport and never sends `X-Capture-Token`.
-- The extension adapter configures the stored backend URL and sends `X-Capture-Token` only to prepare and confirm.
+- The extension adapter configures the stored backend URL and sends `X-Capture-Token` to every protected capture operation: prepare, capture-match lookup, and confirm.
 - Generated transport performs no automatic POST retries. Domain-key repeat behavior remains `already_captured` by canonical Job URL and `already_created` by existing final Resume relation.
 - The deterministic FastAPI ASGI application and its emitted OpenAPI document are the highest contract test seam; both React builds must consume the same generated package.

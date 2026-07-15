@@ -45,9 +45,10 @@ After rebuilding extension code, use the reload button for this extension on `ch
 | ----------------------------------- | -------------------- | ---------------------------------------------------------------- |
 | `GET /api/v1/health`                | Side-panel readiness | Shows whether the local backend and capture workspace are ready. |
 | `POST /api/v1/applications/prepare` | Review-first capture | Parses Capture Evidence without writing an Application.          |
+| `GET /api/v1/applications/capture-matches` | Duplicate awareness | Finds existing matching Application summaries without writing. |
 | `POST /api/v1/applications/confirm` | Reviewed capture     | Writes the user-reviewed Application to the workspace.           |
 
-Both Application Capture requests from the extension include `X-Capture-Token`. `GET /api/v1/health` follows the local dashboard health contract and does not require the capture token.
+Every protected Application Capture operation includes `X-Capture-Token`. `GET /api/v1/health` follows the local dashboard health contract and does not require the capture token.
 
 The extension should not call Application Analysis, Resume Creation, operator settings, generic Notion CRUD, or PDF routes.
 
@@ -64,6 +65,23 @@ Suggested order:
 5. **Capture Result**: created, already captured, needs review, or failed result.
 
 Only the sections relevant to the current state should be expanded. The initial side panel should stay compact instead of showing an empty form.
+
+## Capture Match Indicator
+
+At the top of the Review, show a labeled Capture Match indicator based on the
+current Company Name and Role. Check immediately after review preparation and
+again after either field changes. The check is advisory and never disables
+**Create in Notion**.
+
+- Green: **New to Notion** — no matching active Application exists.
+- Red: **Already in Notion** — show every matching role, company, status, and
+  safe external Notion link.
+- Neutral: fields are incomplete, the lookup is pending, or Notion cannot be
+  checked. The unavailable state includes a retry action.
+
+The indicator must include text in every state; color alone is insufficient.
+Only match summaries live in the active session. Do not persist them or Job
+Content in Chrome storage.
 
 ## Header And Readiness
 
@@ -410,6 +428,7 @@ The React extension should have focused tests for:
 - settings persistence without exposing the saved token
 - Chrome action opening the side panel
 - API client inclusion of `X-Capture-Token`
+- Capture Match lookup, debounced Review edits, stale-response suppression, and retryable lookup failure
 - absence of full Job Content in persistent storage and logs
 
 Backend contract fixtures should come from the FastAPI OpenAPI-generated client so the extension does not maintain a second handwritten interpretation of route responses.

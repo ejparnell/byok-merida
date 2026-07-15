@@ -462,6 +462,129 @@ export type CaptureEvidence = {
 };
 
 /**
+ * CaptureMatchApplication
+ */
+export type CaptureMatchApplication = {
+    /**
+     * Applicationstatus
+     */
+    applicationStatus: 'To Apply' | 'Applied' | 'Rejected' | 'Not Interested' | 'Archived';
+    /**
+     * Companyname
+     */
+    companyName: string;
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Role
+     */
+    role: string;
+    /**
+     * Title
+     */
+    title: string;
+    /**
+     * Url
+     */
+    url: string;
+};
+
+/**
+ * CaptureMatchesBlockedResponse
+ */
+export type CaptureMatchesBlockedResponse = {
+    /**
+     * Errors
+     */
+    errors: Array<string>;
+    /**
+     * Matches
+     */
+    matches: Array<CaptureMatchApplication>;
+    /**
+     * Ok
+     */
+    ok: false;
+    /**
+     * Result
+     */
+    result: 'blocked';
+    /**
+     * Status
+     */
+    status: 'blocked';
+    /**
+     * Validationfailures
+     */
+    validationFailures: Array<RequestValidationFailure | ConfigurationValidationFailure | WorkspaceSchemaValidationFailure>;
+};
+
+/**
+ * CaptureMatchesEmptyResponse
+ */
+export type CaptureMatchesEmptyResponse = {
+    /**
+     * Errors
+     */
+    errors: Array<string>;
+    /**
+     * Matches
+     */
+    matches: Array<CaptureMatchApplication>;
+    /**
+     * Ok
+     */
+    ok: true;
+    /**
+     * Result
+     */
+    result: 'unmatched';
+    /**
+     * Validationfailures
+     */
+    validationFailures: Array<RequestValidationFailure | ConfigurationValidationFailure | WorkspaceSchemaValidationFailure>;
+};
+
+/**
+ * CaptureMatchesFoundResponse
+ */
+export type CaptureMatchesFoundResponse = {
+    /**
+     * Errors
+     */
+    errors: Array<string>;
+    /**
+     * Matches
+     */
+    matches: Array<CaptureMatchApplication>;
+    /**
+     * Ok
+     */
+    ok: true;
+    /**
+     * Result
+     */
+    result: 'matched';
+    /**
+     * Validationfailures
+     */
+    validationFailures: Array<RequestValidationFailure | ConfigurationValidationFailure | WorkspaceSchemaValidationFailure>;
+};
+
+/**
+ * CaptureMatchesResponse
+ */
+export type CaptureMatchesResponse = ({
+    result: 'matched';
+} & CaptureMatchesFoundResponse) | ({
+    result: 'unmatched';
+} & CaptureMatchesEmptyResponse) | ({
+    result: 'blocked';
+} & CaptureMatchesBlockedResponse);
+
+/**
  * CapturedApplication
  */
 export type CapturedApplication = {
@@ -1333,6 +1456,54 @@ export type RunApplicationAnalysisResponses = {
 };
 
 export type RunApplicationAnalysisResponse2 = RunApplicationAnalysisResponses[keyof RunApplicationAnalysisResponses];
+
+export type GetApplicationCaptureMatchesData = {
+    body?: never;
+    headers: {
+        /**
+         * X-Capture-Token
+         */
+        'X-Capture-Token': string;
+    };
+    path?: never;
+    query: {
+        /**
+         * Companyname
+         */
+        companyName: string;
+        /**
+         * Role
+         */
+        role: string;
+    };
+    url: '/api/v1/applications/capture-matches';
+};
+
+export type GetApplicationCaptureMatchesErrors = {
+    /**
+     * Technical error
+     */
+    400: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    401: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    500: ApiErrorResponse;
+};
+
+export type GetApplicationCaptureMatchesError = GetApplicationCaptureMatchesErrors[keyof GetApplicationCaptureMatchesErrors];
+
+export type GetApplicationCaptureMatchesResponses = {
+    /**
+     * Successful Response
+     */
+    200: CaptureMatchesResponse;
+};
+
+export type GetApplicationCaptureMatchesResponse = GetApplicationCaptureMatchesResponses[keyof GetApplicationCaptureMatchesResponses];
 
 export type ConfirmApplicationData = {
     body: ConfirmApplicationRequest;

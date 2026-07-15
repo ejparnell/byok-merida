@@ -142,6 +142,17 @@ button {
 .status-dot.is-checking {
   animation: pulse 1s infinite;
 }
+.status-dot.is-new {
+  background: #3d916d;
+  box-shadow: 0 0 0 4px rgb(61 145 109 / 12%);
+}
+.status-dot.is-match {
+  background: #d65e54;
+  box-shadow: 0 0 0 4px rgb(214 94 84 / 12%);
+}
+.status-dot.is-neutral {
+  background: #8b8e87;
+}
 @keyframes pulse {
   50% {
     opacity: 0.35;
@@ -293,6 +304,83 @@ button {
 }
 .review-heading h1 {
   font-size: var(--type-title);
+}
+.capture-match {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #dedbd2;
+  border-radius: 6px;
+  background: #f8f7f2;
+}
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #4d514a;
+  font-size: var(--type-label);
+  font-weight: 800;
+}
+.capture-match p {
+  margin: 7px 0 0;
+  color: #686c65;
+  font-size: var(--type-label);
+  line-height: 1.45;
+}
+.capture-match .text-button {
+  width: auto;
+  margin: 7px 0 0;
+  padding: 0;
+  color: #4d6d5d;
+  text-decoration: underline;
+}
+.capture-match.is-matched {
+  border-color: #e6bdb8;
+  background: #fff7f5;
+}
+.capture-match ul {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.capture-match li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #eed6d2;
+}
+.capture-match li > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+.capture-match li strong,
+.capture-match li small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.capture-match li strong {
+  color: #363a35;
+  font-size: var(--type-label);
+}
+.capture-match li small {
+  color: #747870;
+  font-size: var(--type-meta);
+}
+.capture-match li a {
+  flex: 0 0 auto;
+  color: #4d6d5d;
+  font-size: var(--type-meta);
+  font-weight: 800;
+  text-decoration: none;
+}
+.capture-match li a:hover {
+  text-decoration: underline;
 }
 .review-form label,
 .settings-sheet label {

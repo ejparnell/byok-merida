@@ -274,6 +274,36 @@ def test_capture_store_projects_a_legacy_job_posting_page_into_canonical_applica
     )
 
 
+def test_capture_store_lists_all_active_applications_across_pages():
+    active = application_page(id="active")
+    archived_page = application_page(id="archived-page", archived=True)
+    archived_status = application_page(
+        id="archived-status",
+        properties={
+            **application_page()["properties"],
+            "Application Status": {"type": "select", "select": {"name": "Archived"}},
+        },
+    )
+    transport = RecordingTransport(
+        [
+            {"results": [active, archived_page], "has_more": True, "next_cursor": "next"},
+            {"results": [archived_status], "has_more": False, "next_cursor": None},
+        ]
+    )
+
+    applications = asyncio.run(workspace(transport).list_active_applications())
+
+    assert [application.id for application in applications] == ["active"]
+    assert transport.requests == [
+        ("POST", "/databases/applications-db/query", {"page_size": 100}),
+        (
+            "POST",
+            "/databases/applications-db/query",
+            {"page_size": 100, "start_cursor": "next"},
+        ),
+    ]
+
+
 def test_application_projection_rejects_fractional_scores_and_empty_identity():
     fractional = application_page(
         properties={

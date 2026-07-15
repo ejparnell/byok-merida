@@ -17,6 +17,7 @@ from .core.auth import capture_token_dependency
 from .core.settings import Settings
 from .features.applications import ApplicationAnalysis, ApplicationCapture
 from .features.applications.schemas import (
+    CaptureMatchesResponse,
     RunApplicationAnalysisRequest,
     ConfirmApplicationResponse,
     ConfirmApplicationRequest,
@@ -205,6 +206,17 @@ def _blocked_capture(message: str) -> dict:
         "ok": False,
         "status": "blocked",
         "result": "blocked",
+        "validationFailures": [],
+        "errors": [message],
+    }
+
+
+def _blocked_capture_matches(message: str) -> dict:
+    return {
+        "ok": False,
+        "status": "blocked",
+        "result": "blocked",
+        "matches": [],
         "validationFailures": [],
         "errors": [message],
     }
@@ -600,6 +612,45 @@ def create_app(
         return await _block_provider_error(
             capture.confirm(request.draft), _blocked_capture
         )
+
+    @app.get(
+        "/api/v1/applications/capture-matches",
+        dependencies=[Depends(require_capture_token)],
+        operation_id="getApplicationCaptureMatches",
+        response_model=CaptureMatchesResponse,
+        responses=_api_error_responses(400, 401, 500),
+    )
+    async def get_application_capture_matches(
+        company_name: str = Query(alias="companyName", min_length=1, max_length=200),
+        role: str = Query(min_length=1, max_length=200),
+    ):
+        if not capabilities.capture_workspace_configured:
+            return _blocked_capture_matches(
+                "Applications database configuration is incomplete."
+            )
+        matches = await _block_provider_error(
+            capture.find_matches(company_name, role), _blocked_capture_matches
+        )
+        if isinstance(matches, dict):
+            return matches
+        serialized_matches = [
+            {
+                "id": application.id,
+                "title": application.title,
+                "companyName": application.company_name,
+                "role": application.role,
+                "applicationStatus": application.application_status,
+                "url": application.url,
+            }
+            for application in matches
+        ]
+        return {
+            "ok": True,
+            "result": "matched" if serialized_matches else "unmatched",
+            "matches": serialized_matches,
+            "validationFailures": [],
+            "errors": [],
+        }
 
     @app.get("/api/v1/applications/analysis/queue", operation_id="getApplicationAnalysisQueue", response_model=GetApplicationAnalysisQueueResponse, responses=_api_error_responses(400, 500))
     async def get_analysis_queue(limit: int = Query(default=5, ge=1, le=10), cursor: str | None = None):

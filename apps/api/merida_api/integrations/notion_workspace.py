@@ -166,6 +166,17 @@ class NotionWorkspace:
         )
         return _validate_capture_database(database)
 
+    async def list_active_applications(self) -> tuple[ApplicationRecord, ...]:
+        pages = await self._query_all(self._application_database_id, {})
+        applications = tuple(
+            _application_record(page) for page in pages if not page.get("archived")
+        )
+        return tuple(
+            application
+            for application in applications
+            if application.application_status != "Archived"
+        )
+
     async def find_application_by_job_url(
         self, job_url: str
     ) -> ApplicationRecord | None:

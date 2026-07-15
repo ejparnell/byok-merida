@@ -95,6 +95,14 @@ class FakeWorkspace:
     async def validate_capture_workspace(self) -> WorkspaceReadiness:
         return WorkspaceReadiness()
 
+    async def list_active_applications(self) -> tuple[ApplicationRecord, ...]:
+        return tuple(
+            self._application_record(application)
+            for application in self._state["applications"]
+            if not application.get("archived")
+            and application["applicationStatus"] != "Archived"
+        )
+
     async def find_application_by_job_url(
         self, job_url: str
     ) -> ApplicationRecord | None:

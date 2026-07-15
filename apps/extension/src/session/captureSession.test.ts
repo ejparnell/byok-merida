@@ -3,6 +3,10 @@ import test from 'node:test'
 
 import { createCaptureSession } from './captureSession.ts'
 
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
+const wait = (milliseconds) =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds))
+
 test('reading is observable before Application parsing begins', async () => {
   const phases = []
   const session = createCaptureSession(
@@ -28,7 +32,7 @@ test('reading is observable before Application parsing begins', async () => {
     { tabId: 7, url: 'https://example.test/job' },
   )
 
-  assert.deepEqual(phases, ['reading', 'parsing', 'reviewing'])
+  assert.deepEqual(phases.slice(0, 3), ['reading', 'parsing', 'reviewing'])
 })
 
 test('reviewed fields survive a failed confirmation and are sent with in-memory job content', async () => {
@@ -334,4 +338,171 @@ test('prepare review reasons and missing fields remain visible in session state'
     'Company Name could not be parsed.',
     'Review required.',
   ])
+})
+
+test('prepared Reviews check Notion matches without blocking confirmation', async () => {
+  const requests = []
+  const session = createCaptureSession({
+    prepare: async () => ({
+      ok: true,
+      result: 'prepared',
+      draft: {
+        jobUrl: 'https://example.test/job',
+        companyName: 'Acme',
+        role: 'Senior Engineer',
+        location: null,
+        jobContentPreview: 'Build reliable systems.',
+      },
+    }),
+    matches: async (companyName, role) => {
+      requests.push({ companyName, role })
+      return {
+        ok: true,
+        result: 'matched',
+        matches: [
+          {
+            id: 'app-acme',
+            title: 'Senior Engineer at Acme',
+            companyName: 'Acme',
+            role: 'Senior Engineer',
+            applicationStatus: 'Applied',
+            url: 'https://www.notion.so/app-acme',
+          },
+        ],
+        validationFailures: [],
+        errors: [],
+      }
+    },
+  })
+
+  await session.prepare(
+    { url: 'https://example.test/job', visibleText: 'Build reliable systems.' },
+    { tabId: 1, url: 'https://example.test/job' },
+  )
+  await flush()
+
+  assert.deepEqual(requests, [{ companyName: 'Acme', role: 'Senior Engineer' }])
+  assert.deepEqual(session.getState().captureMatch, {
+    status: 'matched',
+    matches: [
+      {
+        id: 'app-acme',
+        title: 'Senior Engineer at Acme',
+        companyName: 'Acme',
+        role: 'Senior Engineer',
+        applicationStatus: 'Applied',
+        url: 'https://www.notion.so/app-acme',
+      },
+    ],
+  })
+})
+
+test('edited match fields debounce the check and ignore stale results', async () => {
+  let resolveInitial
+  const requests = []
+  const session = createCaptureSession({
+    prepare: async () => ({
+      ok: true,
+      result: 'prepared',
+      draft: {
+        jobUrl: 'https://example.test/job',
+        companyName: 'Acme',
+        role: 'Engineer',
+        location: null,
+        jobContentPreview: 'Build reliable systems.',
+      },
+    }),
+    matches: (companyName, role) => {
+      requests.push({ companyName, role })
+      if (requests.length === 1)
+        return new Promise((resolve) => {
+          resolveInitial = resolve
+        })
+      return Promise.resolve({
+        ok: true,
+        result: 'unmatched',
+        matches: [],
+        validationFailures: [],
+        errors: [],
+      })
+    },
+  })
+
+  await session.prepare(
+    { url: 'https://example.test/job', visibleText: 'Build reliable systems.' },
+    { tabId: 1, url: 'https://example.test/job' },
+  )
+  session.updateReview('role', 'Staff Engineer')
+  resolveInitial({
+    ok: true,
+    result: 'matched',
+    matches: [
+      {
+        id: 'stale',
+        title: 'Engineer at Acme',
+        companyName: 'Acme',
+        role: 'Engineer',
+        applicationStatus: 'Applied',
+        url: 'https://www.notion.so/stale',
+      },
+    ],
+    validationFailures: [],
+    errors: [],
+  })
+  await flush()
+
+  assert.deepEqual(session.getState().captureMatch, { status: 'checking' })
+  assert.equal(requests.length, 1)
+
+  await wait(320)
+
+  assert.deepEqual(requests, [
+    { companyName: 'Acme', role: 'Engineer' },
+    { companyName: 'Acme', role: 'Staff Engineer' },
+  ])
+  assert.deepEqual(session.getState().captureMatch, { status: 'unmatched' })
+})
+
+test('an unavailable Notion match can be retried without changing the Review', async () => {
+  let attempts = 0
+  const session = createCaptureSession({
+    prepare: async () => ({
+      ok: true,
+      result: 'prepared',
+      draft: {
+        jobUrl: 'https://example.test/job',
+        companyName: 'Acme',
+        role: 'Engineer',
+        location: null,
+        jobContentPreview: 'Build reliable systems.',
+      },
+    }),
+    matches: async () => {
+      attempts += 1
+      if (attempts === 1) throw new Error('Notion is unavailable.')
+      return {
+        ok: true,
+        result: 'unmatched',
+        matches: [],
+        validationFailures: [],
+        errors: [],
+      }
+    },
+  })
+
+  await session.prepare(
+    { url: 'https://example.test/job', visibleText: 'Build reliable systems.' },
+    { tabId: 1, url: 'https://example.test/job' },
+  )
+  await flush()
+  assert.deepEqual(session.getState().captureMatch, {
+    status: 'unavailable',
+    error: 'Notion is unavailable.',
+  })
+
+  session.retryCaptureMatch()
+  await flush()
+
+  assert.equal(session.getState().review?.companyName, 'Acme')
+  assert.deepEqual(session.getState().captureMatch, { status: 'unmatched' })
 })

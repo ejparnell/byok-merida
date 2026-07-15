@@ -1,4 +1,6 @@
+import asyncio
 import json
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -7,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from merida_api.app import create_app
 from merida_api.core.settings import Settings
+from merida_api.features.applications.schemas import ConfirmedApplicationDraft
 from merida_api.shared.workspace import (
     WorkspaceIssue,
     WorkspaceProviderError,
@@ -203,6 +206,9 @@ def test_provider_outages_return_typed_workflow_blocks(tmp_path):
         async def validate_capture_workspace(self):
             raise WorkspaceProviderError("Notion could not be reached.")
 
+        async def list_active_applications(self):
+            raise WorkspaceProviderError("Notion could not be reached.")
+
         async def validate_analysis_workspace(self):
             raise WorkspaceProviderError("Notion could not be reached.")
 
@@ -226,6 +232,11 @@ def test_provider_outages_return_typed_workflow_blocks(tmp_path):
 
     with TestClient(app) as client:
         responses = (
+            client.get(
+                "/api/v1/applications/capture-matches",
+                params={"companyName": "Example", "role": "Engineer"},
+                headers={"X-Capture-Token": "test-capture-token"},
+            ),
             client.post(
                 "/api/v1/applications/confirm",
                 headers={"X-Capture-Token": "test-capture-token"},
@@ -315,6 +326,74 @@ def test_capture_is_review_first_protected_and_idempotent(tmp_path):
     assert created["application"]["applicationStatus"] == "To Apply"
     assert duplicate["result"] == "already_captured"
     assert duplicate["application"]["id"] == created["application"]["id"]
+
+
+def test_capture_matches_are_protected_typed_and_advisory(tmp_path):
+    state_path = tmp_path / "state.json"
+    workspace = FakeWorkspace(state_path)
+    created = asyncio.run(
+        workspace.create_application(
+            ConfirmedApplicationDraft(
+                jobUrl="https://jobs.example.test/acme/senior-engineer",
+                companyName="Acme, Inc.",
+                role="Senior Engineer",
+                location=None,
+                jobContent="Build reliable Python services and accessible React interfaces.",
+            ),
+            captured_at=datetime(2026, 7, 15),
+        )
+    )
+    settings = Settings(
+        capture_token="test-capture-token",
+        notion_token="test-notion-token",
+        notion_database_id="applications-database",
+        notion_resume_database_id="resumes-database",
+        notion_notes_database_id="notes-database",
+        deepseek_api_key="test-deepseek-key",
+        export_path=tmp_path / "export",
+        recovery_journal_path=tmp_path / "recovery.json",
+    )
+    app = create_test_app(settings, workspace=workspace)
+    params = {"companyName": "ACME LLC", "role": "Sr. Engineer"}
+
+    with TestClient(app) as client:
+        unauthorized = client.get("/api/v1/applications/capture-matches", params=params)
+        matched = client.get(
+            "/api/v1/applications/capture-matches",
+            params=params,
+            headers={"X-Capture-Token": "test-capture-token"},
+        )
+        unmatched = client.get(
+            "/api/v1/applications/capture-matches",
+            params={"companyName": "New Company", "role": "Engineer"},
+            headers={"X-Capture-Token": "test-capture-token"},
+        )
+
+    assert unauthorized.status_code == 401
+    assert matched.status_code == 200
+    assert matched.json() == {
+        "ok": True,
+        "result": "matched",
+        "matches": [
+            {
+                "id": created.id,
+                "title": "Senior Engineer at Acme, Inc.",
+                "companyName": "Acme, Inc.",
+                "role": "Senior Engineer",
+                "applicationStatus": "To Apply",
+                "url": created.url,
+            }
+        ],
+        "validationFailures": [],
+        "errors": [],
+    }
+    assert unmatched.json() == {
+        "ok": True,
+        "result": "unmatched",
+        "matches": [],
+        "validationFailures": [],
+        "errors": [],
+    }
 
 
 def test_capture_contract_is_named_reviewable_and_safe(tmp_path):
@@ -1059,11 +1138,15 @@ def test_openapi_locks_the_public_route_inventory_and_named_responses(tmp_path):
             "prepareApplication",
             "PrepareApplicationResponse",
         ),
-        ("post", "/api/v1/applications/confirm"): (
-            "confirmApplication",
-            "ConfirmApplicationResponse",
-        ),
-        ("get", "/api/v1/applications/analysis/queue"): (
+            ("post", "/api/v1/applications/confirm"): (
+                "confirmApplication",
+                "ConfirmApplicationResponse",
+            ),
+            ("get", "/api/v1/applications/capture-matches"): (
+                "getApplicationCaptureMatches",
+                "CaptureMatchesResponse",
+            ),
+            ("get", "/api/v1/applications/analysis/queue"): (
             "getApplicationAnalysisQueue",
             "GetApplicationAnalysisQueueResponse",
         ),

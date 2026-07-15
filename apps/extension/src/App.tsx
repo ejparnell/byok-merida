@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Spinner, StatusDot } from '@merida/ui'
+import { Spinner, StatusBadge, StatusDot } from '@merida/ui'
 import type { ConfirmApplicationResponse } from '@merida/api-client'
 
 import { createCaptureSession } from './session/captureSession.ts'
 import type {
   CapturePhase,
+  CaptureMatch,
   CaptureSession,
   CaptureState,
   ReviewDraft,
@@ -153,6 +154,74 @@ function ErrorCallout({ errors }: { errors?: string[] }) {
   )
 }
 
+function CaptureMatchIndicator({
+  captureMatch,
+  onRetry,
+}: {
+  captureMatch: CaptureMatch
+  onRetry: () => void
+}) {
+  if (captureMatch.status === 'incomplete') {
+    return (
+      <div className="capture-match" role="status" aria-live="polite">
+        <StatusBadge status="neutral">
+          Add company and role to check Notion
+        </StatusBadge>
+      </div>
+    )
+  }
+  if (captureMatch.status === 'checking') {
+    return (
+      <div className="capture-match" role="status" aria-live="polite">
+        <StatusBadge status="checking">Checking Notion</StatusBadge>
+      </div>
+    )
+  }
+  if (captureMatch.status === 'unmatched') {
+    return (
+      <div className="capture-match" role="status" aria-live="polite">
+        <StatusBadge status="new">New to Notion</StatusBadge>
+      </div>
+    )
+  }
+  if (captureMatch.status === 'unavailable') {
+    return (
+      <div className="capture-match" role="status" aria-live="polite">
+        <StatusBadge status="neutral">Couldn’t check Notion</StatusBadge>
+        <p>{captureMatch.error}</p>
+        <button type="button" className="text-button" onClick={onRetry}>
+          Retry Notion check
+        </button>
+      </div>
+    )
+  }
+  return (
+    <section className="capture-match is-matched" aria-live="polite">
+      <StatusBadge status="match">Already in Notion</StatusBadge>
+      <p>
+        {captureMatch.matches.length === 1
+          ? 'Review the matching Application before creating another.'
+          : `${captureMatch.matches.length} matching Applications found.`}
+      </p>
+      <ul>
+        {captureMatch.matches.map((match) => (
+          <li key={match.id}>
+            <span>
+              <strong>{match.role}</strong>
+              <small>
+                {match.companyName} · {match.applicationStatus}
+              </small>
+            </span>
+            <a href={match.url} target="_blank" rel="noreferrer">
+              Open in Notion <span aria-hidden="true">↗</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 function Idle({
   onFill,
   errors,
@@ -238,6 +307,10 @@ function ReviewForm({
       )}
       <div className="review-heading">
         <span>Review before writing</span>
+        <CaptureMatchIndicator
+          captureMatch={state.captureMatch}
+          onRetry={() => session.retryCaptureMatch()}
+        />
         <h1>
           {review.role || 'Role'} at {review.companyName || 'Company'}
         </h1>
