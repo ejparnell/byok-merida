@@ -117,20 +117,22 @@ export function createCaptureSession(
     if (!input) return
 
     const request = ++captureMatchRequest
+    const isCurrent = () => {
+      const current = matchInput(state.review)
+      if (!current) return false
+      return (
+        request === captureMatchRequest &&
+        current.companyName === input.companyName &&
+        current.role === input.role
+      )
+    }
     const run = async () => {
       try {
         const response = await activeClient.matches(
           input.companyName,
           input.role,
         )
-        const current = matchInput(state.review)
-        if (
-          request !== captureMatchRequest ||
-          !current ||
-          current.companyName !== input.companyName ||
-          current.role !== input.role
-        )
-          return
+        if (!isCurrent()) return
         if (!response.ok) {
           publish({
             captureMatch: {
@@ -146,7 +148,7 @@ export function createCaptureSession(
             : { captureMatch: { status: 'unmatched' } },
         )
       } catch (error) {
-        if (request !== captureMatchRequest) return
+        if (!isCurrent()) return
         publish({
           captureMatch: {
             status: 'unavailable',
@@ -244,8 +246,11 @@ export function createCaptureSession(
         missingFields: [],
         captureMatch,
       })
-      if (updatesCaptureMatch && captureMatch.status === 'checking')
-        startCaptureMatch(review, { debounce: true })
+      if (updatesCaptureMatch) {
+        cancelCaptureMatch()
+        if (captureMatch.status === 'checking')
+          startCaptureMatch(review, { debounce: true })
+      }
     },
     retryCaptureMatch() {
       const captureMatch: CaptureMatch = matchInput(state.review)

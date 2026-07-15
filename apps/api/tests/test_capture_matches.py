@@ -2,6 +2,10 @@ import asyncio
 from datetime import date
 
 from merida_api.features.applications.capture import ApplicationCapture
+from merida_api.features.applications.capture_matches import (
+    normalize_company_name,
+    normalize_role,
+)
 from merida_api.features.applications.workspace import ApplicationRecord
 
 
@@ -94,3 +98,10 @@ def test_capture_match_recognizes_software_engineer_abbreviation_without_fuzzy_m
     matches = asyncio.run(capture.find_matches("orbit works", "SWE"))
 
     assert [match.id for match in matches] == ["software-engineer"]
+
+
+def test_capture_match_normalizes_dotted_legal_suffixes_without_extra_role_aliases():
+    assert normalize_company_name("Acme S.A.") == "acme"
+    assert normalize_company_name("Acme Pte. Ltd.") == "acme"
+    assert normalize_role("Sr. Engineer") == "senior engineer"
+    assert normalize_role("Jr. Engineer") == "jr engineer"

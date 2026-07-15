@@ -463,6 +463,37 @@ test('edited match fields debounce the check and ignore stale results', async ()
   assert.deepEqual(session.getState().captureMatch, { status: 'unmatched' })
 })
 
+test('a stale failed lookup cannot replace an incomplete match state', async () => {
+  let rejectInitial
+  const session = createCaptureSession({
+    prepare: async () => ({
+      ok: true,
+      result: 'prepared',
+      draft: {
+        jobUrl: 'https://example.test/job',
+        companyName: 'Acme',
+        role: 'Engineer',
+        location: null,
+        jobContentPreview: 'Build reliable systems.',
+      },
+    }),
+    matches: () =>
+      new Promise((_, reject) => {
+        rejectInitial = reject
+      }),
+  })
+
+  await session.prepare(
+    { url: 'https://example.test/job', visibleText: 'Build reliable systems.' },
+    { tabId: 1, url: 'https://example.test/job' },
+  )
+  session.updateReview('companyName', '')
+  rejectInitial(new Error('Notion is unavailable.'))
+  await flush()
+
+  assert.deepEqual(session.getState().captureMatch, { status: 'incomplete' })
+})
+
 test('an unavailable Notion match can be retried without changing the Review', async () => {
   let attempts = 0
   const session = createCaptureSession({

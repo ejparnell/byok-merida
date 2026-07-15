@@ -211,13 +211,15 @@ def _blocked_capture(message: str) -> dict:
     }
 
 
-def _blocked_capture_matches(message: str) -> dict:
+def _blocked_capture_matches(
+    message: str, *, validation_failures: list | None = None
+) -> dict:
     return {
         "ok": False,
         "status": "blocked",
         "result": "blocked",
         "matches": [],
-        "validationFailures": [],
+        "validationFailures": validation_failures or [],
         "errors": [message],
     }
 
@@ -627,6 +629,16 @@ def create_app(
         if not capabilities.capture_workspace_configured:
             return _blocked_capture_matches(
                 "Applications database configuration is incomplete."
+            )
+        readiness = await _block_provider_error(
+            capture.validate_readiness(), _blocked_capture_matches
+        )
+        if isinstance(readiness, dict):
+            return readiness
+        if not readiness.ready:
+            return _blocked_capture_matches(
+                readiness.errors[0].message,
+                validation_failures=workspace_validation_failures(readiness),
             )
         matches = await _block_provider_error(
             capture.find_matches(company_name, role), _blocked_capture_matches

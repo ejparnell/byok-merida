@@ -396,6 +396,59 @@ def test_capture_matches_are_protected_typed_and_advisory(tmp_path):
     }
 
 
+def test_capture_matches_block_on_capture_workspace_validation_failures(tmp_path):
+    class IncompatibleWorkspace(FakeWorkspace):
+        async def validate_capture_workspace(self):
+            return WorkspaceReadiness(
+                errors=(
+                    WorkspaceIssue(
+                        database="applications",
+                        property="Company Name",
+                        message="Required title property is missing.",
+                    ),
+                )
+            )
+
+    settings = Settings(
+        capture_token="test-capture-token",
+        notion_token="test-notion-token",
+        notion_database_id="applications-database",
+        notion_resume_database_id="resumes-database",
+        notion_notes_database_id="notes-database",
+        deepseek_api_key="test-deepseek-key",
+        export_path=tmp_path / "export",
+        recovery_journal_path=tmp_path / "recovery.json",
+    )
+    app = create_test_app(
+        settings,
+        workspace=IncompatibleWorkspace(tmp_path / "state.json"),
+    )
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/v1/applications/capture-matches",
+            params={"companyName": "Acme", "role": "Engineer"},
+            headers={"X-Capture-Token": "test-capture-token"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": False,
+        "status": "blocked",
+        "result": "blocked",
+        "matches": [],
+        "validationFailures": [
+            {
+                "kind": "workspace_schema",
+                "database": "applications",
+                "property": "Company Name",
+                "message": "Required title property is missing.",
+            }
+        ],
+        "errors": ["Required title property is missing."],
+    }
+
+
 def test_capture_contract_is_named_reviewable_and_safe(tmp_path):
     headers = {"X-Capture-Token": "test-capture-token"}
     incomplete = {

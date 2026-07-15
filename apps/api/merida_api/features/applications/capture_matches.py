@@ -4,22 +4,37 @@ import unicodedata
 from .workspace import ApplicationRecord
 
 
-COMPANY_SUFFIXES = frozenset(
-    {
-        "ag",
-        "corporation",
-        "corp",
-        "gmbh",
-        "inc",
-        "incorporated",
-        "limited",
-        "llc",
-        "ltd",
-        "plc",
-        "sa",
-    }
+COMPANY_SUFFIXES = tuple(
+    sorted(
+        {
+            ("ag",),
+            ("corporation",),
+            ("corp",),
+            ("gmbh",),
+            ("inc",),
+            ("incorporated",),
+            ("limited",),
+            ("llc",),
+            ("llp",),
+            ("ltd",),
+            ("plc",),
+            ("sa",),
+            ("sarl",),
+            ("bv",),
+            ("oy",),
+            ("ab",),
+            ("pte", "ltd"),
+            ("pty", "ltd"),
+            ("private", "limited"),
+            ("s", "a"),
+            ("p", "l", "c"),
+            ("l", "l", "p"),
+        },
+        key=len,
+        reverse=True,
+    )
 )
-ROLE_ALIASES = {"jr": ("junior",), "sr": ("senior",), "swe": ("software", "engineer")}
+ROLE_ALIASES = {"sr": ("senior",), "swe": ("software", "engineer")}
 
 
 def find_capture_matches(
@@ -45,9 +60,10 @@ def find_capture_matches(
 
 
 def normalize_company_name(value: str) -> str:
-    return " ".join(
-        token for token in _tokens(value) if token not in COMPANY_SUFFIXES
-    )
+    tokens = list(_tokens(value))
+    while suffix := _matching_suffix(tokens):
+        del tokens[-len(suffix) :]
+    return " ".join(tokens)
 
 
 def normalize_role(value: str) -> str:
@@ -62,3 +78,14 @@ def _tokens(value: str) -> tuple[str, ...]:
         unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
     )
     return tuple(re.findall(r"[a-z0-9]+", ascii_value.lower()))
+
+
+def _matching_suffix(tokens: list[str]) -> tuple[str, ...] | None:
+    return next(
+        (
+            suffix
+            for suffix in COMPANY_SUFFIXES
+            if len(tokens) >= len(suffix) and tuple(tokens[-len(suffix) :]) == suffix
+        ),
+        None,
+    )
