@@ -13,6 +13,7 @@ dependencies = [
   "langgraph==1.2.8",
   "pydantic==2.13.4",
   "pydantic-settings==2.14.2",
+  "tiktoken==0.13.0",
   "uvicorn[standard]==0.51.0",
 ]
 
@@ -27,6 +28,7 @@ include = ["merida_api*"]
 
 [tool.setuptools.package-data]
 "merida_api.matching" = ["*.json"]
+"merida_api.features.applications" = ["*.json", "*.json.gz"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -12,9 +12,14 @@ Merida uses DeepSeek for bounded structured generation and deterministic Python 
 | Prompt payloads         | JSON produced immediately before the provider call |
 | Evidence matching       | Versioned deterministic `matching-v1` policy       |
 | Durable records         | Workflow-owned Notion store operations             |
+| Analysis coordination   | Applications-owned SQLite Analysis Run Store       |
 | Partial-effect recovery | Content-free JSON effect journal                   |
 
-The graphs use no durable LangGraph checkpointer. Runs are bounded, have no human interrupt, and may contain private Job Content or Master Resume evidence that must not be copied into a graph database or normal logs.
+The graphs use no durable LangGraph checkpointer. Graph invocations are bounded,
+have no human interrupt, and may contain private Job Content or Master Resume
+evidence that must not be copied into a graph database or normal logs. Durable
+Application Analysis coordination lives outside the graph in a metadata-only
+SQLite store; Notion remains authoritative for completed analyses.
 
 ## DeepSeek adapter contract
 
@@ -24,25 +29,58 @@ The product composition creates task-specific adapters for:
 - Fit Requirement extraction
 - Resume Draft generation
 
-Adapters own provider client construction, model selection, prompt messages, JSON request encoding, structured-output decoding, bounded retry policy, and safe provider-error translation. Workflow modules consume semantic values and validate every proposal before persistence.
+Adapters own provider client construction, model selection, prompt messages, JSON request encoding, structured-output decoding, deadlines, and safe provider-error translation. The Application Analysis graph owns its one shared recovery loop so transport retries and structured-output repairs cannot multiply. Workflow modules consume semantic values and validate every proposal before persistence.
 
 Normal logs and public responses must not contain credentials, prompts, Job Content, Master Resume content, generated Resume text, raw provider payloads, or local paths.
 
 ## Application Analysis graph
 
-One graph invocation processes one eligible Application:
+One graph invocation evaluates one eligible Application:
 
 1. load the Application and readable Job Content;
 2. detect a readable persisted analysis that needs property repair;
-3. otherwise request a structured DeepSeek analysis proposal;
-4. validate the three-sentence analysis and every Skill Signal/evidence pair;
-5. permit one structured repair request for invalid model output;
-6. load Master Resume evidence;
-7. calculate Match Score through `matching-v1`;
-8. persist the readable analysis body first;
-9. commit `Analyzed` and Match Score properties last.
+3. otherwise request a structured DeepSeek analysis proposal with thinking explicitly enabled at high effort, a reasoning-inclusive 8,000 generated-token ceiling, and non-streaming transport;
+4. validate the three-sentence analysis as a unit and validate every Skill Signal/evidence pair independently;
+5. discard unsupported, generic, and duplicate signals, merge near-duplicates, order required before preferred and other useful signals, and accept only three to ten valid signals;
+6. when necessary, recover within one three-transmission Application Call Budget shared by initial generation, transient transport recovery, and structured-output repair;
+7. load Master Resume evidence;
+8. calculate Match Score through `matching-v1` from accepted signals only;
+9. persist the readable analysis body first;
+10. commit `Analyzed` and Match Score properties last.
 
-The batch workflow runs Applications sequentially and isolates item failures. A body-first partial result remains repairable without repeating model work.
+Each transmitted response consumes one of the three slots, including truncation,
+empty output, malformed JSON, and semantically invalid output. Every recovery
+call retains thinking at high effort and the same output ceiling; there is no
+non-thinking fallback and no fourth transmission. The transport uses a 10-second
+connection timeout, 120-second read-inactivity timeout, and five-minute absolute
+deadline. Safe evidence records transmission state, finish reason, exact model,
+request identity, and usage, but never reasoning content. A post-transmission
+deadline is indeterminate.
+
+## Durable Analysis Run orchestration
+
+An Analysis Run pursues a successful-completion target rather than an attempt
+count. At creation it snapshots at most `target × 2` candidate identities in
+canonical queue order. A background worker reloads and revalidates candidates,
+evaluates each at most once and sequentially, and backfills after skips and
+Candidate-Scoped Failures. A body-first partial result remains repairable without
+repeating model work and counts only after final properties commit.
+
+Before every provider transmission, the backend measures the exact rendered
+request and obtains Cost Authorization against an approved endpoint/model rate
+card. The full worst-case charge commits in SQLite before dispatch. Cost
+Settlement releases unused reservation only from a proven pre-transmission
+failure or trustworthy matching usage; missing or ambiguous evidence remains
+committed. Verified cost, active reservations, and indeterminate reservations
+together can never exceed 500,000 USD micros for one run.
+
+Candidate-specific source/output defects allow backfill. Shared authorization,
+pricing, storage, or exhausted systemic provider defects stop the run. On
+restart, queued runs plus running or cancelling runs with expired leases are
+reclaimed, sent calls are reconciled or conservatively made indeterminate before
+new authorization, and terminal runs never resume. Cancellation prevents future
+calls while preserving prior completions and honestly settling any call already
+in flight.
 
 ## Resume Creation graphs
 

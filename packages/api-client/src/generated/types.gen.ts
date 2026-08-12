@@ -5,6 +5,25 @@ export type ClientOptions = {
 };
 
 /**
+ * ActiveAnalysisRunResponse
+ */
+export type ActiveAnalysisRunResponse = {
+    /**
+     * Errors
+     */
+    errors: Array<string>;
+    /**
+     * Ok
+     */
+    ok: true;
+    run: AnalysisRunSnapshot | null;
+    /**
+     * Validationfailures
+     */
+    validationFailures: Array<RequestValidationFailure | ConfigurationValidationFailure | WorkspaceSchemaValidationFailure>;
+};
+
+/**
  * AnalysisQueueItem
  */
 export type AnalysisQueueItem = {
@@ -35,45 +54,164 @@ export type AnalysisQueueItem = {
 };
 
 /**
- * AnalysisResultItem
+ * AnalysisRunCandidate
  */
-export type AnalysisResultItem = {
+export type AnalysisRunCandidate = {
     /**
      * Applicationid
      */
     applicationId: string;
     /**
-     * Applicationstatus
+     * Completedat
      */
-    applicationStatus: 'To Apply';
+    completedAt: string | null;
     /**
-     * Companyname
+     * Ordinal
      */
-    companyName: string;
+    ordinal: number;
+    /**
+     * Reasoncode
+     */
+    reasonCode: string | null;
+    /**
+     * Startedat
+     */
+    startedAt: string | null;
+    /**
+     * State
+     */
+    state: 'pending' | 'evaluating' | 'analyzed' | 'repaired' | 'skipped' | 'failed' | 'indeterminate';
+};
+
+/**
+ * AnalysisRunProgress
+ */
+export type AnalysisRunProgress = {
+    /**
+     * Completions
+     */
+    completions: number;
+    /**
+     * Evaluated
+     */
+    evaluated: number;
+    /**
+     * Failed
+     */
+    failed: number;
+    /**
+     * Indeterminate
+     */
+    indeterminate: number;
+    /**
+     * Repaired
+     */
+    repaired: number;
+    /**
+     * Skipped
+     */
+    skipped: number;
+};
+
+/**
+ * AnalysisRunResponse
+ */
+export type AnalysisRunResponse = {
     /**
      * Errors
      */
     errors: Array<string>;
     /**
-     * Joburl
+     * Ok
      */
-    jobUrl: string;
+    ok: true;
+    run: AnalysisRunSnapshot;
     /**
-     * Matchscore
+     * Validationfailures
      */
-    matchScore: number | null;
+    validationFailures: Array<RequestValidationFailure | ConfigurationValidationFailure | WorkspaceSchemaValidationFailure>;
+};
+
+/**
+ * AnalysisRunSnapshot
+ */
+export type AnalysisRunSnapshot = {
     /**
-     * Result
+     * Attemptbudget
      */
-    result: 'analyzed' | 'repaired' | 'skipped' | 'failed';
+    attemptBudget: number;
     /**
-     * Role
+     * Candidates
      */
-    role: string;
+    candidates: Array<AnalysisRunCandidate>;
     /**
-     * Title
+     * Createdat
      */
-    title: string;
+    createdAt: string;
+    /**
+     * Finishedat
+     */
+    finishedAt: string | null;
+    /**
+     * Lifecycle
+     */
+    lifecycle: 'queued' | 'running' | 'cancelling' | 'finished';
+    /**
+     * Outcome
+     */
+    outcome: 'target_met' | 'spend_limited' | 'attempt_budget_exhausted' | 'queue_exhausted' | 'cancelled' | 'authorization_blocked' | 'failed' | null;
+    progress: AnalysisRunProgress;
+    /**
+     * Reasoncode
+     */
+    reasonCode: string | null;
+    /**
+     * Runid
+     */
+    runId: string;
+    spend: AnalysisRunSpend;
+    /**
+     * Startedat
+     */
+    startedAt: string | null;
+    /**
+     * Target
+     */
+    target: number;
+    /**
+     * Updatedat
+     */
+    updatedAt: string;
+};
+
+/**
+ * AnalysisRunSpend
+ */
+export type AnalysisRunSpend = {
+    /**
+     * Activereservationmicros
+     */
+    activeReservationMicros: number;
+    /**
+     * Ceilingmicros
+     */
+    ceilingMicros: number;
+    /**
+     * Committedmicros
+     */
+    committedMicros: number;
+    /**
+     * Indeterminatereservationmicros
+     */
+    indeterminateReservationMicros: number;
+    /**
+     * Remainingauthorizedmicros
+     */
+    remainingAuthorizedMicros: number;
+    /**
+     * Verifiedcostmicros
+     */
+    verifiedCostMicros: number;
 };
 
 /**
@@ -81,9 +219,13 @@ export type AnalysisResultItem = {
  */
 export type ApiErrorDetail = {
     /**
+     * Activerunid
+     */
+    activeRunId?: string | null;
+    /**
      * Code
      */
-    code: 'invalid_request' | 'invalid_cursor' | 'invalid_capture_token' | 'not_found' | 'pdf_not_found' | 'method_not_allowed' | 'conflict' | 'payload_too_large' | 'unsupported_media_type' | 'internal_error';
+    code: 'invalid_request' | 'invalid_cursor' | 'invalid_capture_token' | 'not_found' | 'pdf_not_found' | 'method_not_allowed' | 'conflict' | 'analysis_run_active' | 'idempotency_conflict' | 'analysis_authorization_blocked' | 'payload_too_large' | 'unsupported_media_type' | 'internal_error';
     /**
      * Message
      */
@@ -137,52 +279,6 @@ export type ApplicationAlreadyCapturedResponse = {
 };
 
 /**
- * ApplicationAnalysisBlockedResponse
- */
-export type ApplicationAnalysisBlockedResponse = {
-    /**
-     * Errors
-     */
-    errors: Array<string>;
-    /**
-     * Failed
-     */
-    failed: 0;
-    /**
-     * Items
-     */
-    items: Array<AnalysisResultItem>;
-    /**
-     * Ok
-     */
-    ok: false;
-    /**
-     * Processed
-     */
-    processed: 0;
-    /**
-     * Repaired
-     */
-    repaired: 0;
-    /**
-     * Result
-     */
-    result: 'blocked';
-    /**
-     * Status
-     */
-    status: 'blocked';
-    /**
-     * Succeeded
-     */
-    succeeded: 0;
-    /**
-     * Validationfailures
-     */
-    validationFailures: Array<RequestValidationFailure | ConfigurationValidationFailure | WorkspaceSchemaValidationFailure>;
-};
-
-/**
  * ApplicationAnalysisChecks
  */
 export type ApplicationAnalysisChecks = {
@@ -206,48 +302,6 @@ export type ApplicationAnalysisChecks = {
      * Masterresumeevidence
      */
     masterResumeEvidence: 'ready' | 'blocked' | 'not_checked';
-};
-
-/**
- * ApplicationAnalysisCompletedResponse
- */
-export type ApplicationAnalysisCompletedResponse = {
-    /**
-     * Errors
-     */
-    errors: Array<string>;
-    /**
-     * Failed
-     */
-    failed: number;
-    /**
-     * Items
-     */
-    items: Array<AnalysisResultItem>;
-    /**
-     * Ok
-     */
-    ok: true;
-    /**
-     * Processed
-     */
-    processed: number;
-    /**
-     * Repaired
-     */
-    repaired: number;
-    /**
-     * Result
-     */
-    result: 'completed';
-    /**
-     * Succeeded
-     */
-    succeeded: number;
-    /**
-     * Validationfailures
-     */
-    validationFailures: Array<RequestValidationFailure | ConfigurationValidationFailure | WorkspaceSchemaValidationFailure>;
 };
 
 /**
@@ -1318,19 +1372,10 @@ export type ResumeQueueItem = {
  */
 export type RunApplicationAnalysisRequest = {
     /**
-     * Limit
+     * Target
      */
-    limit?: number;
+    target?: number;
 };
-
-/**
- * RunApplicationAnalysisResponse
- */
-export type RunApplicationAnalysisResponse = ({
-    result: 'completed';
-} & ApplicationAnalysisCompletedResponse) | ({
-    result: 'blocked';
-} & ApplicationAnalysisBlockedResponse);
 
 /**
  * ValidationError
@@ -1422,6 +1467,12 @@ export type GetApplicationAnalysisQueueResponse2 = GetApplicationAnalysisQueueRe
 
 export type RunApplicationAnalysisData = {
     body: RunApplicationAnalysisRequest;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/applications/analysis/run';
@@ -1444,6 +1495,10 @@ export type RunApplicationAnalysisErrors = {
      * Technical error
      */
     500: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    503: ApiErrorResponse;
 };
 
 export type RunApplicationAnalysisError = RunApplicationAnalysisErrors[keyof RunApplicationAnalysisErrors];
@@ -1452,10 +1507,115 @@ export type RunApplicationAnalysisResponses = {
     /**
      * Successful Response
      */
-    200: RunApplicationAnalysisResponse;
+    202: AnalysisRunResponse;
 };
 
-export type RunApplicationAnalysisResponse2 = RunApplicationAnalysisResponses[keyof RunApplicationAnalysisResponses];
+export type RunApplicationAnalysisResponse = RunApplicationAnalysisResponses[keyof RunApplicationAnalysisResponses];
+
+export type GetActiveApplicationAnalysisRunData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/applications/analysis/runs/active';
+};
+
+export type GetActiveApplicationAnalysisRunErrors = {
+    /**
+     * Technical error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    503: ApiErrorResponse;
+};
+
+export type GetActiveApplicationAnalysisRunError = GetActiveApplicationAnalysisRunErrors[keyof GetActiveApplicationAnalysisRunErrors];
+
+export type GetActiveApplicationAnalysisRunResponses = {
+    /**
+     * Successful Response
+     */
+    200: ActiveAnalysisRunResponse;
+};
+
+export type GetActiveApplicationAnalysisRunResponse = GetActiveApplicationAnalysisRunResponses[keyof GetActiveApplicationAnalysisRunResponses];
+
+export type GetApplicationAnalysisRunData = {
+    body?: never;
+    path: {
+        /**
+         * Runid
+         */
+        runId: string;
+    };
+    query?: never;
+    url: '/api/v1/applications/analysis/runs/{runId}';
+};
+
+export type GetApplicationAnalysisRunErrors = {
+    /**
+     * Technical error
+     */
+    404: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    503: ApiErrorResponse;
+};
+
+export type GetApplicationAnalysisRunError = GetApplicationAnalysisRunErrors[keyof GetApplicationAnalysisRunErrors];
+
+export type GetApplicationAnalysisRunResponses = {
+    /**
+     * Successful Response
+     */
+    200: AnalysisRunResponse;
+};
+
+export type GetApplicationAnalysisRunResponse = GetApplicationAnalysisRunResponses[keyof GetApplicationAnalysisRunResponses];
+
+export type CancelApplicationAnalysisRunData = {
+    body?: never;
+    path: {
+        /**
+         * Runid
+         */
+        runId: string;
+    };
+    query?: never;
+    url: '/api/v1/applications/analysis/runs/{runId}/cancel';
+};
+
+export type CancelApplicationAnalysisRunErrors = {
+    /**
+     * Technical error
+     */
+    404: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    503: ApiErrorResponse;
+};
+
+export type CancelApplicationAnalysisRunError = CancelApplicationAnalysisRunErrors[keyof CancelApplicationAnalysisRunErrors];
+
+export type CancelApplicationAnalysisRunResponses = {
+    /**
+     * Successful Response
+     */
+    200: AnalysisRunResponse;
+};
+
+export type CancelApplicationAnalysisRunResponse = CancelApplicationAnalysisRunResponses[keyof CancelApplicationAnalysisRunResponses];
 
 export type GetApplicationCaptureMatchesData = {
     body?: never;

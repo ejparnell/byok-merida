@@ -15,4 +15,7 @@ app-data/export/
 app-data/export/*.tmp
 app-data/recovery/*.json
 app-data/recovery/*.tmp
+app-data/recovery/*.sqlite3
+app-data/recovery/*.sqlite3-shm
+app-data/recovery/*.sqlite3-wal
 *.tsbuildinfo

@@ -79,12 +79,16 @@ class HttpxNotionTransport:
         *,
         client_factory: Callable[[], httpx.AsyncClient] | None = None,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        absolute_timeout: float = 30,
     ):
+        if absolute_timeout <= 0:
+            raise ValueError("Notion absolute timeout must be positive.")
         self._token = token
         self._client_factory = client_factory or (
             lambda: httpx.AsyncClient(base_url="https://api.notion.com/v1", timeout=30)
         )
         self._sleep = sleep
+        self._absolute_timeout = absolute_timeout
 
     async def request(self, method: str, path: str, body: dict | None = None) -> dict:
         retry_safe = _notion_retry_safe(method, path)
@@ -107,8 +111,11 @@ class HttpxNotionTransport:
         }
         try:
             async with self._client_factory() as client:
-                response = await client.request(method, path, headers=headers, json=body)
-        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+                response = await asyncio.wait_for(
+                    client.request(method, path, headers=headers, json=body),
+                    timeout=self._absolute_timeout,
+                )
+        except (TimeoutError, httpx.TimeoutException, httpx.NetworkError) as exc:
             raise WorkspaceProviderError(
                 "Notion could not be reached.", retryable=True
             ) from exc
@@ -280,6 +287,12 @@ class NotionWorkspace:
     async def list_analysis_queue(
         self, *, limit: int, cursor: str | None
     ) -> QueuePage:
+        eligible = list(await self.load_analysis_queue_snapshot())
+        return _queue_page(eligible, limit, cursor, "application_analysis")
+
+    async def load_analysis_queue_snapshot(
+        self, *, excluded_application_ids: frozenset[str] = frozenset()
+    ) -> tuple[ApplicationRecord, ...]:
         pages = await self._query_all(
             self._application_database_id,
             {
@@ -299,6 +312,8 @@ class NotionWorkspace:
         )
         eligible: list[ApplicationRecord] = []
         for page in pages:
+            if str(page.get("id") or "") in excluded_application_ids:
+                continue
             try:
                 application = _application_record(page)
                 blocks = await self._get_page_children(application.id)
@@ -315,8 +330,12 @@ class NotionWorkspace:
                 )
             except WorkspaceDataError:
                 continue
+            except WorkspaceProviderError as error:
+                if error.status == 404:
+                    continue
+                raise
         eligible.sort(key=lambda item: (item.date_found, item.id))
-        return _queue_page(eligible, limit, cursor, "application_analysis")
+        return tuple(eligible)
 
     async def load_analysis_input(self, application_id: str) -> ApplicationRecord:
         page = await self._transport.request("GET", f"/pages/{application_id}")

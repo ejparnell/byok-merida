@@ -31,10 +31,14 @@ class Settings(BaseSettings):
     user_name: str = ""
     export_path: Path = REPOSITORY_ROOT / "app-data/export"
     recovery_journal_path: Path = REPOSITORY_ROOT / "app-data/recovery/effects.json"
+    analysis_run_store_path: Path = (
+        REPOSITORY_ROOT / "app-data/recovery/analysis-runs.sqlite3"
+    )
 
     @field_validator(
         "export_path",
         "recovery_journal_path",
+        "analysis_run_store_path",
         mode="after",
     )
     @classmethod

@@ -54,6 +54,10 @@ class WorkspaceProviderError(RuntimeError):
         self.retryable = retryable
 
 
+class WorkspaceCommitUnknownError(RuntimeError):
+    """A bounded remote mutation may still be applied after control returned."""
+
+
 def workspace_validation_failures(
     readiness: WorkspaceReadiness,
 ):

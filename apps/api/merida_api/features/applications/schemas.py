@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
@@ -128,7 +129,82 @@ class CaptureMatchesResponse(
 
 
 class RunApplicationAnalysisRequest(ApiModel):
-    limit: int = Field(default=5, ge=1, le=10)
+    target: int = Field(default=5, ge=1, le=10)
+
+
+class AnalysisRunProgress(ApiModel):
+    completions: int = Field(ge=0)
+    repaired: int = Field(ge=0)
+    evaluated: int = Field(ge=0)
+    skipped: int = Field(ge=0)
+    failed: int = Field(ge=0)
+    indeterminate: int = Field(ge=0)
+
+
+class AnalysisRunSpend(ApiModel):
+    ceiling_micros: int = Field(alias="ceilingMicros", ge=0)
+    committed_micros: int = Field(alias="committedMicros", ge=0)
+    verified_cost_micros: int = Field(alias="verifiedCostMicros", ge=0)
+    active_reservation_micros: int = Field(
+        alias="activeReservationMicros", ge=0
+    )
+    indeterminate_reservation_micros: int = Field(
+        alias="indeterminateReservationMicros", ge=0
+    )
+    remaining_authorized_micros: int = Field(
+        alias="remainingAuthorizedMicros", ge=0
+    )
+
+
+class AnalysisRunCandidate(ApiModel):
+    application_id: str = Field(alias="applicationId")
+    ordinal: int = Field(ge=0)
+    state: Literal[
+        "pending",
+        "evaluating",
+        "analyzed",
+        "repaired",
+        "skipped",
+        "failed",
+        "indeterminate",
+    ]
+    reason_code: str | None = Field(alias="reasonCode")
+    started_at: datetime | None = Field(alias="startedAt")
+    completed_at: datetime | None = Field(alias="completedAt")
+
+
+class AnalysisRunSnapshot(ApiModel):
+    run_id: str = Field(alias="runId")
+    lifecycle: Literal["queued", "running", "cancelling", "finished"]
+    outcome: Literal[
+        "target_met",
+        "spend_limited",
+        "attempt_budget_exhausted",
+        "queue_exhausted",
+        "cancelled",
+        "authorization_blocked",
+        "failed",
+    ] | None
+    reason_code: str | None = Field(alias="reasonCode")
+    target: int = Field(ge=1, le=10)
+    attempt_budget: int = Field(alias="attemptBudget", ge=0, le=20)
+    created_at: datetime = Field(alias="createdAt")
+    updated_at: datetime = Field(alias="updatedAt")
+    started_at: datetime | None = Field(alias="startedAt")
+    finished_at: datetime | None = Field(alias="finishedAt")
+    progress: AnalysisRunProgress
+    spend: AnalysisRunSpend
+    candidates: list[AnalysisRunCandidate]
+
+
+class AnalysisRunResponse(CommonResponse):
+    ok: Literal[True]
+    run: AnalysisRunSnapshot
+
+
+class ActiveAnalysisRunResponse(CommonResponse):
+    ok: Literal[True]
+    run: AnalysisRunSnapshot | None
 
 
 class PreparedApplicationDraft(ApiModel):
@@ -236,43 +312,5 @@ class ApplicationAnalysisQueueBlockedResponse(CommonResponse):
 
 class GetApplicationAnalysisQueueResponse(
     RootModel[ApplicationAnalysisQueueReadyResponse | ApplicationAnalysisQueueBlockedResponse]
-):
-    pass
-
-
-class AnalysisResultItem(AnalysisQueueItem):
-    result: Literal["analyzed", "repaired", "skipped", "failed"]
-    match_score: int | None = Field(alias="matchScore", ge=0, le=100)
-    errors: list[str]
-
-
-class ApplicationAnalysisCompletedResponse(CommonResponse):
-    ok: Literal[True]
-    result: Literal["completed"]
-    processed: int = Field(ge=0)
-    succeeded: int = Field(ge=0)
-    failed: int = Field(ge=0)
-    repaired: int = Field(ge=0)
-    items: list[AnalysisResultItem]
-
-
-class ApplicationAnalysisBlockedResponse(CommonResponse):
-    ok: Literal[False]
-    status: Literal["blocked"]
-    result: Literal["blocked"]
-    processed: Literal[0]
-    succeeded: Literal[0]
-    failed: Literal[0]
-    repaired: Literal[0]
-    items: list[AnalysisResultItem]
-
-
-class RunApplicationAnalysisResponse(
-    RootModel[
-        Annotated[
-            ApplicationAnalysisCompletedResponse | ApplicationAnalysisBlockedResponse,
-            Field(discriminator="result"),
-        ]
-    ]
 ):
     pass

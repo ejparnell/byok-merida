@@ -1,7 +1,10 @@
 import {
+  cancelApplicationAnalysisRun,
   createClient,
   createResume,
+  getActiveApplicationAnalysisRun,
   getApplicationAnalysisQueue,
+  getApplicationAnalysisRun,
   getHealth,
   getOperatorSettings,
   getResumeCreationQueue,
@@ -9,6 +12,9 @@ import {
   runApplicationAnalysis,
 } from '@merida/api-client'
 import type {
+  ActiveAnalysisRunResponse,
+  AnalysisRunResponse,
+  ApiErrorDetail,
   CreateResumeResponse,
   GetApplicationAnalysisQueueResponse,
   GetResumeCreationQueueResponse,
@@ -30,8 +36,50 @@ export interface DashboardClient {
     analysisCursor?: string | null
     resumeCursor?: string | null
   }): Promise<DashboardSnapshot>
-  runAnalysis(limit: number): Promise<RunApplicationAnalysisResponse>
+  runAnalysis(
+    target: number,
+    idempotencyKey: string,
+  ): Promise<RunApplicationAnalysisResponse>
+  getActiveAnalysisRun(): Promise<ActiveAnalysisRunResponse>
+  getAnalysisRun(runId: string): Promise<AnalysisRunResponse>
+  cancelAnalysisRun(runId: string): Promise<AnalysisRunResponse>
   createResume(applicationId: string): Promise<CreateResumeResponse>
+}
+
+export type DashboardApiError = Error & {
+  code?: ApiErrorDetail['code']
+  requestId?: string | null
+  activeRunId?: string | null
+  validationFailures?: unknown[]
+}
+
+const toDashboardApiError = (error: unknown): DashboardApiError => {
+  if (error instanceof Error) return error as DashboardApiError
+  const payload = error as {
+    error?: ApiErrorDetail
+    errors?: string[]
+    validationFailures?: unknown[]
+  }
+  const failure = new Error(
+    payload?.error?.message ||
+      payload?.errors?.[0] ||
+      'The API request failed.',
+  ) as DashboardApiError
+  failure.code = payload?.error?.code
+  failure.requestId = payload?.error?.requestId
+  failure.activeRunId = payload?.error?.activeRunId
+  failure.validationFailures = payload?.validationFailures
+  return failure
+}
+
+const invokeDashboardData = async <T extends { data: unknown }>(
+  request: Promise<T>,
+): Promise<T['data']> => {
+  try {
+    return (await request).data
+  } catch (error) {
+    throw toDashboardApiError(error)
+  }
 }
 
 const queueQuery = (cursor?: string | null) => ({
@@ -109,11 +157,38 @@ export function createDashboardClient(
         ),
       }
     },
-    runAnalysis(limit: number) {
-      return invokeApiData(
+    runAnalysis(target: number, idempotencyKey: string) {
+      return invokeDashboardData(
         runApplicationAnalysis<true>({
           client: generatedClient,
-          body: { limit },
+          body: { target },
+          headers: { 'Idempotency-Key': idempotencyKey },
+          throwOnError: true,
+        }),
+      )
+    },
+    getActiveAnalysisRun() {
+      return invokeDashboardData(
+        getActiveApplicationAnalysisRun<true>({
+          client: generatedClient,
+          throwOnError: true,
+        }),
+      )
+    },
+    getAnalysisRun(runId: string) {
+      return invokeDashboardData(
+        getApplicationAnalysisRun<true>({
+          client: generatedClient,
+          path: { runId },
+          throwOnError: true,
+        }),
+      )
+    },
+    cancelAnalysisRun(runId: string) {
+      return invokeDashboardData(
+        cancelApplicationAnalysisRun<true>({
+          client: generatedClient,
+          path: { runId },
           throwOnError: true,
         }),
       )

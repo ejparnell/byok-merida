@@ -4,6 +4,9 @@ from fastapi import FastAPI
 
 from merida_api.app import create_app
 from merida_api.core.settings import Settings
+from merida_api.features.applications.analysis_run_store import (
+    SqliteAnalysisRunStore,
+)
 
 from .models import FakeApplicationAnalysisModel, FakeResumeDocumentBuilder
 from .workspace import FakeWorkspace
@@ -21,6 +24,11 @@ def create_test_app(
     """Compose the product ASGI surface with test-owned boundary fakes."""
     test_workspace = workspace or FakeWorkspace(
         state_path or settings.export_path.parent / "test-workspace.json"
+    )
+    state_path = state_path or settings.export_path.parent / "test-workspace.json"
+    options.setdefault(
+        "analysis_run_store",
+        SqliteAnalysisRunStore(state_path.parent / "analysis-runs.sqlite3"),
     )
     return create_app(
         settings,

@@ -2,7 +2,6 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 const legacyPaths = [
-  '.scratch',
   '.venv',
   'app-data/demo',
   'apps/extension-prototype',

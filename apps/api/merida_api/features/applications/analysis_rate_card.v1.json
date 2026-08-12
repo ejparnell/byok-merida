@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "provider": "deepseek",
+      "endpoint": "https://api.deepseek.com/v1/chat/completions",
+      "model": "deepseek-v4-flash",
+      "sourceUrl": "https://api-docs.deepseek.com/quick_start/pricing",
+      "verifiedOn": "2026-08-12",
+      "validThrough": "2026-09-11",
+      "cacheHitInputUsdMicrosPerMillionTokens": 2800,
+      "cacheMissInputUsdMicrosPerMillionTokens": 140000,
+      "reasoningInclusiveOutputUsdMicrosPerMillionTokens": 280000,
+      "maxOutputTokens": 8000,
+      "maxContextTokens": 1000000,
+      "tokenizer": {
+        "artifact": "analysis_deepseek_v4_tokenizer.60d8d707.json.gz",
+        "artifactSha256": "8423aea16f705997ec67b2f6cd41e0d312f5e9a6beb1c2bea5b2438d93de3a8e",
+        "sourceUrl": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/resolve/60d8d70770c6776ff598c94bb586a859a38244f1/tokenizer.json",
+        "sourceRevision": "60d8d70770c6776ff598c94bb586a859a38244f1",
+        "sourceSha256": "8f9f37ca37fdc4f5fd36d5cf4d3b0e8392edb4e894fd10cc0d70b4957c8633cf"
+      },
+      "protocolOverhead": {
+        "tokens": 27,
+        "maximumAnalysisMessages": 3,
+        "sourceUrl": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/resolve/60d8d70770c6776ff598c94bb586a859a38244f1/encoding/encoding_dsv4.py",
+        "sourceRevision": "60d8d70770c6776ff598c94bb586a859a38244f1",
+        "sourceSha256": "bdbd57c132a1b3725042323d02b98b9d1df28e5f388f134399555d041f5055e0",
+        "derivation": "22 tokenizer tokens for the published JSON response-format wrapper plus five published special tokens for the largest three-message Analysis repair request"
+      }
+    }
+  ]
+}

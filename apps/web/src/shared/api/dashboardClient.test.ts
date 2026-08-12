@@ -81,11 +81,162 @@ test('dashboard adapter never retries a failed analysis POST automatically', asy
   })
 
   await assert.rejects(
-    () => client.runAnalysis(5),
+    () => client.runAnalysis(5, 'analysis-start-1'),
     (error) =>
       error.message === 'Analysis failed.' && error.code === 'internal_error',
   )
   assert.equal(calls, 1)
+})
+
+test('dashboard adapter sends target and one caller-owned idempotency key', async () => {
+  const requests = []
+  const fetch = async (request) => {
+    requests.push(request)
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        run: {
+          runId: 'run-1',
+          lifecycle: 'queued',
+          outcome: null,
+          reasonCode: null,
+          target: 5,
+          attemptBudget: 10,
+          progress: {
+            completions: 0,
+            repaired: 0,
+            evaluated: 0,
+            skipped: 0,
+            failed: 0,
+            indeterminate: 0,
+          },
+          spend: {
+            ceilingMicros: 500000,
+            committedMicros: 0,
+            verifiedCostMicros: 0,
+            activeReservationMicros: 0,
+            indeterminateReservationMicros: 0,
+            remainingAuthorizedMicros: 500000,
+          },
+          candidates: [],
+          createdAt: '2026-08-12T12:00:00Z',
+          updatedAt: '2026-08-12T12:00:00Z',
+          startedAt: null,
+          finishedAt: null,
+        },
+        validationFailures: [],
+        errors: [],
+      }),
+      { status: 202, headers: { 'Content-Type': 'application/json' } },
+    )
+  }
+  const client = createDashboardClient({
+    baseUrl: 'http://merida.test',
+    fetch,
+  })
+
+  await client.runAnalysis(5, 'analysis-start-1')
+
+  assert.equal(requests.length, 1)
+  assert.equal(requests[0].headers.get('Idempotency-Key'), 'analysis-start-1')
+  assert.deepEqual(await requests[0].json(), { target: 5 })
+})
+
+test('dashboard adapter exposes typed active-run conflicts without parsing messages', async () => {
+  const fetch = async () =>
+    new Response(
+      JSON.stringify({
+        ok: false,
+        error: {
+          code: 'analysis_run_active',
+          message: 'Another Analysis Run is active.',
+          requestId: 'request-1',
+          activeRunId: 'run-active',
+        },
+        validationFailures: [],
+        errors: ['Another Analysis Run is active.'],
+      }),
+      { status: 409, headers: { 'Content-Type': 'application/json' } },
+    )
+  const client = createDashboardClient({
+    baseUrl: 'http://merida.test',
+    fetch,
+  })
+
+  await assert.rejects(
+    () => client.runAnalysis(5, 'analysis-start-1'),
+    (error) =>
+      error.code === 'analysis_run_active' &&
+      error.activeRunId === 'run-active',
+  )
+})
+
+test('dashboard adapter supports active lookup, run polling, and cancellation', async () => {
+  const requests = []
+  const activeResponse = {
+    ok: true,
+    run: null,
+    validationFailures: [],
+    errors: [],
+  }
+  const runResponse = {
+    ok: true,
+    run: {
+      runId: 'run-1',
+      lifecycle: 'cancelling',
+      outcome: null,
+      reasonCode: null,
+      target: 1,
+      attemptBudget: 2,
+      progress: {
+        completions: 0,
+        repaired: 0,
+        evaluated: 0,
+        skipped: 0,
+        failed: 0,
+        indeterminate: 0,
+      },
+      spend: {
+        ceilingMicros: 500000,
+        committedMicros: 0,
+        verifiedCostMicros: 0,
+        activeReservationMicros: 0,
+        indeterminateReservationMicros: 0,
+        remainingAuthorizedMicros: 500000,
+      },
+      candidates: [],
+      createdAt: '2026-08-12T12:00:00Z',
+      updatedAt: '2026-08-12T12:00:01Z',
+      startedAt: null,
+      finishedAt: null,
+    },
+    validationFailures: [],
+    errors: [],
+  }
+  const fetch = async (request) => {
+    requests.push([request.method, new URL(request.url).pathname])
+    const path = new URL(request.url).pathname
+    return new Response(
+      JSON.stringify(
+        path.endsWith('/runs/active') ? activeResponse : runResponse,
+      ),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )
+  }
+  const client = createDashboardClient({
+    baseUrl: 'http://merida.test',
+    fetch,
+  })
+
+  await client.getActiveAnalysisRun()
+  await client.getAnalysisRun('run-1')
+  await client.cancelAnalysisRun('run-1')
+
+  assert.deepEqual(requests, [
+    ['GET', '/api/v1/applications/analysis/runs/active'],
+    ['GET', '/api/v1/applications/analysis/runs/run-1'],
+    ['POST', '/api/v1/applications/analysis/runs/run-1/cancel'],
+  ])
 })
 
 test('dashboard load keeps healthy sections when one queue request fails', async () => {

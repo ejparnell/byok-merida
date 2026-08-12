@@ -1,6 +1,66 @@
 {
   "components": {
     "schemas": {
+      "ActiveAnalysisRunResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "ok": {
+            "const": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisRunSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "run"
+        ],
+        "title": "ActiveAnalysisRunResponse",
+        "type": "object"
+      },
       "AnalysisQueueItem": {
         "additionalProperties": false,
         "properties": {
@@ -41,22 +101,126 @@
         "title": "AnalysisQueueItem",
         "type": "object"
       },
-      "AnalysisResultItem": {
+      "AnalysisRunCandidate": {
         "additionalProperties": false,
         "properties": {
           "applicationId": {
             "title": "Applicationid",
             "type": "string"
           },
-          "applicationStatus": {
-            "const": "To Apply",
-            "title": "Applicationstatus",
-            "type": "string"
+          "completedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completedat"
           },
-          "companyName": {
-            "title": "Companyname",
-            "type": "string"
+          "ordinal": {
+            "minimum": 0.0,
+            "title": "Ordinal",
+            "type": "integer"
           },
+          "reasonCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoncode"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startedat"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "evaluating",
+              "analyzed",
+              "repaired",
+              "skipped",
+              "failed",
+              "indeterminate"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "applicationId",
+          "ordinal",
+          "state",
+          "reasonCode",
+          "startedAt",
+          "completedAt"
+        ],
+        "title": "AnalysisRunCandidate",
+        "type": "object"
+      },
+      "AnalysisRunProgress": {
+        "additionalProperties": false,
+        "properties": {
+          "completions": {
+            "minimum": 0.0,
+            "title": "Completions",
+            "type": "integer"
+          },
+          "evaluated": {
+            "minimum": 0.0,
+            "title": "Evaluated",
+            "type": "integer"
+          },
+          "failed": {
+            "minimum": 0.0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "indeterminate": {
+            "minimum": 0.0,
+            "title": "Indeterminate",
+            "type": "integer"
+          },
+          "repaired": {
+            "minimum": 0.0,
+            "title": "Repaired",
+            "type": "integer"
+          },
+          "skipped": {
+            "minimum": 0.0,
+            "title": "Skipped",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "completions",
+          "repaired",
+          "evaluated",
+          "skipped",
+          "failed",
+          "indeterminate"
+        ],
+        "title": "AnalysisRunProgress",
+        "type": "object"
+      },
+      "AnalysisRunResponse": {
+        "additionalProperties": false,
+        "properties": {
           "errors": {
             "items": {
               "type": "string"
@@ -64,59 +228,234 @@
             "title": "Errors",
             "type": "array"
           },
-          "jobUrl": {
-            "title": "Joburl",
+          "ok": {
+            "const": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "run": {
+            "$ref": "#/components/schemas/AnalysisRunSnapshot"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "run"
+        ],
+        "title": "AnalysisRunResponse",
+        "type": "object"
+      },
+      "AnalysisRunSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "attemptBudget": {
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Attemptbudget",
+            "type": "integer"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisRunCandidate"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
             "type": "string"
           },
-          "matchScore": {
+          "finishedAt": {
             "anyOf": [
               {
-                "maximum": 100.0,
-                "minimum": 0.0,
-                "type": "integer"
+                "format": "date-time",
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Matchscore"
+            "title": "Finishedat"
           },
-          "result": {
+          "lifecycle": {
             "enum": [
-              "analyzed",
-              "repaired",
-              "skipped",
-              "failed"
+              "queued",
+              "running",
+              "cancelling",
+              "finished"
             ],
-            "title": "Result",
+            "title": "Lifecycle",
             "type": "string"
           },
-          "role": {
-            "title": "Role",
+          "outcome": {
+            "anyOf": [
+              {
+                "enum": [
+                  "target_met",
+                  "spend_limited",
+                  "attempt_budget_exhausted",
+                  "queue_exhausted",
+                  "cancelled",
+                  "authorization_blocked",
+                  "failed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/AnalysisRunProgress"
+          },
+          "reasonCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoncode"
+          },
+          "runId": {
+            "title": "Runid",
             "type": "string"
           },
-          "title": {
-            "title": "Title",
+          "spend": {
+            "$ref": "#/components/schemas/AnalysisRunSpend"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startedat"
+          },
+          "target": {
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Target",
+            "type": "integer"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "title": "Updatedat",
             "type": "string"
           }
         },
         "required": [
-          "applicationId",
-          "title",
-          "companyName",
-          "role",
-          "applicationStatus",
-          "jobUrl",
-          "result",
-          "matchScore",
-          "errors"
+          "runId",
+          "lifecycle",
+          "outcome",
+          "reasonCode",
+          "target",
+          "attemptBudget",
+          "createdAt",
+          "updatedAt",
+          "startedAt",
+          "finishedAt",
+          "progress",
+          "spend",
+          "candidates"
         ],
-        "title": "AnalysisResultItem",
+        "title": "AnalysisRunSnapshot",
+        "type": "object"
+      },
+      "AnalysisRunSpend": {
+        "additionalProperties": false,
+        "properties": {
+          "activeReservationMicros": {
+            "minimum": 0.0,
+            "title": "Activereservationmicros",
+            "type": "integer"
+          },
+          "ceilingMicros": {
+            "minimum": 0.0,
+            "title": "Ceilingmicros",
+            "type": "integer"
+          },
+          "committedMicros": {
+            "minimum": 0.0,
+            "title": "Committedmicros",
+            "type": "integer"
+          },
+          "indeterminateReservationMicros": {
+            "minimum": 0.0,
+            "title": "Indeterminatereservationmicros",
+            "type": "integer"
+          },
+          "remainingAuthorizedMicros": {
+            "minimum": 0.0,
+            "title": "Remainingauthorizedmicros",
+            "type": "integer"
+          },
+          "verifiedCostMicros": {
+            "minimum": 0.0,
+            "title": "Verifiedcostmicros",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ceilingMicros",
+          "committedMicros",
+          "verifiedCostMicros",
+          "activeReservationMicros",
+          "indeterminateReservationMicros",
+          "remainingAuthorizedMicros"
+        ],
+        "title": "AnalysisRunSpend",
         "type": "object"
       },
       "ApiErrorDetail": {
         "additionalProperties": false,
         "properties": {
+          "activeRunId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activerunid"
+          },
           "code": {
             "enum": [
               "invalid_request",
@@ -126,6 +465,9 @@
               "pdf_not_found",
               "method_not_allowed",
               "conflict",
+              "analysis_run_active",
+              "idempotency_conflict",
+              "analysis_authorization_blocked",
               "payload_too_large",
               "unsupported_media_type",
               "internal_error"
@@ -269,99 +611,6 @@
         "title": "ApplicationAlreadyCapturedResponse",
         "type": "object"
       },
-      "ApplicationAnalysisBlockedResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "errors": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Errors",
-            "type": "array"
-          },
-          "failed": {
-            "const": 0,
-            "title": "Failed",
-            "type": "integer"
-          },
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/AnalysisResultItem"
-            },
-            "title": "Items",
-            "type": "array"
-          },
-          "ok": {
-            "const": false,
-            "title": "Ok",
-            "type": "boolean"
-          },
-          "processed": {
-            "const": 0,
-            "title": "Processed",
-            "type": "integer"
-          },
-          "repaired": {
-            "const": 0,
-            "title": "Repaired",
-            "type": "integer"
-          },
-          "result": {
-            "const": "blocked",
-            "title": "Result",
-            "type": "string"
-          },
-          "status": {
-            "const": "blocked",
-            "title": "Status",
-            "type": "string"
-          },
-          "succeeded": {
-            "const": 0,
-            "title": "Succeeded",
-            "type": "integer"
-          },
-          "validationFailures": {
-            "items": {
-              "discriminator": {
-                "mapping": {
-                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
-                  "request": "#/components/schemas/RequestValidationFailure",
-                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
-                },
-                "propertyName": "kind"
-              },
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/RequestValidationFailure"
-                },
-                {
-                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
-                },
-                {
-                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
-                }
-              ]
-            },
-            "title": "Validationfailures",
-            "type": "array"
-          }
-        },
-        "required": [
-          "ok",
-          "validationFailures",
-          "errors",
-          "status",
-          "result",
-          "processed",
-          "succeeded",
-          "failed",
-          "repaired",
-          "items"
-        ],
-        "title": "ApplicationAnalysisBlockedResponse",
-        "type": "object"
-      },
       "ApplicationAnalysisChecks": {
         "additionalProperties": false,
         "properties": {
@@ -419,93 +668,6 @@
           "evidenceMatcher"
         ],
         "title": "ApplicationAnalysisChecks",
-        "type": "object"
-      },
-      "ApplicationAnalysisCompletedResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "errors": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Errors",
-            "type": "array"
-          },
-          "failed": {
-            "minimum": 0.0,
-            "title": "Failed",
-            "type": "integer"
-          },
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/AnalysisResultItem"
-            },
-            "title": "Items",
-            "type": "array"
-          },
-          "ok": {
-            "const": true,
-            "title": "Ok",
-            "type": "boolean"
-          },
-          "processed": {
-            "minimum": 0.0,
-            "title": "Processed",
-            "type": "integer"
-          },
-          "repaired": {
-            "minimum": 0.0,
-            "title": "Repaired",
-            "type": "integer"
-          },
-          "result": {
-            "const": "completed",
-            "title": "Result",
-            "type": "string"
-          },
-          "succeeded": {
-            "minimum": 0.0,
-            "title": "Succeeded",
-            "type": "integer"
-          },
-          "validationFailures": {
-            "items": {
-              "discriminator": {
-                "mapping": {
-                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
-                  "request": "#/components/schemas/RequestValidationFailure",
-                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
-                },
-                "propertyName": "kind"
-              },
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/RequestValidationFailure"
-                },
-                {
-                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
-                },
-                {
-                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
-                }
-              ]
-            },
-            "title": "Validationfailures",
-            "type": "array"
-          }
-        },
-        "required": [
-          "ok",
-          "validationFailures",
-          "errors",
-          "result",
-          "processed",
-          "succeeded",
-          "failed",
-          "repaired",
-          "items"
-        ],
-        "title": "ApplicationAnalysisCompletedResponse",
         "type": "object"
       },
       "ApplicationAnalysisHealthResponse": {
@@ -2743,34 +2905,16 @@
       "RunApplicationAnalysisRequest": {
         "additionalProperties": false,
         "properties": {
-          "limit": {
+          "target": {
             "default": 5,
             "maximum": 10.0,
             "minimum": 1.0,
-            "title": "Limit",
+            "title": "Target",
             "type": "integer"
           }
         },
         "title": "RunApplicationAnalysisRequest",
         "type": "object"
-      },
-      "RunApplicationAnalysisResponse": {
-        "discriminator": {
-          "mapping": {
-            "blocked": "#/components/schemas/ApplicationAnalysisBlockedResponse",
-            "completed": "#/components/schemas/ApplicationAnalysisCompletedResponse"
-          },
-          "propertyName": "result"
-        },
-        "oneOf": [
-          {
-            "$ref": "#/components/schemas/ApplicationAnalysisCompletedResponse"
-          },
-          {
-            "$ref": "#/components/schemas/ApplicationAnalysisBlockedResponse"
-          }
-        ],
-        "title": "RunApplicationAnalysisResponse"
       },
       "ValidationError": {
         "properties": {
@@ -2929,6 +3073,20 @@
     "/api/v1/applications/analysis/run": {
       "post": {
         "operationId": "runApplicationAnalysis",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -2940,11 +3098,11 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RunApplicationAnalysisResponse"
+                  "$ref": "#/components/schemas/AnalysisRunResponse"
                 }
               }
             },
@@ -2989,9 +3147,175 @@
               }
             },
             "description": "Technical error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
           }
         },
         "summary": "Run Application Analysis"
+      }
+    },
+    "/api/v1/applications/analysis/runs/active": {
+      "get": {
+        "operationId": "getActiveApplicationAnalysisRun",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveAnalysisRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          }
+        },
+        "summary": "Get Active Application Analysis Run"
+      }
+    },
+    "/api/v1/applications/analysis/runs/{runId}": {
+      "get": {
+        "operationId": "getApplicationAnalysisRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "title": "Runid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          }
+        },
+        "summary": "Get Application Analysis Run"
+      }
+    },
+    "/api/v1/applications/analysis/runs/{runId}/cancel": {
+      "post": {
+        "operationId": "cancelApplicationAnalysisRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "title": "Runid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          }
+        },
+        "summary": "Cancel Application Analysis Run"
       }
     },
     "/api/v1/applications/capture-matches": {

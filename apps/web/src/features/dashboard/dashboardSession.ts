@@ -1,15 +1,25 @@
 import type {
+  AnalysisRunResponse,
+  AnalysisRunSnapshot,
   CreateResumeResponse,
-  RunApplicationAnalysisResponse,
 } from '@merida/api-client'
 import type {
+  DashboardApiError,
   DashboardClient,
   DashboardSnapshot,
 } from '../../shared/api/dashboardClient.ts'
 
-const clampLimit = (value: unknown) =>
-  Math.max(1, Math.min(10, Number(value) || 5))
-const operatorError = (error: unknown) => error as Error & { code?: string }
+const clampTarget = (value: unknown) => {
+  const numeric = Number(value)
+  return Math.max(
+    1,
+    Math.min(10, Math.trunc(Number.isFinite(numeric) ? numeric : 5)),
+  )
+}
+const operatorError = (error: unknown) => error as DashboardApiError
+
+export const isAnalysisRunActive = (run: AnalysisRunSnapshot | null): boolean =>
+  Boolean(run && run.lifecycle !== 'finished')
 
 export type DashboardState = {
   loading: boolean
@@ -19,27 +29,61 @@ export type DashboardState = {
   resumeQueue: DashboardSnapshot['resumeQueue'] | null
   analysisCursor: string | null
   resumeCursor: string | null
-  analysisRunning: boolean
-  analysisResult: RunApplicationAnalysisResponse | null
+  analysisStarting: boolean
+  analysisCancelPending: boolean
+  analysisRun: AnalysisRunSnapshot | null
   activeResumeId: string | null
   resumeResults: Record<string, CreateResumeResponse>
   errors: string[]
+}
+
+export type AnalysisPollScheduler = {
+  schedule(task: () => Promise<void>, delayMs: number): unknown
+  cancel(handle: unknown): void
+}
+
+export type DashboardSessionOptions = {
+  scheduler?: AnalysisPollScheduler
+  pollIntervalMs?: number
+  createIdempotencyKey?: () => string
 }
 
 export interface DashboardSession {
   getState(): DashboardState
   subscribe(next: (state: DashboardState) => void): void
   setCursors(analysisCursor: string | null, resumeCursor: string | null): void
-  load(options?: { reset?: boolean }): Promise<DashboardSnapshot | null>
-  runAnalysis(limit: unknown): Promise<RunApplicationAnalysisResponse | null>
+  load(options?: {
+    reset?: boolean
+    checkActiveAnalysisRun?: boolean
+  }): Promise<DashboardSnapshot | null>
+  runAnalysis(target: unknown): Promise<AnalysisRunResponse | null>
+  cancelAnalysisRun(): Promise<AnalysisRunResponse | null>
   createResume(applicationId: string): Promise<CreateResumeResponse | null>
-  dismissAnalysisResult(): void
+  dispose(): void
+}
+
+const defaultScheduler: AnalysisPollScheduler = {
+  schedule(task, delayMs) {
+    return globalThis.setTimeout(() => void task(), delayMs)
+  },
+  cancel(handle) {
+    globalThis.clearTimeout(handle as ReturnType<typeof setTimeout>)
+  },
 }
 
 export function createDashboardSession(
   client: DashboardClient,
   onChange: (state: DashboardState) => void = () => {},
+  options: DashboardSessionOptions = {},
 ): DashboardSession {
+  const scheduler = options.scheduler || defaultScheduler
+  const pollIntervalMs = options.pollIntervalMs ?? 1000
+  const createIdempotencyKey =
+    options.createIdempotencyKey || (() => globalThis.crypto.randomUUID())
+  let pollHandle: unknown = null
+  let polling = false
+  let disposed = false
+  const refreshedTerminalRuns = new Set<string>()
   let state: DashboardState = {
     loading: false,
     health: null,
@@ -48,8 +92,9 @@ export function createDashboardSession(
     resumeQueue: null,
     analysisCursor: null,
     resumeCursor: null,
-    analysisRunning: false,
-    analysisResult: null,
+    analysisStarting: false,
+    analysisCancelPending: false,
+    analysisRun: null,
     activeResumeId: null,
     resumeResults: {},
     errors: [],
@@ -60,7 +105,74 @@ export function createDashboardSession(
     onChange(state)
   }
 
-  const load = async ({ reset = false } = {}) => {
+  const cancelScheduledPoll = () => {
+    if (pollHandle === null) return
+    scheduler.cancel(pollHandle)
+    pollHandle = null
+  }
+
+  const schedulePoll = () => {
+    cancelScheduledPoll()
+    if (disposed || !isAnalysisRunActive(state.analysisRun)) return
+    pollHandle = scheduler.schedule(pollAnalysisRun, pollIntervalMs)
+  }
+
+  const acceptAnalysisRun = async (run: AnalysisRunSnapshot) => {
+    const current = state.analysisRun
+    if (current?.runId === run.runId) {
+      const currentUpdatedAt = Date.parse(current.updatedAt)
+      const nextUpdatedAt = Date.parse(run.updatedAt)
+      if (
+        (current.lifecycle === 'finished' && run.lifecycle !== 'finished') ||
+        (Number.isFinite(currentUpdatedAt) &&
+          Number.isFinite(nextUpdatedAt) &&
+          nextUpdatedAt < currentUpdatedAt)
+      ) {
+        return
+      }
+    }
+    publish({ analysisRun: run })
+    if (isAnalysisRunActive(run)) {
+      schedulePoll()
+      return
+    }
+
+    cancelScheduledPoll()
+    if (refreshedTerminalRuns.has(run.runId)) return
+    refreshedTerminalRuns.add(run.runId)
+    publish({ analysisCursor: null, resumeCursor: null })
+    await load({ reset: true, checkActiveAnalysisRun: false })
+  }
+
+  async function pollAnalysisRun() {
+    pollHandle = null
+    const run = state.analysisRun
+    if (disposed || polling || !run || run.lifecycle === 'finished') return
+    polling = true
+    try {
+      const result = await client.getAnalysisRun(run.runId)
+      if (disposed) return
+      await acceptAnalysisRun(result.run)
+    } catch (error) {
+      const failure = operatorError(error)
+      publish({
+        errors: [
+          failure.message || 'Analysis Run progress could not be refreshed.',
+        ],
+      })
+    } finally {
+      polling = false
+      if (isAnalysisRunActive(state.analysisRun)) schedulePoll()
+    }
+  }
+
+  async function load({
+    reset = false,
+    checkActiveAnalysisRun = true,
+  }: {
+    reset?: boolean
+    checkActiveAnalysisRun?: boolean
+  } = {}): Promise<DashboardSnapshot | null> {
     const analysisCursor = reset ? null : state.analysisCursor
     const resumeCursor = reset ? null : state.resumeCursor
     publish({ loading: true, errors: [] })
@@ -70,9 +182,24 @@ export function createDashboardSession(
         ...data,
         analysisCursor,
         resumeCursor,
-        loading: false,
+        loading: checkActiveAnalysisRun,
         errors: data.errors || [],
       })
+      if (checkActiveAnalysisRun) {
+        try {
+          const active = await client.getActiveAnalysisRun()
+          if (active.run) await acceptAnalysisRun(active.run)
+        } catch (error) {
+          const failure = operatorError(error)
+          publish({
+            errors: [
+              ...state.errors,
+              failure.message || 'Active Analysis Run could not be loaded.',
+            ],
+          })
+        }
+      }
+      publish({ loading: false })
       return data
     } catch (error) {
       const failure = operatorError(error)
@@ -81,7 +208,7 @@ export function createDashboardSession(
         (analysisCursor || resumeCursor)
       ) {
         publish({ analysisCursor: null, resumeCursor: null, loading: false })
-        return load({ reset: true })
+        return load({ reset: true, checkActiveAnalysisRun })
       }
       publish({
         loading: false,
@@ -94,37 +221,79 @@ export function createDashboardSession(
   return {
     getState: () => state,
     subscribe(next: (state: DashboardState) => void) {
+      disposed = false
       onChange = next
       next(state)
     },
     setCursors(analysisCursor: string | null, resumeCursor: string | null) {
       publish({ analysisCursor, resumeCursor })
     },
-    async load(options: { reset?: boolean } = {}) {
-      return load(options)
-    },
-    async runAnalysis(limit: unknown) {
-      if (state.analysisRunning) return null
-      publish({ analysisRunning: true, analysisResult: null, errors: [] })
+    load,
+    async runAnalysis(target: unknown) {
+      if (state.analysisStarting || isAnalysisRunActive(state.analysisRun)) {
+        return null
+      }
+      const idempotencyKey = createIdempotencyKey()
+      publish({ analysisStarting: true, errors: [] })
       try {
-        const result = await client.runAnalysis(clampLimit(limit))
-        publish({ analysisRunning: false, analysisResult: result })
-        const queueChanged =
-          result.ok &&
-          result.result === 'completed' &&
-          ((result.succeeded || 0) > 0 || (result.repaired || 0) > 0)
-        if (queueChanged) {
-          publish({ analysisCursor: null, resumeCursor: null })
-          await load({ reset: true })
-        } else {
-          await load()
-        }
+        const result = await client.runAnalysis(
+          clampTarget(target),
+          idempotencyKey,
+        )
+        publish({ analysisStarting: false })
+        await acceptAnalysisRun(result.run)
         return result
       } catch (error) {
+        const failure = operatorError(error)
+        if (failure.code === 'analysis_run_active' && failure.activeRunId) {
+          try {
+            const result = await client.getAnalysisRun(failure.activeRunId)
+            publish({ analysisStarting: false, errors: [] })
+            await acceptAnalysisRun(result.run)
+            return result
+          } catch (followError) {
+            const followFailure = operatorError(followError)
+            publish({
+              analysisStarting: false,
+              errors: [
+                followFailure.message ||
+                  'The active Analysis Run could not be loaded.',
+              ],
+            })
+            return null
+          }
+        }
         publish({
-          analysisRunning: false,
+          analysisStarting: false,
           errors: [
-            operatorError(error).message || 'Analysis could not be completed.',
+            failure.message || 'Application Analysis could not be started.',
+          ],
+        })
+        return null
+      }
+    },
+    async cancelAnalysisRun() {
+      const run = state.analysisRun
+      if (
+        !run ||
+        run.lifecycle === 'finished' ||
+        state.analysisCancelPending ||
+        disposed
+      ) {
+        return null
+      }
+      publish({ analysisCancelPending: true, errors: [] })
+      try {
+        const result = await client.cancelAnalysisRun(run.runId)
+        publish({ analysisCancelPending: false })
+        await acceptAnalysisRun(result.run)
+        return result
+      } catch (error) {
+        const failure = operatorError(error)
+        publish({
+          analysisCancelPending: false,
+          errors: [
+            failure.message || 'The Analysis Run could not be cancelled.',
           ],
         })
         return null
@@ -156,8 +325,9 @@ export function createDashboardSession(
         return null
       }
     },
-    dismissAnalysisResult() {
-      publish({ analysisResult: null })
+    dispose() {
+      disposed = true
+      cancelScheduledPoll()
     },
   }
 }

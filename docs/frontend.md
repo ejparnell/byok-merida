@@ -14,7 +14,7 @@ The Chrome extension remains responsible for capturing Applications. Notion rema
 
 - Show whether the backend is ready before the user starts LLM work.
 - Show non-secret, read-only settings that affect LLM runs, especially selected models and configured providers.
-- Let the user run Application Analysis for eligible captured Applications.
+- Let the user start, follow, reconnect to, and cancel a durable Application Analysis Run.
 - Let the user create one Job-Specific Resume at a time from eligible analyzed Applications.
 - Keep pending, success, and failure states visible while backend work is happening.
 - Avoid exposing secrets, prompts, full private Job Content, or full raw model responses.
@@ -26,6 +26,7 @@ The Chrome extension remains responsible for capturing Applications. Notion rema
 | `GET /health`                              | Health section and section readiness | Shows overall backend readiness and blocking errors.                                      |
 | `GET /operator/settings`                   | Health section                       | Shows selected models and configured provider flags without a runtime-mode discriminator. |
 | `GET /applications/analysis/queue?limit=5` | Application Analysis section         | Lists eligible Applications ready to analyze.                                             |
+| `GET /applications/analysis/runs/active`   | Application Analysis section         | Reconnects to an unfinished durable Analysis Run after load or reload.                    |
 | `GET /resumes/queue?limit=5`               | Resume Creation section              | Lists eligible analyzed Applications that can create a resume.                            |
 
 The dashboard should call only `GET /health` for health state in v1. Narrower health routes are diagnostic routes, not part of the default page load.
@@ -41,7 +42,7 @@ Use one vertical dashboard page with stacked sections. Each section should have 
 Suggested order:
 
 1. **Health And Settings**: readiness bar, model cards, provider configuration dots.
-2. **Application Analysis**: eligible analysis queue, batch controls, pending state, result summary.
+2. **Application Analysis**: eligible analysis queue, target control, durable run progress, cancellation, and retained terminal result.
 3. **Resume Creation**: eligible resume queue, per-Application create buttons, pending state, output links.
 
 The page should work comfortably on a laptop screen without requiring the user to understand the backend routes.
@@ -121,12 +122,12 @@ The header should show:
 
 Place these controls on one line when there is enough horizontal space:
 
-| Control             | Behavior                                                                                                                |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Batch limit input   | Numeric input for how many Applications to process. Defaults to `5`, clamps to `1` through `10`.                        |
-| Run Analysis button | Calls `POST /applications/analysis/run`. Disabled when analysis is blocked, queue is empty, or a run is already active. |
-| Queue count         | Shows how many Applications are waiting for analysis.                                                                   |
-| Refresh button      | Reloads `/health`, `/operator/settings`, `/applications/analysis/queue`, and `/resumes/queue`.                          |
+| Control               | Behavior                                                                                                                                                            |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Analysis Batch Target | Number of successful Analysis Completions to pursue. Defaults to `5` and clamps to `1` through `10`; skipped and failed candidates do not satisfy it.               |
+| Run Analysis button   | Generates one idempotency key and calls `POST /applications/analysis/run` with `target`. Disabled when analysis is blocked, the queue is empty, or a run is active. |
+| Queue count           | Shows how many Applications are waiting for analysis.                                                                                                               |
+| Refresh button        | Reloads `/health`, `/operator/settings`, `/applications/analysis/queue`, and `/resumes/queue`.                                                                      |
 
 ### Queue List
 
@@ -143,20 +144,40 @@ The list should use backend pagination. The frontend should keep the current opa
 
 ### Run State
 
-When the user clicks **Run Analysis**, keep the UI simple:
+One intentional click creates one client idempotency key. The generated-client
+call sends `{ "target": number }` and `Idempotency-Key` exactly once; polling and
+transport behavior must never replay that POST. A `202` snapshot gives the
+session its run identity immediately. A typed `analysis_run_active` conflict
+includes `activeRunId`; follow that run with a GET instead of parsing the error
+message or issuing another start.
 
-- disable the run button
-- show a small spinner and `Running analysis`
-- keep the current queue visible but visually muted
-- wait for the backend response
-- show the final summary returned by the backend
-- show safe per-Application results from the response when present
+While a run is active:
 
-The run action processes the backend's next eligible batch by `limit`, independent of the currently visible pagination cursor. The visible list is a preview, not a selection mechanism.
+- disable **Run Analysis** and show `Queued`, `Running`, or `Cancelling`;
+- keep the queue preview visible; it is not the Run Candidate Set;
+- poll `GET /applications/analysis/runs/{runId}`;
+- show completions against target, evaluated candidates against Attempt Budget,
+  and Committed Spend against $0.50 as the primary progress line;
+- show verified cost, active reservations, indeterminate reservations, and
+  remaining authorized budget as expanded detail;
+- show safe candidate states: `analyzed`, `repaired`, `skipped`, `failed`, and
+  `indeterminate`, plus safe reason codes where present;
+- offer **Cancel run** for `queued`, `running`, and `cancelling` state.
 
-After a successful response, refresh `/health`, reset the Application Analysis queue to page one, and reset the Resume Creation queue to page one so newly analyzed Applications move between sections.
+Cancellation prevents future provider calls but cannot promise that an in-flight
+call is stopped or refunded. The UI continues polling until the durable terminal
+snapshot arrives.
 
-After a failed response, refresh `/health` and keep queue pagination unchanged unless the backend reports completed or repaired items.
+On page load, request `/applications/analysis/runs/active`; if it returns a run,
+reconnect and poll it. A finished run displays one of `target_met`,
+`spend_limited`, `attempt_budget_exhausted`, `queue_exhausted`, `cancelled`,
+`authorization_blocked`, or `failed`. Keep that terminal result visible without
+automatic dismissal. Refresh health and reset both queue cursors once when a run
+becomes terminal, without clearing the run result.
+
+The start target is independent of the visible queue cursor and its query
+`limit`. At creation, the backend fixes the Candidate Set in canonical queue
+order and may backfill within its finite Attempt Budget.
 
 ## Resume Creation Section
 
@@ -228,14 +249,14 @@ After success, refresh `/health` and reset the Resume Creation queue to page one
 
 The dashboard should feel current without requiring a page reload.
 
-| Trigger                 | Refresh behavior                                                                                                        |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Page load               | Load `/health`, `/operator/settings`, first page of `/applications/analysis/queue`, and first page of `/resumes/queue`. |
-| Manual refresh          | Reload all dashboard data and keep the current queue pages when possible.                                               |
-| Analysis success        | Reload `/health`, reset `/applications/analysis/queue` to page one, and reset `/resumes/queue` to page one.             |
-| Analysis failure        | Reload `/health` and leave queue pagination unchanged unless the backend reports completed or repaired items.           |
-| Resume creation success | Reload `/health`, reset `/resumes/queue` to page one, and keep result links visible after the row leaves the queue.     |
-| Resume creation failure | Reload `/health`, keep the row visible, and show backend errors plus cleanup status.                                    |
+| Trigger                   | Refresh behavior                                                                                                    |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Page load                 | Load dashboard data plus `/applications/analysis/runs/active`; reconnect and poll when an active run exists.        |
+| Manual refresh            | Reload all dashboard data and keep the current queue pages when possible.                                           |
+| Analysis becomes terminal | Reload `/health`, reset both queues to page one, and retain the durable terminal run result.                        |
+| Analysis poll failure     | Keep the last durable snapshot visible, report the safe error, and allow later polling or refresh to reconnect.     |
+| Resume creation success   | Reload `/health`, reset `/resumes/queue` to page one, and keep result links visible after the row leaves the queue. |
+| Resume creation failure   | Reload `/health`, keep the row visible, and show backend errors plus cleanup status.                                |
 
 ## Page State Rules
 
@@ -247,7 +268,9 @@ The dashboard should feel current without requiring a page reload.
 | DeepSeek missing                     | Disable Application Analysis and Resume Creation, but keep queue lists readable when possible.           |
 | Analysis ready while Resumes blocked | Enable Application Analysis and disable Resume Creation.                                                 |
 | Resumes ready while Analysis blocked | Keep Resume Creation usable if the queue route returns eligible Applications.                            |
-| Analysis running                     | Disable the run button and show a pending state until the final response returns.                        |
+| Analysis queued or running           | Disable the run button, poll the durable snapshot, show progress and spend, and allow cancellation.      |
+| Analysis cancelling                  | Disable new starts, show that cancellation was requested, and poll until the run finishes.               |
+| Analysis finished                    | Keep the terminal outcome, spend detail, and safe per-Application results visible.                       |
 | Resume creation running              | Disable only the active row button unless the backend cannot safely run multiple creations.              |
 | Empty queue                          | Show a calm empty state with the next useful action in Notion or the Chrome extension.                   |
 
@@ -255,27 +278,27 @@ The dashboard should feel current without requiring a page reload.
 
 These components should be shared across dashboard sections.
 
-| Component         | Used for                                                                                      |
-| ----------------- | --------------------------------------------------------------------------------------------- |
-| `Button`          | Primary actions, secondary refresh actions, retry actions.                                    |
-| `IconButton`      | Compact refresh, open link, and download actions.                                             |
-| `Card`            | Model summaries, queue rows on narrow screens, and result summaries.                          |
-| `SectionPanel`    | Top-level dashboard sections with a header and content body.                                  |
-| `SectionHeader`   | Title, subtitle, status indicator, and small section actions.                                 |
-| `StatusDot`       | Boolean or readiness indicators.                                                              |
-| `StatusBar`       | Health readiness bar with multiple segments.                                                  |
-| `StatusBadge`     | Text status such as `ready`, `blocked`, `running`, `created`, `already_created`, or `failed`. |
-| `ModelCard`       | Small read-only display card for selected analysis and resume models.                         |
-| `ConfiguredDots`  | Notion and DeepSeek configuration indicators.                                                 |
-| `NumberInput`     | Batch limit input for Application Analysis.                                                   |
-| `QueueTable`      | Desktop list of Applications.                                                                 |
-| `QueueRow`        | Shared row shape for analysis and resume queues.                                              |
-| `Pagination`      | Backend cursor paging for Application Analysis and Resume Creation queues.                    |
-| `ActionStatus`    | Pending, success, and failure states for run/create actions.                                  |
-| `ResultSummary`   | Final response summary after analysis or resume creation.                                     |
-| `ResultItemList`  | Safe per-Application result rows from analysis.                                               |
-| `Spinner`         | Inline running state.                                                                         |
-| `EmptyState`      | Empty queues or no results.                                                                   |
-| `ErrorCallout`    | Blocking health, route, schema, or workflow errors.                                           |
-| `SchemaErrorList` | Exact Notion validation failures with property names and database names.                      |
-| `ResultLinks`     | Resume, Note, and PDF output links after resume creation.                                     |
+| Component         | Used for                                                                                    |
+| ----------------- | ------------------------------------------------------------------------------------------- |
+| `Button`          | Primary actions, secondary refresh actions, retry actions.                                  |
+| `IconButton`      | Compact refresh, open link, and download actions.                                           |
+| `Card`            | Model summaries, queue rows on narrow screens, and result summaries.                        |
+| `SectionPanel`    | Top-level dashboard sections with a header and content body.                                |
+| `SectionHeader`   | Title, subtitle, status indicator, and small section actions.                               |
+| `StatusDot`       | Boolean or readiness indicators.                                                            |
+| `StatusBar`       | Health readiness bar with multiple segments.                                                |
+| `StatusBadge`     | Readiness, Analysis Run lifecycle/outcomes, candidate results, and Resume Creation results. |
+| `ModelCard`       | Small read-only display card for selected analysis and resume models.                       |
+| `ConfiguredDots`  | Notion and DeepSeek configuration indicators.                                               |
+| `NumberInput`     | Analysis Batch Target input for successful Analysis Completions.                            |
+| `QueueTable`      | Desktop list of Applications.                                                               |
+| `QueueRow`        | Shared row shape for analysis and resume queues.                                            |
+| `Pagination`      | Backend cursor paging for Application Analysis and Resume Creation queues.                  |
+| `ActionStatus`    | Pending, success, and failure states for start, cancel, and create actions.                 |
+| `ResultSummary`   | Durable Analysis Run progress/terminal snapshot or Resume Creation result.                  |
+| `ResultItemList`  | Safe per-Application candidate states from an Analysis Run.                                 |
+| `Spinner`         | Inline running state.                                                                       |
+| `EmptyState`      | Empty queues or no results.                                                                 |
+| `ErrorCallout`    | Blocking health, route, schema, or workflow errors.                                         |
+| `SchemaErrorList` | Exact Notion validation failures with property names and database names.                    |
+| `ResultLinks`     | Resume, Note, and PDF output links after resume creation.                                   |

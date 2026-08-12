@@ -1,11 +1,12 @@
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 import logging
 from pathlib import Path
 from typing import cast, get_args
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Path as ApiPath, Query, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Path as ApiPath, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
@@ -18,13 +19,33 @@ from .core.settings import Settings
 from .features.applications import ApplicationAnalysis, ApplicationCapture
 from .features.applications.schemas import (
     CaptureMatchesResponse,
+    ActiveAnalysisRunResponse,
+    AnalysisRunResponse,
     RunApplicationAnalysisRequest,
     ConfirmApplicationResponse,
     ConfirmApplicationRequest,
     GetApplicationAnalysisQueueResponse,
     PrepareApplicationResponse,
     PrepareApplicationRequest,
-    RunApplicationAnalysisResponse,
+)
+from .features.applications.analysis_run_store import (
+    ActiveAnalysisRunError,
+    AnalysisRunIdempotencyConflictError,
+    AnalysisRunSnapshot as DomainAnalysisRunSnapshot,
+    AnalysisRunStoreUnavailableError,
+    open_analysis_run_store,
+)
+from .features.applications.analysis_runs import (
+    AnalysisRunService,
+    AnalysisRunStartBlocked,
+    AnalysisRunWorker,
+    GraphAnalysisCandidateEvaluator,
+)
+from .features.applications.analysis_spend import (
+    AnalysisSpendPolicyError,
+    AnalysisRateCard,
+    AnalysisSpendPolicy,
+    UnavailableAnalysisSpendPolicy,
 )
 from .features.resumes import ResumeCreation
 from .features.resumes.commit import ResumeArtifactCommitter
@@ -62,6 +83,8 @@ from .shared.schemas import (
 
 logger = logging.getLogger(__name__)
 
+_ANALYSIS_PROVIDER_ENDPOINT = "https://api.deepseek.com/v1/chat/completions"
+
 
 @dataclass(frozen=True)
 class RuntimeCapabilities:
@@ -70,6 +93,7 @@ class RuntimeCapabilities:
     resume_workspace_configured: bool
     analysis_model_available: bool
     resume_builder_available: bool
+    analysis_spend_enforcement_available: bool
 
 
 def _api_error_responses(*status_codes: int) -> dict[int, dict]:
@@ -111,7 +135,11 @@ def _health(
     notion = "ready" if capture_ready else "blocked"
     analysis = (
         "ready"
-        if analysis_workspace_ready and capabilities.analysis_model_available
+        if (
+            analysis_workspace_ready
+            and capabilities.analysis_model_available
+            and capabilities.analysis_spend_enforcement_available
+        )
         else "blocked"
     )
     resumes = (
@@ -141,6 +169,8 @@ def _health(
         or not capabilities.resume_builder_available
     ):
         errors.append("Real DeepSeek workflow adapters are not enabled in this build.")
+    if not capabilities.analysis_spend_enforcement_available:
+        errors.append("Analysis spend enforcement is unavailable.")
     if recovery_error:
         errors.append(recovery_error)
         notion = resumes = "blocked"
@@ -224,21 +254,6 @@ def _blocked_capture_matches(
     }
 
 
-def _blocked_analysis_run(message: str) -> dict:
-    return {
-        "ok": False,
-        "status": "blocked",
-        "result": "blocked",
-        "processed": 0,
-        "succeeded": 0,
-        "failed": 0,
-        "repaired": 0,
-        "items": [],
-        "validationFailures": [],
-        "errors": [message],
-    }
-
-
 def _blocked_resume_creation(message: str) -> dict:
     return {
         "ok": False,
@@ -257,6 +272,57 @@ async def _block_provider_error(operation, blocked_response):
         return blocked_response(str(error))
 
 
+def _analysis_run_snapshot(snapshot: DomainAnalysisRunSnapshot) -> dict:
+    return {
+        "runId": snapshot.run_id,
+        "lifecycle": snapshot.lifecycle.value,
+        "outcome": None if snapshot.outcome is None else snapshot.outcome.value,
+        "reasonCode": snapshot.reason_code,
+        "target": snapshot.target,
+        "attemptBudget": snapshot.attempt_budget,
+        "createdAt": snapshot.created_at,
+        "updatedAt": snapshot.updated_at,
+        "startedAt": snapshot.started_at,
+        "finishedAt": snapshot.finished_at,
+        "progress": {
+            "completions": snapshot.completion_count,
+            "repaired": snapshot.repaired_count,
+            "evaluated": snapshot.evaluated_count,
+            "skipped": snapshot.skipped_count,
+            "failed": snapshot.failed_count,
+            "indeterminate": snapshot.indeterminate_count,
+        },
+        "spend": {
+            "ceilingMicros": snapshot.spend_ceiling_micros,
+            "committedMicros": snapshot.committed_spend_micros,
+            "verifiedCostMicros": snapshot.verified_cost_micros,
+            "activeReservationMicros": snapshot.active_reservation_micros,
+            "indeterminateReservationMicros": snapshot.indeterminate_reservation_micros,
+            "remainingAuthorizedMicros": snapshot.remaining_authorized_micros,
+        },
+        "candidates": [
+            {
+                "applicationId": candidate.application_id,
+                "ordinal": candidate.ordinal,
+                "state": candidate.state.value,
+                "reasonCode": candidate.reason_code,
+                "startedAt": candidate.started_at,
+                "completedAt": candidate.completed_at,
+            }
+            for candidate in snapshot.candidates
+        ],
+    }
+
+
+def _analysis_run_response(snapshot: DomainAnalysisRunSnapshot) -> dict:
+    return {
+        "ok": True,
+        "run": _analysis_run_snapshot(snapshot),
+        "validationFailures": [],
+        "errors": [],
+    }
+
+
 def _error_response(
     status_code: int,
     code: ApiErrorCode,
@@ -264,16 +330,20 @@ def _error_response(
     *,
     validation_failures: list[dict] | None = None,
     request_id: str | None = None,
+    active_run_id: str | None = None,
 ) -> JSONResponse:
+    detail = {
+        "code": code,
+        "message": message,
+        "requestId": request_id,
+    }
+    if active_run_id is not None:
+        detail["activeRunId"] = active_run_id
     return JSONResponse(
         status_code=status_code,
         content={
             "ok": False,
-            "error": {
-                "code": code,
-                "message": message,
-                "requestId": request_id,
-            },
+            "error": detail,
             "validationFailures": validation_failures or [],
             "errors": [message],
         },
@@ -295,6 +365,11 @@ def create_app(
     analysis_model=None,
     resume_builder=None,
     coordinator: ExecutionCoordinator | None = None,
+    analysis_run_store=None,
+    analysis_spend_policy=None,
+    analysis_clock=None,
+    analysis_run_id_factory=None,
+    analysis_worker=None,
 ) -> FastAPI:
     settings = settings or Settings()
     workspace_injected = workspace is not None
@@ -318,6 +393,47 @@ def create_app(
             resume_database_id=settings.notion_resume_database_id,
             notes_database_id=settings.notion_notes_database_id,
         )
+    analysis_run_store = analysis_run_store or open_analysis_run_store(
+        settings.analysis_run_store_path,
+        clock=analysis_clock,
+    )
+    analysis_now = analysis_clock or (lambda: datetime.now(timezone.utc))
+    analysis_rate_card = None
+    analysis_spend_error: AnalysisSpendPolicyError | None = None
+    try:
+        analysis_rate_card = AnalysisRateCard.load()
+    except AnalysisSpendPolicyError as error:
+        analysis_spend_error = error
+
+    if analysis_spend_policy is None:
+        if analysis_rate_card is not None:
+            analysis_spend_policy = AnalysisSpendPolicy(
+                analysis_rate_card,
+                clock=analysis_clock,
+            )
+        else:
+            analysis_spend_policy = UnavailableAnalysisSpendPolicy(
+                "rate_card_unavailable"
+                if analysis_spend_error is None
+                else analysis_spend_error.code
+            )
+
+    def analysis_spend_enforcement_available() -> bool:
+        if (
+            not analysis_run_store.available
+            or not analysis_run_store.transactional
+            or analysis_rate_card is None
+        ):
+            return False
+        try:
+            analysis_rate_card.approved_model(
+                endpoint=_ANALYSIS_PROVIDER_ENDPOINT,
+                model=settings.analysis_model,
+                at=analysis_now(),
+            )
+        except AnalysisSpendPolicyError:
+            return False
+        return True
     capabilities = RuntimeCapabilities(
         capture_workspace_configured=(
             workspace_injected or settings.notion_applications_configured
@@ -330,7 +446,24 @@ def create_app(
         ),
         analysis_model_available=analysis_model_ready,
         resume_builder_available=resume_builder_ready,
+        analysis_spend_enforcement_available=(
+            analysis_spend_enforcement_available()
+        ),
     )
+
+    def analysis_start_prerequisites() -> tuple[str, str] | None:
+        if not capabilities.analysis_workspace_configured:
+            return (
+                "workspace_not_configured",
+                "Applications and Master Resume database configuration is incomplete.",
+            )
+        if not capabilities.analysis_model_available:
+            return (
+                "analysis_model_unavailable",
+                "Real Application Analysis is not enabled in this build.",
+            )
+        return None
+
     coordinator = coordinator or ExecutionCoordinator()
     recovery_path = settings.recovery_journal_path
     try:
@@ -342,7 +475,26 @@ def create_app(
         )
         journal = UnavailableEffectJournal(recovery_error)
     capture = ApplicationCapture(workspace, coordinator, journal)
-    analysis = ApplicationAnalysis(workspace, analysis_model, coordinator)
+    analysis = ApplicationAnalysis(
+        workspace,
+        run_store=(analysis_run_store if analysis_run_store.available else None),
+    )
+    analysis_run_service = AnalysisRunService(
+        workspace=workspace,
+        store=analysis_run_store,
+        readiness=analysis.validate_readiness,
+        prerequisite_readiness=analysis_start_prerequisites,
+        spend_readiness=analysis_spend_enforcement_available,
+        evaluator=GraphAnalysisCandidateEvaluator(
+            workspace=workspace,
+            model=analysis_model,
+            store=analysis_run_store,
+            spend_policy=analysis_spend_policy,
+        ),
+        clock=analysis_clock,
+        run_id_factory=analysis_run_id_factory,
+    )
+    analysis_worker = analysis_worker or AnalysisRunWorker(analysis_run_service)
     pdf_artifacts = LocalPdfArtifacts(
         settings.export_path, user_name=settings.user_name
     )
@@ -361,7 +513,11 @@ def create_app(
         await capture.reconcile()
         await resumes.reconcile()
         journal.compact()
-        yield
+        analysis_worker.start()
+        try:
+            yield
+        finally:
+            await analysis_worker.stop()
 
     app = FastAPI(
         title="Merida API",
@@ -391,6 +547,9 @@ def create_app(
     app.state.workspace = workspace
     app.state.capture = capture
     app.state.resumes = resumes
+    app.state.analysis_runs = analysis_run_service
+    app.state.analysis_worker = analysis_worker
+    app.state.analysis_run_store = analysis_run_store
     origins = [settings.web_origin, "http://localhost:5173", "http://127.0.0.1:5173"]
     if settings.extension_origin:
         origins.append(settings.extension_origin)
@@ -399,7 +558,7 @@ def create_app(
         allow_origins=list(dict.fromkeys(origins)),
         allow_credentials=False,
         allow_methods=["GET", "POST"],
-        allow_headers=["Content-Type", "X-Capture-Token"],
+        allow_headers=["Content-Type", "X-Capture-Token", "Idempotency-Key"],
     )
 
     json_body_routes = {
@@ -452,6 +611,57 @@ def create_app(
             "conflict",
             str(exc),
             request_id=uuid4().hex,
+        )
+
+    @app.exception_handler(ActiveAnalysisRunError)
+    async def active_analysis_run_handler(
+        _request: Request, exc: ActiveAnalysisRunError
+    ):
+        return _error_response(
+            409,
+            "analysis_run_active",
+            "An Analysis Run is already active.",
+            active_run_id=exc.active_run_id,
+        )
+
+    @app.exception_handler(AnalysisRunIdempotencyConflictError)
+    async def analysis_idempotency_handler(
+        _request: Request, _exc: AnalysisRunIdempotencyConflictError
+    ):
+        return _error_response(
+            409,
+            "idempotency_conflict",
+            "The Idempotency-Key already identifies a different target.",
+        )
+
+    @app.exception_handler(AnalysisRunStoreUnavailableError)
+    async def analysis_store_unavailable_handler(
+        _request: Request, _exc: AnalysisRunStoreUnavailableError
+    ):
+        return _error_response(
+            503,
+            "analysis_authorization_blocked",
+            "Analysis spend enforcement is unavailable.",
+        )
+
+    @app.exception_handler(AnalysisRunStartBlocked)
+    async def analysis_run_start_blocked_handler(
+        _request: Request, _exc: AnalysisRunStartBlocked
+    ):
+        return _error_response(
+            503,
+            "analysis_authorization_blocked",
+            "Application Analysis prerequisites are not ready.",
+        )
+
+    @app.exception_handler(WorkspaceProviderError)
+    async def workspace_provider_error_handler(
+        _request: Request, _exc: WorkspaceProviderError
+    ):
+        return _error_response(
+            503,
+            "analysis_authorization_blocked",
+            "The workspace provider is unavailable.",
         )
 
     @app.exception_handler(HTTPException)
@@ -538,13 +748,19 @@ def create_app(
         responses=_api_error_responses(500),
     )
     async def get_health():
+        current_capabilities = replace(
+            capabilities,
+            analysis_spend_enforcement_available=(
+                analysis_spend_enforcement_available()
+            ),
+        )
         workflow_readiness = {}
         workflow_provider_errors = {}
         if any(
             (
-                capabilities.capture_workspace_configured,
-                capabilities.analysis_workspace_configured,
-                capabilities.resume_workspace_configured,
+                current_capabilities.capture_workspace_configured,
+                current_capabilities.analysis_workspace_configured,
+                current_capabilities.resume_workspace_configured,
             )
         ):
             workflow_readiness, workflow_provider_errors = await _validate_workspace(
@@ -552,7 +768,7 @@ def create_app(
             )
         return _health(
             settings,
-            capabilities,
+            current_capabilities,
             recovery_error,
             workflow_readiness=workflow_readiness,
             workflow_provider_errors=workflow_provider_errors,
@@ -673,19 +889,84 @@ def create_app(
             lambda message: _blocked_queue(limit, message),
         )
 
-    @app.post("/api/v1/applications/analysis/run", operation_id="runApplicationAnalysis", response_model=RunApplicationAnalysisResponse, responses=_api_error_responses(400, 409, 415, 500))
-    async def run_application_analysis(request: RunApplicationAnalysisRequest):
-        if not capabilities.analysis_workspace_configured:
-            return _blocked_analysis_run(
-                "Applications and Master Resume database configuration is incomplete."
-            )
-        if not capabilities.analysis_model_available:
-            return _blocked_analysis_run(
-                "Real Application Analysis is not enabled in this build."
-            )
-        return await _block_provider_error(
-            analysis.run_batch(request.limit), _blocked_analysis_run
+    @app.post(
+        "/api/v1/applications/analysis/run",
+        operation_id="runApplicationAnalysis",
+        response_model=AnalysisRunResponse,
+        status_code=202,
+        responses=_api_error_responses(400, 409, 415, 500, 503),
+    )
+    async def run_application_analysis(
+        request: RunApplicationAnalysisRequest,
+        idempotency_key: str = Header(
+            alias="Idempotency-Key",
+            min_length=1,
+            max_length=255,
+            pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$",
+        ),
+    ):
+        snapshot = await analysis_run_service.start(
+            target=request.target,
+            idempotency_key=idempotency_key,
         )
+        analysis_worker.wake()
+        return _analysis_run_response(snapshot)
+
+    @app.get(
+        "/api/v1/applications/analysis/runs/active",
+        operation_id="getActiveApplicationAnalysisRun",
+        response_model=ActiveAnalysisRunResponse,
+        responses=_api_error_responses(500, 503),
+    )
+    async def get_active_application_analysis_run():
+        snapshot = analysis_run_service.active()
+        return {
+            "ok": True,
+            "run": None if snapshot is None else _analysis_run_snapshot(snapshot),
+            "validationFailures": [],
+            "errors": [],
+        }
+
+    @app.get(
+        "/api/v1/applications/analysis/runs/{runId}",
+        operation_id="getApplicationAnalysisRun",
+        response_model=AnalysisRunResponse,
+        responses=_api_error_responses(404, 500, 503),
+    )
+    async def get_application_analysis_run(
+        run_id: str = ApiPath(alias="runId"),
+    ):
+        snapshot = analysis_run_service.get(run_id)
+        if snapshot is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "code": "not_found",
+                    "message": "Analysis Run was not found.",
+                },
+            )
+        return _analysis_run_response(snapshot)
+
+    @app.post(
+        "/api/v1/applications/analysis/runs/{runId}/cancel",
+        operation_id="cancelApplicationAnalysisRun",
+        response_model=AnalysisRunResponse,
+        responses=_api_error_responses(404, 500, 503),
+    )
+    async def cancel_application_analysis_run(
+        run_id: str = ApiPath(alias="runId"),
+    ):
+        snapshot = analysis_run_service.cancel(run_id)
+        if snapshot is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "code": "not_found",
+                    "message": "Analysis Run was not found.",
+                },
+            )
+        analysis_worker.wake()
+        return _analysis_run_response(snapshot)
 
     @app.get("/api/v1/resumes/queue", operation_id="getResumeCreationQueue", response_model=GetResumeCreationQueueResponse, responses=_api_error_responses(400, 500))
     async def get_resume_queue(limit: int = Query(default=5, ge=1, le=10), cursor: str | None = None):

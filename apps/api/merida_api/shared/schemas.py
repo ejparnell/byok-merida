@@ -50,6 +50,9 @@ ApiErrorCode = Literal[
     "pdf_not_found",
     "method_not_allowed",
     "conflict",
+    "analysis_run_active",
+    "idempotency_conflict",
+    "analysis_authorization_blocked",
     "payload_too_large",
     "unsupported_media_type",
     "internal_error",
@@ -60,6 +63,7 @@ class ApiErrorDetail(ApiModel):
     code: ApiErrorCode
     message: str
     request_id: str | None = Field(alias="requestId")
+    active_run_id: str | None = Field(default=None, alias="activeRunId")
 
 
 class ApiErrorResponse(CommonResponse):

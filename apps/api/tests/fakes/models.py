@@ -1,4 +1,11 @@
+import hashlib
+import json
+
+from merida_api.features.applications.analysis_authorization import (
+    PreparedAnalysisCall,
+)
 from merida_api.features.applications.workspace import (
+    AnalysisCallEvidence,
     AnalysisModelResponse,
     ApplicationRecord,
 )
@@ -10,7 +17,51 @@ from merida_api.features.resumes.workspace import (
 
 
 class FakeApplicationAnalysisModel:
+    def prepare(
+        self, application: ApplicationRecord, *, repair_code: str | None = None
+    ) -> PreparedAnalysisCall:
+        envelope = json.dumps(
+            {
+                "model": "deepseek-v4-flash",
+                "messages": [
+                    {"role": "system", "content": "Analyze job content."},
+                    {
+                        "role": "user",
+                        "content": (
+                            application.job_content or ""
+                        )
+                        + (f" Repair: {repair_code}" if repair_code else ""),
+                    },
+                ],
+                "max_tokens": 8000,
+                "response_format": {"type": "json_object"},
+                "stream": False,
+                "reasoning_effort": "high",
+                "thinking": {"type": "enabled"},
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return PreparedAnalysisCall(
+            endpoint="https://api.deepseek.com/v1/chat/completions",
+            model="deepseek-v4-flash",
+            max_output_tokens=8000,
+            rendered_request=envelope,
+            opaque=(application, repair_code),
+        )
+
+    async def transmit(
+        self, prepared: PreparedAnalysisCall
+    ) -> AnalysisModelResponse:
+        application, repair_code = prepared.opaque
+        return self._response(application, repair_code=repair_code)
+
     async def generate(
+        self, application: ApplicationRecord, *, repair_code: str | None = None
+    ) -> AnalysisModelResponse:
+        return self._response(application, repair_code=repair_code)
+
+    def _response(
         self, application: ApplicationRecord, *, repair_code: str | None = None
     ) -> AnalysisModelResponse:
         del repair_code
@@ -34,6 +85,9 @@ class FakeApplicationAnalysisModel:
             ", ".join(name for name, _evidence in signals)
             or "transferable engineering experience"
         )
+        request_id = hashlib.sha256(
+            f"{application.id}:{application.job_content}".encode()
+        ).hexdigest()[:20]
         return AnalysisModelResponse(
             payload={
                 "summary": [
@@ -50,7 +104,19 @@ class FakeApplicationAnalysisModel:
                     }
                     for name, evidence in signals
                 ],
-            }
+            },
+            call_evidence=AnalysisCallEvidence(
+                transmission_state="sent",
+                finish_reason="stop",
+                model_id="deepseek-v4-flash",
+                request_id=f"fake-{request_id}",
+                input_tokens=max(1, len(application.job_content or "") // 3),
+                output_tokens=400,
+                total_tokens=max(1, len(application.job_content or "") // 3)
+                + 400,
+                cache_hit_input_tokens=0,
+                reasoning_output_tokens=200,
+            ),
         )
 
 

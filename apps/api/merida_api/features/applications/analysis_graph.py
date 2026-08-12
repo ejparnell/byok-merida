@@ -5,8 +5,10 @@ from uuid import uuid4
 from langgraph.graph import END, START, StateGraph
 
 from .ports import ApplicationAnalysisModel, ApplicationAnalysisStore
+from .analysis_run_store import AnalysisRunStoreError
 from .analysis_model import AnalysisModelOutputError, validate_analysis_payload
 from .workspace import (
+    AnalysisCallEvidence,
     AnalysisModelResponse,
     ApplicationAnalysisDocument,
     ApplicationAnalysisDraft,
@@ -20,9 +22,17 @@ from ...matching import (
     EvidenceMatchingEngine,
     MatchingResult,
 )
+from ...shared.workspace import (
+    WorkspaceCommitUnknownError,
+    WorkspaceDataError,
+    WorkspaceProviderError,
+)
 
 
 AnalysisItemResult = Literal["analyzed", "repaired", "skipped", "failed"]
+AnalysisFailureScope = Literal["candidate", "run"]
+_APPLICATION_CALL_BUDGET = 3
+_PRETRANSMISSION_RECOVERY_LIMIT = 3
 
 
 @dataclass(frozen=True)
@@ -31,6 +41,9 @@ class AnalysisGraphOutcome:
     result: AnalysisItemResult
     match_score: int | None
     errors: tuple[str, ...] = ()
+    call_evidence: tuple[AnalysisCallEvidence, ...] = ()
+    reason_code: str | None = None
+    failure_scope: AnalysisFailureScope | None = None
 
 
 class _AnalysisState(TypedDict, total=False):
@@ -40,8 +53,11 @@ class _AnalysisState(TypedDict, total=False):
     application_id: str
     application: ApplicationRecord
     analysis_attempt: int
+    pretransmission_failures: int
+    call_evidence: tuple[AnalysisCallEvidence, ...]
     model_response: AnalysisModelResponse
     validation_error: str
+    provider_error: bool
     terminal_error: bool
     draft: ApplicationAnalysisDraft
     evidence: tuple[EvidenceItem, ...]
@@ -78,17 +94,47 @@ class ApplicationAnalysisGraph:
                     "application_id": application.id,
                     "application": application,
                     "analysis_attempt": 0,
+                    "pretransmission_failures": 0,
+                    "call_evidence": (),
                     "commit_stage": "none",
                     "errors": (),
                 }
             )
             return state["outcome"]
+        except WorkspaceCommitUnknownError:
+            raise
+        except AnalysisRunStoreError:
+            raise
+        except WorkspaceProviderError as error:
+            if error.status == 404:
+                return AnalysisGraphOutcome(
+                    application=application,
+                    result="failed",
+                    match_score=None,
+                    errors=("Application source is no longer readable.",),
+                    reason_code="source_unreadable",
+                    failure_scope="candidate",
+                )
+            return AnalysisGraphOutcome(
+                application=application,
+                result="failed",
+                match_score=None,
+                errors=("Application Analysis storage is unavailable.",),
+                reason_code="unsafe_storage_failure",
+                failure_scope="run",
+            )
         except Exception:
             return AnalysisGraphOutcome(
                 application=application,
                 result="failed",
                 match_score=None,
                 errors=("Application Analysis failed for this item.",),
+                reason_code="unsafe_storage_failure",
+                failure_scope="run",
+            )
+        finally:
+            _settle_model_call(
+                self._model, result_code="response_processing_failed"
             )
 
     def _build_graph(self):
@@ -110,7 +156,14 @@ class ApplicationAnalysisGraph:
         graph.add_node("complete_repair", self._complete_repair)
 
         graph.add_edge(START, "load_and_revalidate_application")
-        graph.add_edge("load_and_revalidate_application", "inspect_existing_analysis")
+        graph.add_conditional_edges(
+            "load_and_revalidate_application",
+            self._route_after_load,
+            {
+                "loaded": "inspect_existing_analysis",
+                "failed": END,
+            },
+        )
         graph.add_conditional_edges(
             "inspect_existing_analysis",
             self._route_after_inspection,
@@ -121,9 +174,23 @@ class ApplicationAnalysisGraph:
             },
         )
         graph.add_edge("skip_ineligible", END)
-        graph.add_edge("repair_analysis_properties", "complete_repair")
+        graph.add_conditional_edges(
+            "repair_analysis_properties",
+            self._route_after_load,
+            {
+                "loaded": "complete_repair",
+                "failed": END,
+            },
+        )
         graph.add_edge("complete_repair", END)
-        graph.add_edge("load_master_resume_evidence", "call_analysis_model")
+        graph.add_conditional_edges(
+            "load_master_resume_evidence",
+            self._route_after_load,
+            {
+                "loaded": "call_analysis_model",
+                "failed": END,
+            },
+        )
         graph.add_edge("call_analysis_model", "validate_analysis_output")
         graph.add_conditional_edges(
             "validate_analysis_output",
@@ -144,11 +211,49 @@ class ApplicationAnalysisGraph:
         return graph.compile()
 
     async def _load_application(self, state: _AnalysisState) -> dict:
-        return {
-            "application": await self._store.load_analysis_input(
+        try:
+            application = await self._store.load_analysis_input(
                 state["application_id"]
             )
-        }
+        except WorkspaceDataError:
+            return {
+                "outcome": AnalysisGraphOutcome(
+                    application=state["application"],
+                    result="failed",
+                    match_score=None,
+                    errors=("Application source is no longer readable.",),
+                    reason_code="source_unreadable",
+                    failure_scope="candidate",
+                )
+            }
+        except WorkspaceProviderError as error:
+            if error.status == 404:
+                return {
+                    "outcome": AnalysisGraphOutcome(
+                        application=state["application"],
+                        result="failed",
+                        match_score=None,
+                        errors=("Application source is no longer readable.",),
+                        reason_code="source_unreadable",
+                        failure_scope="candidate",
+                    )
+                }
+            raise
+        if not (application.job_content or "").strip():
+            return {
+                "outcome": AnalysisGraphOutcome(
+                    application=application,
+                    result="failed",
+                    match_score=None,
+                    errors=("Application source is no longer readable.",),
+                    reason_code="source_unreadable",
+                    failure_scope="candidate",
+                )
+            }
+        return {"application": application}
+
+    def _route_after_load(self, state: _AnalysisState) -> str:
+        return "failed" if "outcome" in state else "loaded"
 
     async def _inspect_existing(self, state: _AnalysisState) -> dict:
         return {}
@@ -170,6 +275,8 @@ class ApplicationAnalysisGraph:
                 result="skipped",
                 match_score=state["application"].match_score,
                 errors=("Job Posting is no longer eligible for Analysis.",),
+                reason_code="became_ineligible",
+                failure_scope="candidate",
             )
         }
 
@@ -183,7 +290,16 @@ class ApplicationAnalysisGraph:
             else application.match_score
         )
         if score is None:
-            evidence = await self._store.load_analysis_evidence()
+            try:
+                evidence = await self._store.load_analysis_evidence()
+            except (WorkspaceDataError, WorkspaceProviderError):
+                return {
+                    "outcome": _master_resume_evidence_failure(application)
+                }
+            if not evidence:
+                return {
+                    "outcome": _master_resume_evidence_failure(application)
+                }
             legacy_signals = tuple(
                 SkillSignal(
                     name=signal.name,
@@ -213,46 +329,98 @@ class ApplicationAnalysisGraph:
         }
 
     async def _load_evidence(self, state: _AnalysisState) -> dict:
-        return {"evidence": await self._store.load_analysis_evidence()}
+        try:
+            evidence = await self._store.load_analysis_evidence()
+        except (WorkspaceDataError, WorkspaceProviderError):
+            return {
+                "outcome": _master_resume_evidence_failure(
+                    state["application"]
+                )
+            }
+        if not evidence:
+            return {
+                "outcome": _master_resume_evidence_failure(
+                    state["application"]
+                )
+            }
+        return {"evidence": evidence}
 
     async def _call_model(self, state: _AnalysisState) -> dict:
-        attempt = state.get("analysis_attempt", 0) + 1
         try:
             response = await self._model.generate(
                 state["application"],
                 repair_code=state.get("validation_error"),
             )
+            evidence = response.call_evidence or AnalysisCallEvidence(
+                transmission_state="sent"
+            )
             return {
-                "analysis_attempt": attempt,
+                "analysis_attempt": state.get("analysis_attempt", 0)
+                + int(evidence.consumed_transmission),
+                "pretransmission_failures": state.get(
+                    "pretransmission_failures", 0
+                )
+                + int(not evidence.consumed_transmission),
+                "call_evidence": (*state.get("call_evidence", ()), evidence),
                 "model_response": response,
+                "provider_error": False,
                 "terminal_error": False,
             }
-        except Exception:
+        except Exception as error:
+            if isinstance(error, AnalysisRunStoreError):
+                raise
+            evidence = getattr(error, "call_evidence", None)
+            if not isinstance(evidence, AnalysisCallEvidence):
+                evidence = AnalysisCallEvidence(
+                    transmission_state=(
+                        "not_transmitted"
+                        if isinstance(error, AnalysisModelOutputError)
+                        else "indeterminate"
+                    )
+                )
+            retryable = getattr(error, "retryable", False) is True
+            error_code = getattr(error, "code", "provider_error")
+            if not isinstance(error_code, str):
+                error_code = "provider_error"
             return {
-                "analysis_attempt": attempt,
-                "validation_error": "provider_error",
-                "terminal_error": True,
+                "analysis_attempt": state.get("analysis_attempt", 0)
+                + int(evidence.consumed_transmission),
+                "pretransmission_failures": state.get(
+                    "pretransmission_failures", 0
+                )
+                + int(not evidence.consumed_transmission),
+                "call_evidence": (*state.get("call_evidence", ()), evidence),
+                "validation_error": error_code,
+                "provider_error": True,
+                "terminal_error": not retryable,
                 "errors": ("Application Analysis model call failed.",),
             }
 
     async def _validate_output(self, state: _AnalysisState) -> dict:
-        if state.get("terminal_error"):
+        if state.get("provider_error"):
             return {}
         response = state["model_response"]
         if response.error_code:
+            _settle_model_call(self._model, result_code="response_invalid")
             return {"validation_error": response.error_code}
         try:
             draft = validate_analysis_payload(
                 response.payload or {}, state["application"].job_content or ""
             )
         except AnalysisModelOutputError as error:
+            _settle_model_call(self._model, result_code="response_invalid")
             return {"validation_error": error.code}
         return {"draft": draft, "validation_error": ""}
 
     def _route_after_validation(self, state: _AnalysisState) -> str:
         if not state.get("validation_error"):
             return "valid"
-        if not state.get("terminal_error") and state["analysis_attempt"] < 2:
+        if (
+            not state.get("terminal_error")
+            and state.get("analysis_attempt", 0) < _APPLICATION_CALL_BUDGET
+            and state.get("pretransmission_failures", 0)
+            < _PRETRANSMISSION_RECOVERY_LIMIT
+        ):
             return "repair"
         return "failed"
 
@@ -264,6 +432,10 @@ class ApplicationAnalysisGraph:
                 match_score=None,
                 errors=state.get("errors")
                 or ("Application Analysis output failed validation.",),
+                call_evidence=state.get("call_evidence", ()),
+                reason_code=state.get("validation_error")
+                or "invalid_analysis_output",
+                failure_scope=_failure_scope(state.get("validation_error")),
             )
         }
 
@@ -293,9 +465,33 @@ class ApplicationAnalysisGraph:
         }
 
     async def _append_body(self, state: _AnalysisState) -> dict:
-        await self._store.append_application_analysis(
-            state["application"].id, state["document"]
-        )
+        try:
+            await self._store.append_application_analysis(
+                state["application"].id, state["document"]
+            )
+        except WorkspaceCommitUnknownError:
+            _settle_model_call(
+                self._model,
+                result_code="response_valid_commit_unknown",
+            )
+            raise
+        except WorkspaceProviderError as error:
+            _settle_model_call(
+                self._model,
+                result_code=(
+                    "response_valid_source_unreadable"
+                    if error.status == 404
+                    else "response_valid_storage_rejected"
+                ),
+            )
+            raise
+        except BaseException:
+            _settle_model_call(
+                self._model,
+                result_code="response_valid_storage_rejected",
+            )
+            raise
+        _settle_model_call(self._model, result_code="response_valid")
         return {"commit_stage": "body_appended"}
 
     async def _commit_properties(self, state: _AnalysisState) -> dict:
@@ -311,5 +507,47 @@ class ApplicationAnalysisGraph:
                 application=state["application"],
                 result="analyzed",
                 match_score=state["document"].match_score,
+                call_evidence=state.get("call_evidence", ()),
             )
         }
+
+
+def _failure_scope(reason_code: str | None) -> AnalysisFailureScope:
+    if reason_code in {
+        "spend_limited",
+        "rate_card_unavailable",
+        "model_not_approved",
+        "pricing_approval_expired",
+        "output_bound_not_approved",
+        "tokenizer_unavailable",
+        "request_not_rendered",
+        "authentication_failed",
+        "provider_unavailable",
+        "transport_unavailable",
+        "absolute_deadline_exceeded",
+        "rate_limited",
+        "unsafe_storage_failure",
+        "invalid_request",
+        "provider_error",
+    }:
+        return "run"
+    return "candidate"
+
+
+def _master_resume_evidence_failure(
+    application: ApplicationRecord,
+) -> AnalysisGraphOutcome:
+    return AnalysisGraphOutcome(
+        application=application,
+        result="failed",
+        match_score=None,
+        errors=("Master Resume evidence is unavailable.",),
+        reason_code="master_resume_evidence_unavailable",
+        failure_scope="run",
+    )
+
+
+def _settle_model_call(model: object, *, result_code: str) -> None:
+    settle = getattr(model, "settle_last_call", None)
+    if callable(settle):
+        settle(result_code=result_code)

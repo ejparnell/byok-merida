@@ -207,6 +207,15 @@ class FakeWorkspace:
             has_more=pagination["hasMore"],
         )
 
+    async def load_analysis_queue_snapshot(
+        self, *, excluded_application_ids: frozenset[str] = frozenset()
+    ) -> tuple[ApplicationRecord, ...]:
+        return tuple(
+            self._application_record(item)
+            for item in self._analysis_candidates()
+            if item["id"] not in excluded_application_ids
+        )
+
     async def load_analysis_input(self, application_id: str) -> ApplicationRecord:
         application = next(
             (item for item in self._state["applications"] if item["id"] == application_id),

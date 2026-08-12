@@ -45,6 +45,76 @@ FIXTURE_REGRESSIONS = {
     "PRIVACY-ADD-001": ("test_public_contract", "test_completed_workflow_logs_only_safe_metadata"),
 }
 
+# The parity fixtures above protect the pre-durable product contract. These
+# regression owners extend that inventory for the durable Analysis Run without
+# forcing the new workflow into a legacy fixture shape.
+DURABLE_ANALYSIS_BEHAVIOR_INVENTORY = {
+    "target-pursuit-and-fixed-candidates": {
+        "apps/api/tests/test_analysis_run_api.py": (
+            "test_public_run_returns_202_and_pursues_multiple_completions",
+            "test_candidate_source_reload_defect_backfills_without_failing_the_run",
+        ),
+        "apps/api/tests/test_analysis_runs.py": (
+            "test_run_pursues_completion_target_through_fixed_candidate_set",
+            "test_start_is_idempotent_and_does_not_resnapshot_candidates",
+        ),
+    },
+    "thinking-output-and-three-transmission-bound": {
+        "apps/api/tests/test_deepseek_analysis.py": (
+            "test_application_analysis_explicitly_uses_bounded_high_effort_thinking",
+            "test_analysis_never_makes_a_fourth_transmission_after_mixed_recovery",
+            "test_public_analysis_discards_bad_signals_and_persists_a_prioritized_completion",
+        ),
+    },
+    "atomic-authorization-and-hard-spend-ceiling": {
+        "apps/api/tests/test_analysis_run_store.py": (
+            "test_provider_call_reservations_are_atomic_under_concurrent_admission",
+            "test_analysis_run_ledger_rejects_private_content_and_has_only_safe_columns",
+        ),
+        "apps/api/tests/test_analysis_spend.py": (
+            "test_reviewed_tokenizer_and_protocol_evidence_bound_the_exact_request",
+            "test_valid_usage_settles_once_while_untrusted_evidence_releases_nothing",
+        ),
+    },
+    "restart-recovery-and-lease-fencing": {
+        "apps/api/tests/test_analysis_run_api.py": (
+            "test_fresh_app_instance_resumes_same_queued_run_and_candidate_set",
+            "test_restart_resumes_cancelling_without_scheduling_work",
+        ),
+        "apps/api/tests/test_analysis_runs.py": (
+            "test_reclaimed_worker_fences_stale_notion_commit_after_provider_response",
+            "test_restart_settles_recorded_response_and_repairs_without_retransmission",
+        ),
+    },
+    "safe-cancellation-and-conservative-inflight-spend": {
+        "apps/api/tests/test_analysis_run_api.py": (
+            "test_cancel_before_dispatch_is_durable_and_idempotent",
+            "test_cancel_during_valid_inflight_call_commits_it_then_stops",
+            "test_cancel_during_unreconcilable_inflight_call_retains_reservation",
+        ),
+    },
+    "dashboard-reconnection-spend-and-terminal-presentation": {
+        "apps/web/src/features/dashboard/dashboardSession.test.ts": (
+            "load reconnects to an active run and polls the durable identity",
+            "terminal poll persists the result and refreshes both queues at page one",
+        ),
+        "apps/web/src/features/dashboard/analysisRunPresentation.test.ts": (
+            "presents every terminal outcome and keeps it visible",
+            "presents primary progress and committed spend against the $0.50 ceiling",
+        ),
+    },
+    "canonical-target-contract": {
+        "apps/api/tests/test_analysis_run_api.py": (
+            "test_start_requires_idempotency_key_and_rejects_legacy_limit",
+            "test_start_idempotency_and_typed_active_conflict",
+        ),
+        "apps/web/src/shared/api/dashboardClient.test.ts": (
+            "dashboard adapter sends target and one caller-owned idempotency key",
+            "dashboard adapter never retries a failed analysis POST automatically",
+        ),
+    },
+}
+
 
 def _fixtures():
     contract = json.loads(
@@ -305,3 +375,21 @@ def test_final_app_executes_each_required_behavior(fixture, tmp_path, caplog):
 
 def test_every_required_fixture_has_an_executable_observation():
     assert {fixture["id"] for fixture in _fixtures()} == REQUIRED_BEHAVIOR_FIXTURES
+
+
+@pytest.mark.parametrize(
+    ("behavior", "owners"),
+    DURABLE_ANALYSIS_BEHAVIOR_INVENTORY.items(),
+    ids=DURABLE_ANALYSIS_BEHAVIOR_INVENTORY,
+)
+def test_every_durable_analysis_behavior_has_an_owning_regression(
+    behavior, owners
+):
+    assert behavior
+    for relative_path, regression_markers in owners.items():
+        source = (PROJECT_ROOT / relative_path).read_text(encoding="utf-8")
+        for marker in regression_markers:
+            assert marker in source, (
+                f"{behavior} lost its owning regression {marker!r} "
+                f"from {relative_path}."
+            )

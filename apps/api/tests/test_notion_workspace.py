@@ -435,6 +435,108 @@ def test_analysis_queue_filters_unreadable_bodies_and_returns_merida_owned_curso
     ]
 
 
+def test_analysis_queue_snapshot_skips_excluded_pages_before_child_reads_and_sorts():
+    later = application_page()
+    earlier = application_page(
+        id="application-2",
+        url="https://www.notion.so/application-2",
+        properties={
+            **application_page()["properties"],
+            "Job Posting": {
+                "type": "title",
+                "title": rich_text("Developer at Example"),
+            },
+            "Job Title": {
+                "type": "rich_text",
+                "rich_text": rich_text("Developer"),
+            },
+            "Job URL": {
+                "type": "url",
+                "url": "https://example.test/jobs/2",
+            },
+            "Application Date": {
+                "type": "date",
+                "date": {"start": "2026-07-10"},
+            },
+        },
+    )
+    excluded = application_page(
+        id="application-quarantined",
+        url="https://www.notion.so/application-quarantined",
+    )
+    transport = RecordingTransport(
+        [
+            {
+                "results": [later, excluded, earlier],
+                "has_more": False,
+                "next_cursor": None,
+            },
+            {"results": captured_body(), "has_more": False, "next_cursor": None},
+            {"results": captured_body(), "has_more": False, "next_cursor": None},
+        ]
+    )
+
+    snapshot = asyncio.run(
+        workspace(transport).load_analysis_queue_snapshot(
+            excluded_application_ids=frozenset({"application-quarantined"})
+        )
+    )
+
+    assert [item.id for item in snapshot] == ["application-2", "application-1"]
+    assert [path for _method, path, _body in transport.requests] == [
+        "/databases/applications-db/query",
+        "/blocks/application-1/children?page_size=100",
+        "/blocks/application-2/children?page_size=100",
+    ]
+
+
+def test_analysis_queue_snapshot_skips_page_deleted_during_hydration():
+    deleted = application_page()
+    healthy = application_page(
+        id="application-2",
+        url="https://www.notion.so/application-2",
+    )
+    transport = RecordingTransport(
+        [
+            {
+                "results": [deleted, healthy],
+                "has_more": False,
+                "next_cursor": None,
+            },
+            WorkspaceProviderError("Page was deleted.", status=404),
+            {
+                "results": captured_body(),
+                "has_more": False,
+                "next_cursor": None,
+            },
+        ]
+    )
+
+    snapshot = asyncio.run(workspace(transport).load_analysis_queue_snapshot())
+
+    assert [item.id for item in snapshot] == ["application-2"]
+
+
+def test_analysis_queue_snapshot_preserves_systemic_hydration_failure():
+    transport = RecordingTransport(
+        [
+            {
+                "results": [application_page()],
+                "has_more": False,
+                "next_cursor": None,
+            },
+            WorkspaceProviderError(
+                "Notion is unavailable.", status=503, retryable=True
+            ),
+        ]
+    )
+
+    with pytest.raises(WorkspaceProviderError) as failure:
+        asyncio.run(workspace(transport).load_analysis_queue_snapshot())
+
+    assert failure.value.status == 503
+
+
 def test_analysis_store_reads_legacy_analysis_without_merging_raw_blocks():
     transport = RecordingTransport(
         [
@@ -1713,6 +1815,32 @@ def test_notion_transport_normalizes_timeouts_without_leaking_exception_text():
         assert "secret-token-value" not in str(error)
     else:
         raise AssertionError("Expected timeout normalization.")
+
+
+def test_notion_transport_applies_an_absolute_bound_to_ambiguous_mutations():
+    async def never_responds(_request):
+        await asyncio.Event().wait()
+
+    transport = HttpxNotionTransport(
+        "secret-token-value",
+        client_factory=lambda: httpx.AsyncClient(
+            base_url="https://api.notion.com/v1",
+            transport=httpx.MockTransport(never_responds),
+        ),
+        absolute_timeout=0.01,
+    )
+
+    with pytest.raises(WorkspaceProviderError) as raised:
+        asyncio.run(
+            transport.request(
+                "PATCH",
+                "/blocks/application-1/children",
+                {"children": []},
+            )
+        )
+
+    assert str(raised.value) == "Notion could not be reached."
+    assert raised.value.retryable is True
 
 
 def test_notion_transport_normalizes_unexpected_transport_failures():

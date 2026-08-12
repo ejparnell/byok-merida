@@ -26,6 +26,7 @@ SkillSignalCategory = Literal[
 ]
 
 SkillSignalImportance = Literal["required", "preferred", "signal"]
+AnalysisTransmissionState = Literal["not_transmitted", "sent", "indeterminate"]
 
 
 @dataclass(frozen=True)
@@ -43,9 +44,34 @@ class ApplicationAnalysisDraft:
 
 
 @dataclass(frozen=True)
+class AnalysisCallEvidence:
+    """Provider-safe facts about one Analysis transmission.
+
+    This intentionally has no field capable of retaining prompts, responses, or
+    model reasoning. It is the evidence later spend settlement can consume.
+    """
+
+    transmission_state: AnalysisTransmissionState
+    finish_reason: str | None = None
+    model_id: str | None = None
+    request_id: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
+    cache_hit_input_tokens: int | None = None
+    cache_miss_input_tokens: int | None = None
+    reasoning_output_tokens: int | None = None
+
+    @property
+    def consumed_transmission(self) -> bool:
+        return self.transmission_state != "not_transmitted"
+
+
+@dataclass(frozen=True)
 class AnalysisModelResponse:
     payload: dict[str, Any] | None = None
     error_code: str | None = None
+    call_evidence: AnalysisCallEvidence | None = None
 
 
 @dataclass(frozen=True)

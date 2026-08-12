@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { ConfirmApplicationData, ConfirmApplicationErrors, ConfirmApplicationResponses, CreateResumeData, CreateResumeErrors, CreateResumeResponses, DownloadResumePdfData, DownloadResumePdfErrors, DownloadResumePdfResponses, GetApplicationAnalysisHealthData, GetApplicationAnalysisHealthErrors, GetApplicationAnalysisHealthResponses, GetApplicationAnalysisQueueData, GetApplicationAnalysisQueueErrors, GetApplicationAnalysisQueueResponses, GetApplicationCaptureMatchesData, GetApplicationCaptureMatchesErrors, GetApplicationCaptureMatchesResponses, GetHealthData, GetHealthErrors, GetHealthResponses, GetNotionHealthData, GetNotionHealthErrors, GetNotionHealthResponses, GetOperatorSettingsData, GetOperatorSettingsErrors, GetOperatorSettingsResponses, GetResumeCreationHealthData, GetResumeCreationHealthErrors, GetResumeCreationHealthResponses, GetResumeCreationQueueData, GetResumeCreationQueueErrors, GetResumeCreationQueueResponses, PrepareApplicationData, PrepareApplicationErrors, PrepareApplicationResponses, RunApplicationAnalysisData, RunApplicationAnalysisErrors, RunApplicationAnalysisResponses } from './types.gen';
+import type { CancelApplicationAnalysisRunData, CancelApplicationAnalysisRunErrors, CancelApplicationAnalysisRunResponses, ConfirmApplicationData, ConfirmApplicationErrors, ConfirmApplicationResponses, CreateResumeData, CreateResumeErrors, CreateResumeResponses, DownloadResumePdfData, DownloadResumePdfErrors, DownloadResumePdfResponses, GetActiveApplicationAnalysisRunData, GetActiveApplicationAnalysisRunErrors, GetActiveApplicationAnalysisRunResponses, GetApplicationAnalysisHealthData, GetApplicationAnalysisHealthErrors, GetApplicationAnalysisHealthResponses, GetApplicationAnalysisQueueData, GetApplicationAnalysisQueueErrors, GetApplicationAnalysisQueueResponses, GetApplicationAnalysisRunData, GetApplicationAnalysisRunErrors, GetApplicationAnalysisRunResponses, GetApplicationCaptureMatchesData, GetApplicationCaptureMatchesErrors, GetApplicationCaptureMatchesResponses, GetHealthData, GetHealthErrors, GetHealthResponses, GetNotionHealthData, GetNotionHealthErrors, GetNotionHealthResponses, GetOperatorSettingsData, GetOperatorSettingsErrors, GetOperatorSettingsResponses, GetResumeCreationHealthData, GetResumeCreationHealthErrors, GetResumeCreationHealthResponses, GetResumeCreationQueueData, GetResumeCreationQueueErrors, GetResumeCreationQueueResponses, PrepareApplicationData, PrepareApplicationErrors, PrepareApplicationResponses, RunApplicationAnalysisData, RunApplicationAnalysisErrors, RunApplicationAnalysisResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -34,6 +34,21 @@ export const runApplicationAnalysis = <ThrowOnError extends boolean = false>(opt
         ...options.headers
     }
 });
+
+/**
+ * Get Active Application Analysis Run
+ */
+export const getActiveApplicationAnalysisRun = <ThrowOnError extends boolean = false>(options?: Options<GetActiveApplicationAnalysisRunData, ThrowOnError>): RequestResult<GetActiveApplicationAnalysisRunResponses, GetActiveApplicationAnalysisRunErrors, ThrowOnError> => (options?.client ?? client).get<GetActiveApplicationAnalysisRunResponses, GetActiveApplicationAnalysisRunErrors, ThrowOnError>({ url: '/api/v1/applications/analysis/runs/active', ...options });
+
+/**
+ * Get Application Analysis Run
+ */
+export const getApplicationAnalysisRun = <ThrowOnError extends boolean = false>(options: Options<GetApplicationAnalysisRunData, ThrowOnError>): RequestResult<GetApplicationAnalysisRunResponses, GetApplicationAnalysisRunErrors, ThrowOnError> => (options.client ?? client).get<GetApplicationAnalysisRunResponses, GetApplicationAnalysisRunErrors, ThrowOnError>({ url: '/api/v1/applications/analysis/runs/{runId}', ...options });
+
+/**
+ * Cancel Application Analysis Run
+ */
+export const cancelApplicationAnalysisRun = <ThrowOnError extends boolean = false>(options: Options<CancelApplicationAnalysisRunData, ThrowOnError>): RequestResult<CancelApplicationAnalysisRunResponses, CancelApplicationAnalysisRunErrors, ThrowOnError> => (options.client ?? client).post<CancelApplicationAnalysisRunResponses, CancelApplicationAnalysisRunErrors, ThrowOnError>({ url: '/api/v1/applications/analysis/runs/{runId}/cancel', ...options });
 
 /**
  * Get Application Capture Matches

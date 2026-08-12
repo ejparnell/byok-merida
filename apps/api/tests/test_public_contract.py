@@ -1,14 +1,17 @@
 import asyncio
 import json
+import time
 from datetime import datetime
 from pathlib import Path
 
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from httpx import Response
 
 from merida_api.app import create_app
 from merida_api.core.settings import Settings
+from merida_api.features.applications.workspace import AnalysisModelResponse
 from merida_api.features.applications.schemas import ConfirmedApplicationDraft
 from merida_api.shared.workspace import (
     WorkspaceIssue,
@@ -16,6 +19,7 @@ from merida_api.shared.workspace import (
     WorkspaceReadiness,
 )
 from fakes.app import create_test_app
+from fakes.models import FakeApplicationAnalysisModel
 from fakes.workspace import FakeWorkspace, initial_test_state
 
 
@@ -35,6 +39,34 @@ def make_client(tmp_path, **overrides):
         **overrides,
     )
     return TestClient(create_test_app(settings, state_path=tmp_path / "state.json"))
+
+
+def _start_analysis_run(
+    client: TestClient, *, target: int, idempotency_key: str
+) -> tuple[Response, dict]:
+    response = client.post(
+        "/api/v1/applications/analysis/run",
+        headers={"Idempotency-Key": idempotency_key},
+        json={"target": target},
+    )
+    assert response.status_code == 202
+    return response, response.json()["run"]
+
+
+def _eventually_finished_analysis_run(
+    client: TestClient, run_id: str
+) -> dict:
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        response = client.get(
+            f"/api/v1/applications/analysis/runs/{run_id}"
+        )
+        assert response.status_code == 200
+        run = response.json()["run"]
+        if run["lifecycle"] == "finished":
+            return run
+        time.sleep(0.005)
+    raise AssertionError("Analysis Run did not finish within five seconds.")
 
 
 def test_health_and_operator_settings_are_safe_and_ready(tmp_path):
@@ -230,8 +262,8 @@ def test_provider_outages_return_typed_workflow_blocks(tmp_path):
         workspace=UnavailableWorkspace(tmp_path / "state.json"),
     )
 
-    with TestClient(app) as client:
-        responses = (
+    with TestClient(app, raise_server_exceptions=False) as client:
+        blocked_responses = (
             client.get(
                 "/api/v1/applications/capture-matches",
                 params={"companyName": "Example", "role": "Engineer"},
@@ -251,17 +283,27 @@ def test_provider_outages_return_typed_workflow_blocks(tmp_path):
                 },
             ),
             client.get("/api/v1/applications/analysis/queue"),
-            client.post("/api/v1/applications/analysis/run", json={"limit": 1}),
             client.get("/api/v1/resumes/queue"),
             client.post(
                 "/api/v1/resumes/create", json={"applicationId": "app-orbit"}
             ),
         )
+        analysis_start = client.post(
+            "/api/v1/applications/analysis/run",
+            headers={"Idempotency-Key": "provider-outage"},
+            json={"target": 1},
+        )
 
-    for response in responses:
+    for response in blocked_responses:
         assert response.status_code == 200
         assert response.json()["status"] == "blocked"
         assert response.json()["errors"] == ["Notion could not be reached."]
+    assert analysis_start.status_code == 503
+    assert (
+        analysis_start.json()["error"]["code"]
+        == "analysis_authorization_blocked"
+    )
+    assert "Notion could not be reached." not in analysis_start.text
 
 
 def test_legacy_demo_settings_cannot_create_product_state(tmp_path):
@@ -514,16 +556,20 @@ def test_analysis_and_resume_workflows_move_items_between_eligible_queues(tmp_pa
         ).json()
         assert next_page["items"][0]["applicationId"] != analysis_queue["items"][0]["applicationId"]
 
-        run = client.post(
-            "/api/v1/applications/analysis/run", json={"limit": 1}
-        ).json()
-        assert run["result"] == "completed"
-        assert run["processed"] == 1
-        assert run["succeeded"] == 1
-        assert run["items"][0]["result"] == "analyzed"
+        accepted, initial = _start_analysis_run(
+            client,
+            target=1,
+            idempotency_key="queue-movement",
+        )
+        run = _eventually_finished_analysis_run(client, initial["runId"])
+        assert accepted.status_code == 202
+        assert run["outcome"] == "target_met"
+        assert run["progress"]["completions"] == 1
+        assert run["progress"]["evaluated"] == 1
+        assert run["candidates"][0]["state"] == "analyzed"
 
         resume_queue = client.get("/api/v1/resumes/queue", params={"limit": 10}).json()
-        analyzed_id = run["items"][0]["applicationId"]
+        analyzed_id = run["candidates"][0]["applicationId"]
         assert analyzed_id in {item["applicationId"] for item in resume_queue["items"]}
 
         created = client.post(
@@ -677,7 +723,9 @@ def test_unconfigured_real_runtime_exposes_typed_blocked_outcomes(tmp_path):
         health = client.get("/api/v1/health")
         analysis_queue = client.get("/api/v1/applications/analysis/queue")
         analysis_run = client.post(
-            "/api/v1/applications/analysis/run", json={"limit": 1}
+            "/api/v1/applications/analysis/run",
+            headers={"Idempotency-Key": "unconfigured-runtime"},
+            json={"target": 1},
         )
         confirm = client.post(
             "/api/v1/applications/confirm",
@@ -703,9 +751,10 @@ def test_unconfigured_real_runtime_exposes_typed_blocked_outcomes(tmp_path):
         assert queue.status_code == 200
         assert queue.json()["status"] == "blocked"
         assert queue.json()["items"] == []
-    assert analysis_run.status_code == 200
-    assert analysis_run.json()["result"] == "blocked"
-    assert analysis_run.json()["processed"] == 0
+    assert analysis_run.status_code == 503
+    assert analysis_run.json()["error"]["code"] == (
+        "analysis_authorization_blocked"
+    )
     assert confirm.status_code == 200
     assert confirm.json()["result"] == "blocked"
     assert resume.status_code == 200
@@ -726,13 +775,18 @@ def test_analysis_repairs_existing_findings_without_rerunning_work(tmp_path):
     )
 
     with TestClient(create_test_app(settings, state_path=state_path)) as client:
-        response = client.post(
-            "/api/v1/applications/analysis/run", json={"limit": 1}
+        response, initial = _start_analysis_run(
+            client,
+            target=1,
+            idempotency_key="repair-existing-findings",
         )
+        run = _eventually_finished_analysis_run(client, initial["runId"])
 
-    assert response.status_code == 200
-    assert response.json()["items"][0]["result"] == "repaired"
-    assert response.json()["repaired"] == 1
+    assert response.status_code == 202
+    assert run["outcome"] == "target_met"
+    assert run["candidates"][0]["state"] == "repaired"
+    assert run["progress"]["repaired"] == 1
+    assert run["progress"]["completions"] == 1
 
 
 def test_analysis_recomputes_a_missing_legacy_match_score_deterministically(tmp_path):
@@ -751,27 +805,48 @@ def test_analysis_recomputes_a_missing_legacy_match_score_deterministically(tmp_
     )
 
     with TestClient(create_test_app(settings, state_path=state_path)) as client:
-        response = client.post(
-            "/api/v1/applications/analysis/run", json={"limit": 1}
-        ).json()
+        _response, initial = _start_analysis_run(
+            client,
+            target=1,
+            idempotency_key="repair-missing-match-score",
+        )
+        run = _eventually_finished_analysis_run(client, initial["runId"])
 
-    repaired = next(item for item in response["items"] if item["applicationId"] == "app-northstar")
-    assert repaired["result"] == "repaired"
-    assert isinstance(repaired["matchScore"], int)
+    repaired = next(
+        item
+        for item in run["candidates"]
+        if item["applicationId"] == "app-northstar"
+    )
+    persisted = next(
+        item
+        for item in json.loads(state_path.read_text())["applications"]
+        if item["id"] == "app-northstar"
+    )
+    assert repaired["state"] == "repaired"
+    assert isinstance(persisted["matchScore"], int)
 
 
 def test_public_seam_serializes_partial_analysis_and_failed_resume_outcomes(tmp_path):
     class OutcomeWorkspace(FakeWorkspace):
-        async def append_application_analysis(self, application_id, document):
-            if application_id == "app-lantern":
-                raise WorkspaceProviderError("Notion could not be reached.")
-            await super().append_application_analysis(application_id, document)
-
         async def create_resume_fit_note(self, *args, **kwargs):
             raise RuntimeError("injected Note failure")
 
         async def archive_resume(self, resume_id):
             raise RuntimeError("injected cleanup failure")
+
+    class CandidateFailureAnalysisModel(FakeApplicationAnalysisModel):
+        async def transmit(self, prepared):
+            response = await super().transmit(prepared)
+            application, _repair_code = prepared.opaque
+            if application.id != "app-lantern":
+                return response
+            return AnalysisModelResponse(
+                payload={
+                    "summary": ["Malformed candidate-specific output."],
+                    "skillSignals": [],
+                },
+                call_evidence=response.call_evidence,
+            )
 
     settings = Settings(
         export_path=tmp_path / "export",
@@ -779,17 +854,30 @@ def test_public_seam_serializes_partial_analysis_and_failed_resume_outcomes(tmp_
     )
     workspace = OutcomeWorkspace(tmp_path / "state.json")
 
-    with TestClient(create_test_app(settings, workspace=workspace)) as client:
-        analysis = client.post(
-            "/api/v1/applications/analysis/run", json={"limit": 2}
+    with TestClient(
+        create_test_app(
+            settings,
+            workspace=workspace,
+            analysis_model=CandidateFailureAnalysisModel(),
+        )
+    ) as client:
+        analysis, initial = _start_analysis_run(
+            client,
+            target=2,
+            idempotency_key="partial-analysis",
+        )
+        finished = _eventually_finished_analysis_run(
+            client, initial["runId"]
         )
         resume = client.post(
             "/api/v1/resumes/create", json={"applicationId": "app-orbit"}
         )
 
-    assert analysis.status_code == 200
-    assert analysis.json()["failed"] == 1
-    assert {item["result"] for item in analysis.json()["items"]} == {
+    assert analysis.status_code == 202
+    assert finished["outcome"] == "queue_exhausted"
+    assert finished["progress"]["completions"] == 1
+    assert finished["progress"]["failed"] == 1
+    assert {item["state"] for item in finished["candidates"]} == {
         "analyzed",
         "failed",
     }
@@ -828,7 +916,9 @@ def test_resume_generation_failure_is_logged_with_its_cause(tmp_path, caplog):
 
 def test_invalid_json_and_conflict_use_the_locked_technical_envelope(tmp_path):
     class ConflictWorkspace(FakeWorkspace):
-        async def list_analysis_queue(self, *, limit, cursor):
+        async def load_analysis_queue_snapshot(
+            self, *, excluded_application_ids=frozenset()
+        ):
             raise HTTPException(
                 status_code=409,
                 detail={
@@ -847,10 +937,15 @@ def test_invalid_json_and_conflict_use_the_locked_technical_envelope(tmp_path):
         invalid_json = client.post(
             "/api/v1/applications/analysis/run",
             content="{",
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "Idempotency-Key": "invalid-json",
+            },
         )
         conflict = client.post(
-            "/api/v1/applications/analysis/run", json={"limit": 1}
+            "/api/v1/applications/analysis/run",
+            headers={"Idempotency-Key": "workspace-conflict"},
+            json={"target": 1},
         )
 
     assert invalid_json.status_code == 400
@@ -880,7 +975,12 @@ def test_queue_cursors_are_context_bound_and_expire_after_queue_changes(tmp_path
         wrong_queue = client.get(
             "/api/v1/resumes/queue", params={"limit": 1, "cursor": cursor}
         )
-        client.post("/api/v1/applications/analysis/run", json={"limit": 1})
+        _accepted, initial = _start_analysis_run(
+            client,
+            target=1,
+            idempotency_key="expire-analysis-cursor",
+        )
+        _eventually_finished_analysis_run(client, initial["runId"])
         stale_queue = client.get(
             "/api/v1/applications/analysis/queue",
             params={"limit": 1, "cursor": cursor},
@@ -900,14 +1000,27 @@ def test_built_react_dashboard_is_served_by_the_fastapi_app(tmp_path):
     assert '<div id="root"></div>' in response.text
 
 
-def test_request_validation_uses_the_public_error_envelope(tmp_path):
+def test_analysis_start_rejects_legacy_limit_and_missing_idempotency_key(
+    tmp_path,
+):
     with make_client(tmp_path) as client:
-        response = client.post(
-            "/api/v1/applications/analysis/run", json={"limit": 11}
+        legacy_limit = client.post(
+            "/api/v1/applications/analysis/run",
+            headers={"Idempotency-Key": "legacy-limit"},
+            json={"limit": 5},
+        )
+        missing_key = client.post(
+            "/api/v1/applications/analysis/run",
+            json={"target": 5},
+        )
+        invalid_target = client.post(
+            "/api/v1/applications/analysis/run",
+            headers={"Idempotency-Key": "invalid-target"},
+            json={"target": 11},
         )
 
-    assert response.status_code == 400
-    assert response.json() == {
+    assert legacy_limit.status_code == 400
+    assert legacy_limit.json() == {
         "ok": False,
         "error": {
             "code": "invalid_request",
@@ -918,11 +1031,28 @@ def test_request_validation_uses_the_public_error_envelope(tmp_path):
             {
                 "kind": "request",
                 "field": "limit",
-                "message": "Input should be less than or equal to 10",
+                "message": "Extra inputs are not permitted",
             }
         ],
         "errors": ["Request validation failed."],
     }
+    assert missing_key.status_code == 400
+    assert missing_key.json()["error"]["code"] == "invalid_request"
+    assert missing_key.json()["validationFailures"] == [
+        {
+            "kind": "request",
+            "field": "header.Idempotency-Key",
+            "message": "Field required",
+        }
+    ]
+    assert invalid_target.status_code == 400
+    assert invalid_target.json()["validationFailures"] == [
+        {
+            "kind": "request",
+            "field": "target",
+            "message": "Input should be less than or equal to 10",
+        }
+    ]
 
 
 def test_requests_reject_extra_fields_and_whitespace_only_capture_values(tmp_path):
@@ -994,7 +1124,7 @@ def test_framework_and_media_type_failures_use_public_error_codes(tmp_path):
         wrong_method = client.get("/api/v1/applications/prepare")
         wrong_media_type = client.post(
             "/api/v1/applications/analysis/run",
-            content="limit=5",
+            content="target=5",
             headers={"Content-Type": "text/plain"},
         )
 
@@ -1098,7 +1228,9 @@ def test_cors_allows_only_configured_browser_origins_and_headers(tmp_path):
     preflight_headers = {
         "Origin": extension_origin,
         "Access-Control-Request-Method": "POST",
-        "Access-Control-Request-Headers": "content-type,x-capture-token",
+        "Access-Control-Request-Headers": (
+            "content-type,x-capture-token,idempotency-key"
+        ),
     }
 
     with make_client(tmp_path, extension_origin=extension_origin) as client:
@@ -1113,6 +1245,7 @@ def test_cors_allows_only_configured_browser_origins_and_headers(tmp_path):
     assert allowed.status_code == 200
     assert allowed.headers["access-control-allow-origin"] == extension_origin
     assert "X-Capture-Token" in allowed.headers["access-control-allow-headers"]
+    assert "Idempotency-Key" in allowed.headers["access-control-allow-headers"]
     assert "POST" in allowed.headers["access-control-allow-methods"]
     assert "access-control-allow-credentials" not in allowed.headers
     assert rejected.status_code == 400
@@ -1135,7 +1268,9 @@ def test_unexpected_failures_are_sanitized_and_correlated(tmp_path, caplog):
         create_test_app(settings, workspace=workspace), raise_server_exceptions=False
     ) as client:
         response = client.post(
-            "/api/v1/applications/analysis/run", json={"limit": 1}
+            "/api/v1/applications/analysis/run",
+            headers={"Idempotency-Key": "unexpected-workspace-failure"},
+            json={"target": 1},
         )
 
     assert response.status_code == 500
@@ -1170,50 +1305,76 @@ def test_completed_workflow_logs_only_safe_metadata(tmp_path, caplog):
 
 def test_openapi_locks_the_public_route_inventory_and_named_responses(tmp_path):
     expected = {
-        ("get", "/api/v1/health"): ("getHealth", "HealthResponse"),
+        ("get", "/api/v1/health"): ("getHealth", "HealthResponse", "200"),
         ("get", "/api/v1/health/notion"): (
             "getNotionHealth",
             "NotionHealthResponse",
+            "200",
         ),
         ("get", "/api/v1/health/analysis"): (
             "getApplicationAnalysisHealth",
             "ApplicationAnalysisHealthResponse",
+            "200",
         ),
         ("get", "/api/v1/health/resumes"): (
             "getResumeCreationHealth",
             "ResumeCreationHealthResponse",
+            "200",
         ),
         ("get", "/api/v1/operator/settings"): (
             "getOperatorSettings",
             "OperatorSettingsResponse",
+            "200",
         ),
         ("post", "/api/v1/applications/prepare"): (
             "prepareApplication",
             "PrepareApplicationResponse",
+            "200",
         ),
-            ("post", "/api/v1/applications/confirm"): (
-                "confirmApplication",
-                "ConfirmApplicationResponse",
-            ),
-            ("get", "/api/v1/applications/capture-matches"): (
-                "getApplicationCaptureMatches",
-                "CaptureMatchesResponse",
-            ),
-            ("get", "/api/v1/applications/analysis/queue"): (
+        ("post", "/api/v1/applications/confirm"): (
+            "confirmApplication",
+            "ConfirmApplicationResponse",
+            "200",
+        ),
+        ("get", "/api/v1/applications/capture-matches"): (
+            "getApplicationCaptureMatches",
+            "CaptureMatchesResponse",
+            "200",
+        ),
+        ("get", "/api/v1/applications/analysis/queue"): (
             "getApplicationAnalysisQueue",
             "GetApplicationAnalysisQueueResponse",
+            "200",
         ),
         ("post", "/api/v1/applications/analysis/run"): (
             "runApplicationAnalysis",
-            "RunApplicationAnalysisResponse",
+            "AnalysisRunResponse",
+            "202",
+        ),
+        ("get", "/api/v1/applications/analysis/runs/active"): (
+            "getActiveApplicationAnalysisRun",
+            "ActiveAnalysisRunResponse",
+            "200",
+        ),
+        ("get", "/api/v1/applications/analysis/runs/{runId}"): (
+            "getApplicationAnalysisRun",
+            "AnalysisRunResponse",
+            "200",
+        ),
+        ("post", "/api/v1/applications/analysis/runs/{runId}/cancel"): (
+            "cancelApplicationAnalysisRun",
+            "AnalysisRunResponse",
+            "200",
         ),
         ("get", "/api/v1/resumes/queue"): (
             "getResumeCreationQueue",
             "GetResumeCreationQueueResponse",
+            "200",
         ),
         ("post", "/api/v1/resumes/create"): (
             "createResume",
             "CreateResumeResponse",
+            "200",
         ),
     }
 
@@ -1231,9 +1392,13 @@ def test_openapi_locks_the_public_route_inventory_and_named_responses(tmp_path):
         *expected,
         ("get", "/api/v1/resumes/{resumeId}/pdf"),
     }
-    for (method, path), (operation_id, response_name) in expected.items():
+    for (method, path), (
+        operation_id,
+        response_name,
+        success_status,
+    ) in expected.items():
         operation = schema["paths"][path][method]
-        response_schema = operation["responses"]["200"]["content"][
+        response_schema = operation["responses"][success_status]["content"][
             "application/json"
         ]["schema"]
         assert operation["operationId"] == operation_id
@@ -1254,6 +1419,15 @@ def test_openapi_locks_the_public_route_inventory_and_named_responses(tmp_path):
             "$ref": "#/components/schemas/ApiErrorResponse"
         }
 
+    for method, path in (
+        ("get", "/api/v1/applications/analysis/runs/active"),
+        ("get", "/api/v1/applications/analysis/runs/{runId}"),
+        ("post", "/api/v1/applications/analysis/runs/{runId}/cancel"),
+    ):
+        assert schema["paths"][path][method]["responses"]["503"]["content"][
+            "application/json"
+        ]["schema"] == {"$ref": "#/components/schemas/ApiErrorResponse"}
+
     component_names = set(schema["components"]["schemas"])
     assert {
         "PrepareApplicationRequest",
@@ -1265,6 +1439,7 @@ def test_openapi_locks_the_public_route_inventory_and_named_responses(tmp_path):
         "PrepareCaptureRequest",
         "ConfirmCaptureRequest",
         "AnalysisRunRequest",
+        "RunApplicationAnalysisResponse",
     } & component_names
     capture_header = next(
         parameter
@@ -1274,6 +1449,20 @@ def test_openapi_locks_the_public_route_inventory_and_named_responses(tmp_path):
         if parameter["name"] == "X-Capture-Token"
     )
     assert capture_header["required"] is True
+    start_operation = schema["paths"][
+        "/api/v1/applications/analysis/run"
+    ]["post"]
+    idempotency_header = next(
+        parameter
+        for parameter in start_operation["parameters"]
+        if parameter["name"] == "Idempotency-Key"
+    )
+    assert idempotency_header["required"] is True
+    start_request = schema["components"]["schemas"][
+        "RunApplicationAnalysisRequest"
+    ]
+    assert set(start_request["properties"]) == {"target"}
+    assert start_request["properties"]["target"]["default"] == 5
     assert set(schema["components"]["schemas"]["ApiErrorDetail"]["properties"]["code"]["enum"]) == {
         "invalid_request",
         "invalid_cursor",
@@ -1282,6 +1471,9 @@ def test_openapi_locks_the_public_route_inventory_and_named_responses(tmp_path):
         "pdf_not_found",
         "method_not_allowed",
         "conflict",
+        "analysis_run_active",
+        "idempotency_conflict",
+        "analysis_authorization_blocked",
         "payload_too_large",
         "unsupported_media_type",
         "internal_error",

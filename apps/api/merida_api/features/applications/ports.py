@@ -31,6 +31,9 @@ class CaptureStore(Protocol):
 
 class ApplicationAnalysisStore(Protocol):
     async def validate_analysis_workspace(self) -> WorkspaceReadiness: ...
+    async def load_analysis_queue_snapshot(
+        self, *, excluded_application_ids: frozenset[str] = frozenset()
+    ) -> tuple[ApplicationRecord, ...]: ...
     async def list_analysis_queue(
         self, *, limit: int, cursor: str | None
     ) -> QueuePage[ApplicationRecord]: ...

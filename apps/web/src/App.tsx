@@ -2,15 +2,22 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { cx, Spinner, StatusBadge, StatusDot } from '@merida/ui'
 import type {
+  AnalysisRunSnapshot,
   CreateResumeResponse,
-  RunApplicationAnalysisResponse,
 } from '@merida/api-client'
 
-import { createDashboardSession } from './features/dashboard/dashboardSession.ts'
+import {
+  createDashboardSession,
+  isAnalysisRunActive,
+} from './features/dashboard/dashboardSession.ts'
 import type {
   DashboardSession,
   DashboardState,
 } from './features/dashboard/dashboardSession.ts'
+import {
+  DEFAULT_ANALYSIS_TARGET,
+  presentAnalysisRun,
+} from './features/dashboard/analysisRunPresentation.ts'
 import { createDashboardClient } from './shared/api/dashboardClient.ts'
 
 function Brand() {
@@ -205,57 +212,85 @@ function QueuePagination({
   )
 }
 
-function AnalysisResult({
-  result,
-  onDismiss,
+function AnalysisRunPanel({
+  run,
+  cancelPending,
+  onCancel,
 }: {
-  result: RunApplicationAnalysisResponse | null
-  onDismiss: () => void
+  run: AnalysisRunSnapshot | null
+  cancelPending: boolean
+  onCancel: () => void
 }) {
-  if (!result) return null
+  const presentation = presentAnalysisRun(run, { cancelPending })
+  if (!run || !presentation) return null
   return (
     <div
-      className={cx('result-panel', result.ok ? 'is-success' : 'is-failure')}
+      className={cx('result-panel', `is-${presentation.tone}`)}
       role="status"
     >
-      <button
-        className="dismiss-button"
-        type="button"
-        onClick={onDismiss}
-        aria-label="Dismiss Analysis result"
-      >
-        ×
-      </button>
-      <div>
-        <span className="eyebrow">Latest result</span>
-        <strong>{result.ok ? 'Analysis complete' : 'Analysis blocked'}</strong>
-        <p>
-          {result.processed || 0} processed · {result.succeeded || 0} analyzed ·{' '}
-          {result.failed || 0} failed · {result.repaired || 0} repaired
-        </p>
+      <div className="run-heading">
+        <div>
+          <span className="eyebrow">Analysis Run</span>
+          <strong>{presentation.title}</strong>
+          {presentation.reason && <small>{presentation.reason}</small>}
+        </div>
+        <StatusBadge status={run.lifecycle}>
+          {presentation.lifecycleLabel}
+        </StatusBadge>
       </div>
-      {result.items?.length > 0 && (
-        <ul>
-          {result.items.map((item) => (
-            <li key={item.applicationId}>
-              <span>
-                {item.role} at {item.companyName}
-              </span>
-              <b>
-                {item.result}
-                {item.matchScore != null ? ` · ${item.matchScore}%` : ''}
-              </b>
-              {'errors' in item && item.errors?.length > 0 && (
-                <small>{item.errors.join(' ')}</small>
-              )}
+      <div className="run-progress" aria-label="Analysis Run progress">
+        {presentation.progressRows.map((row) => (
+          <div key={row.label}>
+            <span>{row.label}</span>
+            <strong>{row.value}</strong>
+          </div>
+        ))}
+      </div>
+      <p className="run-counts">{presentation.countsSummary}</p>
+      <details className="spend-details">
+        <summary>Spend details</summary>
+        <dl>
+          {presentation.spendRows.map((row) => (
+            <div key={row.label}>
+              <dt>{row.label}</dt>
+              <dd>{row.value}</dd>
+            </div>
+          ))}
+        </dl>
+      </details>
+      {presentation.candidates.length > 0 && (
+        <ul className="candidate-results">
+          {presentation.candidates.map((candidate) => (
+            <li key={candidate.applicationId}>
+              <span>{candidate.ordinalLabel}</span>
+              <b>{candidate.stateLabel}</b>
+              {candidate.reason && <small>{candidate.reason}</small>}
             </li>
           ))}
         </ul>
       )}
-      <ErrorCallout errors={result.errors} />
-      <ErrorCallout
-        errors={result.validationFailures?.map((failure) => failure.message)}
-      />
+      {presentation.showCancel && (
+        <div className="run-actions">
+          <p>
+            Cancelling stops future provider calls. Work already in flight may
+            still finish and remain committed.
+          </p>
+          <button
+            className="cancel-button"
+            type="button"
+            disabled={cancelPending}
+            onClick={onCancel}
+          >
+            {cancelPending ? (
+              <>
+                <Spinner /> {presentation.cancelLabel}
+              </>
+            ) : (
+              presentation.cancelLabel
+            )}
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -263,17 +298,19 @@ function AnalysisResult({
 function AnalysisSection({
   state,
   session,
-  batchLimit,
-  setBatchLimit,
+  batchTarget,
+  setBatchTarget,
 }: {
   state: DashboardState
   session: DashboardSession
-  batchLimit: number
-  setBatchLimit: (value: number) => void
+  batchTarget: number
+  setBatchTarget: (value: number) => void
 }) {
   const queue = state.analysisQueue
   const ready = state.health?.checks?.analysis === 'ready'
-  const runDisabled = !ready || !queue?.queueCount || state.analysisRunning
+  const activeRun = isAnalysisRunActive(state.analysisRun)
+  const runDisabled =
+    !ready || !queue?.queueCount || state.analysisStarting || activeRun
   return (
     <Section
       eyebrow="01 · Enrich"
@@ -283,30 +320,33 @@ function AnalysisSection({
     >
       <div className="section-description">
         <p>
-          Analyze the backend’s next eligible Applications. This list is a
-          preview, not a selection.
+          Choose how many successful Analysis Completions this run should
+          pursue. Skipped and failed candidates do not satisfy the target.
         </p>
         <div className="analysis-controls">
           <label>
-            <span>Batch limit</span>
+            <span>Analysis Batch Target</span>
             <input
               type="number"
               min="1"
               max="10"
-              value={batchLimit}
-              onChange={(event) => setBatchLimit(Number(event.target.value))}
+              step="1"
+              value={batchTarget}
+              onChange={(event) => setBatchTarget(Number(event.target.value))}
             />
           </label>
           <button
             className="primary-button"
             type="button"
             disabled={runDisabled}
-            onClick={() => session.runAnalysis(batchLimit)}
+            onClick={() => session.runAnalysis(batchTarget)}
           >
-            {state.analysisRunning ? (
+            {state.analysisStarting ? (
               <>
-                <Spinner /> Running analysis
+                <Spinner /> Starting run
               </>
+            ) : activeRun ? (
+              'Run in progress'
             ) : (
               <>
                 Run analysis <span aria-hidden="true">→</span>
@@ -315,7 +355,7 @@ function AnalysisSection({
           </button>
         </div>
       </div>
-      <div className={cx('queue-table', state.analysisRunning && 'is-muted')}>
+      <div className={cx('queue-table', activeRun && 'is-muted')}>
         <div className="queue-head">
           <span>Eligible Application</span>
           <span>Status</span>
@@ -333,7 +373,7 @@ function AnalysisSection({
       <QueuePagination
         pagination={queue?.pagination}
         currentCursor={state.analysisCursor}
-        disabled={state.analysisRunning}
+        disabled={activeRun || state.analysisStarting}
         onFirst={() => {
           session.setCursors(null, state.resumeCursor)
           session.load()
@@ -346,9 +386,10 @@ function AnalysisSection({
           session.load()
         }}
       />
-      <AnalysisResult
-        result={state.analysisResult}
-        onDismiss={() => session.dismissAnalysisResult()}
+      <AnalysisRunPanel
+        run={state.analysisRun}
+        cancelPending={state.analysisCancelPending}
+        onCancel={() => void session.cancelAnalysisRun()}
       />
       <ErrorCallout errors={queue?.errors} />
       <ErrorCallout
@@ -485,7 +526,7 @@ function ResumeSection({
 
 export function App() {
   const [state, setState] = useState<DashboardState | null>(null)
-  const [batchLimit, setBatchLimit] = useState(5)
+  const [batchTarget, setBatchTarget] = useState(DEFAULT_ANALYSIS_TARGET)
   const [theme, setTheme] = useState(
     () => localStorage.getItem('merida-theme') || 'light',
   )
@@ -498,14 +539,9 @@ export function App() {
 
   useEffect(() => {
     session.subscribe(setState)
-    session.load()
+    void session.load()
+    return () => session.dispose()
   }, [session])
-
-  useEffect(() => {
-    if (!view.analysisResult) return undefined
-    const timer = window.setTimeout(() => session.dismissAnalysisResult(), 8000)
-    return () => window.clearTimeout(timer)
-  }, [view.analysisResult, session])
 
   const toggleTheme = () => {
     const next = theme === 'light' ? 'dark' : 'light'
@@ -546,8 +582,8 @@ export function App() {
         <AnalysisSection
           state={view}
           session={session}
-          batchLimit={batchLimit}
-          setBatchLimit={setBatchLimit}
+          batchTarget={batchTarget}
+          setBatchTarget={setBatchTarget}
         />
         <ResumeSection state={view} session={session} />
       </main>

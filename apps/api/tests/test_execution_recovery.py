@@ -1,6 +1,7 @@
 import asyncio
 import threading
 import json
+import time
 
 from fastapi.testclient import TestClient
 
@@ -22,10 +23,17 @@ class BlockingAnalysisModel:
         self.release = threading.Event()
         self._delegate = FakeApplicationAnalysisModel()
 
-    async def generate(self, application, *, repair_code=None):
+    def prepare(self, application, *, repair_code=None):
+        return self._delegate.prepare(application, repair_code=repair_code)
+
+    async def transmit(self, prepared):
         self.started.set()
         assert await asyncio.to_thread(self.release.wait, 5)
-        return await self._delegate.generate(application, repair_code=repair_code)
+        return await self._delegate.transmit(prepared)
+
+    async def generate(self, application, *, repair_code=None):
+        prepared = self.prepare(application, repair_code=repair_code)
+        return await self.transmit(prepared)
 
 
 class BlockingResumeBuilder:
@@ -39,6 +47,22 @@ class BlockingResumeBuilder:
         self.started.set()
         assert await asyncio.to_thread(self.release.wait, 5)
         return await self._delegate.build(application, master_resume)
+
+
+def _eventually_finished_analysis_run(
+    client: TestClient, run_id: str
+) -> dict:
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        response = client.get(
+            f"/api/v1/applications/analysis/runs/{run_id}"
+        )
+        assert response.status_code == 200
+        run = response.json()["run"]
+        if run["lifecycle"] == "finished":
+            return run
+        time.sleep(0.005)
+    raise AssertionError("Analysis Run did not finish within five seconds.")
 
 
 def test_ambiguous_resume_create_remains_blocked_for_manual_recovery(tmp_path):
@@ -84,32 +108,36 @@ def test_overlapping_analysis_run_fails_fast_with_conflict(tmp_path):
     app = create_test_app(
         settings, state_path=tmp_path / "state.json", analysis_model=model
     )
-    first_result = {}
 
     with TestClient(app) as client:
-        thread = threading.Thread(
-            target=lambda: first_result.update(
-                response=client.post(
-                    "/api/v1/applications/analysis/run", json={"limit": 1}
-                )
-            )
+        accepted = client.post(
+            "/api/v1/applications/analysis/run",
+            headers={"Idempotency-Key": "blocking-analysis"},
+            json={"target": 2},
         )
-        thread.start()
+        assert accepted.status_code == 202
+        run_id = accepted.json()["run"]["runId"]
         assert model.started.wait(timeout=5)
 
         overlapping = client.post(
-            "/api/v1/applications/analysis/run", json={"limit": 1}
+            "/api/v1/applications/analysis/run",
+            headers={"Idempotency-Key": "overlapping-analysis"},
+            json={"target": 1},
+        )
+        cancellation = client.post(
+            f"/api/v1/applications/analysis/runs/{run_id}/cancel"
         )
         model.release.set()
-        thread.join(timeout=5)
+        finished = _eventually_finished_analysis_run(client, run_id)
 
     assert overlapping.status_code == 409
-    assert overlapping.json()["error"]["code"] == "conflict"
-    assert overlapping.json()["error"]["message"] == (
-        "Job Posting Analysis is already in progress."
-    )
-    assert first_result["response"].status_code == 200
-    assert first_result["response"].json()["result"] == "completed"
+    assert overlapping.json()["error"]["code"] == "analysis_run_active"
+    assert overlapping.json()["error"]["activeRunId"] == run_id
+    assert cancellation.status_code == 200
+    assert cancellation.json()["run"]["lifecycle"] == "cancelling"
+    assert finished["outcome"] == "cancelled"
+    assert finished["progress"]["completions"] == 1
+    assert finished["progress"]["evaluated"] == 1
 
 
 def test_effect_journal_persists_only_recovery_metadata_atomically(tmp_path):
@@ -280,13 +308,17 @@ def test_retry_after_uncertain_capture_result_returns_existing_application(tmp_p
 
 def test_analysis_skips_an_application_that_becomes_ineligible_after_selection(tmp_path):
     class EligibilityChangesWorkspace(FakeWorkspace):
-        async def list_analysis_queue(self, *, limit, cursor):
-            page = await super().list_analysis_queue(limit=limit, cursor=cursor)
-            selected = page.items[0]
+        async def load_analysis_queue_snapshot(
+            self, *, excluded_application_ids=frozenset()
+        ):
+            candidates = await super().load_analysis_queue_snapshot(
+                excluded_application_ids=excluded_application_ids
+            )
+            selected = candidates[0]
             application = await self._mutable_application(selected.id)
             application["applicationStatus"] = "Applied"
             self._save()
-            return page
+            return candidates
 
     settings = Settings(
         export_path=tmp_path / "export",
@@ -296,14 +328,28 @@ def test_analysis_skips_an_application_that_becomes_ineligible_after_selection(t
 
     with TestClient(create_test_app(settings, workspace=workspace)) as client:
         response = client.post(
-            "/api/v1/applications/analysis/run", json={"limit": 1}
+            "/api/v1/applications/analysis/run",
+            headers={"Idempotency-Key": "eligibility-changed"},
+            json={"target": 1},
+        )
+        assert response.status_code == 202
+        run = _eventually_finished_analysis_run(
+            client, response.json()["run"]["runId"]
         )
 
-    assert response.status_code == 200
-    assert response.json()["processed"] == 1
-    assert response.json()["succeeded"] == 0
-    assert response.json()["failed"] == 0
-    assert response.json()["items"][0]["result"] == "skipped"
+    assert run["outcome"] == "target_met"
+    assert run["progress"] == {
+        "completions": 1,
+        "repaired": 0,
+        "evaluated": 2,
+        "skipped": 1,
+        "failed": 0,
+        "indeterminate": 0,
+    }
+    assert [candidate["state"] for candidate in run["candidates"]] == [
+        "skipped",
+        "analyzed",
+    ]
 
 
 def test_recovery_command_inspects_and_requires_confirmation_to_acknowledge(

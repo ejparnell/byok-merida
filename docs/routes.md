@@ -76,16 +76,17 @@ Expected workflow blocks may return `200` with `ok: false`. These are valid prod
 
 Technical and request failures should use HTTP status codes:
 
-| HTTP status | Use for                                                                            |
-| ----------- | ---------------------------------------------------------------------------------- |
-| `400`       | `invalid_request` or `invalid_cursor`. FastAPI's default `422` body is not public. |
-| `401`       | `invalid_capture_token` for either a missing or invalid capture token.             |
-| `404`       | Requested PDF or backend-owned resource was not found.                             |
-| `405`       | `method_not_allowed` for a known route with the wrong HTTP method.                 |
-| `409`       | Conflicting state that the route cannot safely treat as idempotent.                |
-| `413`       | Capture body or field exceeds the locked request limit.                            |
-| `415`       | A JSON-body route received an unsupported content type.                            |
-| `500`       | Sanitized `internal_error` with a correlation `requestId`.                         |
+| HTTP status | Use for                                                                                       |
+| ----------- | --------------------------------------------------------------------------------------------- |
+| `400`       | `invalid_request` or `invalid_cursor`. FastAPI's default `422` body is not public.            |
+| `401`       | `invalid_capture_token` for either a missing or invalid capture token.                        |
+| `404`       | Requested PDF or backend-owned resource was not found.                                        |
+| `405`       | `method_not_allowed` for a known route with the wrong HTTP method.                            |
+| `409`       | Conflicting state that the route cannot safely treat as idempotent.                           |
+| `413`       | Capture body or field exceeds the locked request limit.                                       |
+| `415`       | A JSON-body route received an unsupported content type.                                       |
+| `503`       | A required provider, workspace, or transactional spend-enforcement dependency is unavailable. |
+| `500`       | Sanitized `internal_error` with a correlation `requestId`.                                    |
 
 ### Auth boundary
 
@@ -102,7 +103,7 @@ The v1 app is a local operator app.
 - Production dashboard traffic is same-origin.
 - Development web origins and the installed `chrome-extension://` origin are explicit allow-list entries.
 - Wildcard, reflected, and credentialed origins are forbidden.
-- Browser preflight allows only `GET`, `POST`, `OPTIONS`, `Content-Type`, and `X-Capture-Token`.
+- Browser preflight allows only `GET`, `POST`, `OPTIONS`, `Content-Type`, `X-Capture-Token`, and `Idempotency-Key`.
 - Requests without an `Origin`, such as local CLI calls, remain possible; capture writes still require the token.
 
 ## Health Checks
@@ -350,11 +351,11 @@ Successful capture requires readable `Job Content`. If the extension cannot coll
 
 Capture sets new Applications to `Application Status = To Apply`. Analysis and Resume Creation never change `Application Status`.
 
-| HTTP verb | Route                   | Simple explanation                                              |
-| --------- | ----------------------- | --------------------------------------------------------------- |
-| `POST`    | `/applications/prepare` | Parses captured page evidence without writing to the workspace. |
+| HTTP verb | Route                           | Simple explanation                                                   |
+| --------- | ------------------------------- | -------------------------------------------------------------------- |
+| `POST`    | `/applications/prepare`         | Parses captured page evidence without writing to the workspace.      |
 | `GET`     | `/applications/capture-matches` | Finds existing Applications matching reviewed Company Name and Role. |
-| `POST`    | `/applications/confirm` | Writes a user-reviewed parsed Application to the workspace.     |
+| `POST`    | `/applications/confirm`         | Writes a user-reviewed parsed Application to the workspace.          |
 
 ### `POST /applications/prepare`
 
@@ -485,14 +486,17 @@ Already captured:
 
 ## Application Analysis
 
-Application Analysis routes support the React `/dashboard` page. Analysis is a batch enrichment workflow over already-captured Applications.
+Application Analysis routes support the React `/dashboard` page. Analysis is a durable asynchronous enrichment workflow over already-captured Applications. The start target counts successful Analysis Completions; it is not a queue pagination or attempt limit.
 
 The queue is eligible-only. Ineligible Applications stay out of the dashboard and should be managed in Notion.
 
-| HTTP verb | Route                          | Simple explanation                                                                          |
-| --------- | ------------------------------ | ------------------------------------------------------------------------------------------- |
-| `GET`     | `/applications/analysis/queue` | Lists queued Applications for operator preview with cursor pagination.                      |
-| `POST`    | `/applications/analysis/run`   | Runs the backend's next eligible batch of Application Analysis and returns a final summary. |
+| HTTP verb | Route                                        | Simple explanation                                                         |
+| --------- | -------------------------------------------- | -------------------------------------------------------------------------- |
+| `GET`     | `/applications/analysis/queue`               | Lists queued Applications for operator preview with cursor pagination.     |
+| `POST`    | `/applications/analysis/run`                 | Creates or idempotently returns a durable Analysis Run and responds `202`. |
+| `GET`     | `/applications/analysis/runs/active`         | Returns the active Analysis Run snapshot or `run: null`.                   |
+| `GET`     | `/applications/analysis/runs/{runId}`        | Returns one current or terminal Analysis Run snapshot.                     |
+| `POST`    | `/applications/analysis/runs/{runId}/cancel` | Requests cancellation and returns the run's current durable snapshot.      |
 
 ### `GET /applications/analysis/queue`
 
@@ -509,7 +513,7 @@ An Application is in the Application Analysis Queue when:
 - `Analyzed = false`
 - the Application page has readable `Job Content`
 
-Applications that already have a readable `Application Analysis` section but `Analyzed = false` are repair candidates. `POST /applications/analysis/run` should repair them without rerunning the LLM.
+Applications that already have a readable `Application Analysis` section but `Analyzed = false` are repair candidates. The Analysis Run repairs them without rerunning the LLM, and a completed repair counts toward its target.
 
 Queue ordering:
 
@@ -543,60 +547,152 @@ Success:
 
 ### `POST /applications/analysis/run`
 
+Required header:
+
+```http
+Idempotency-Key: 335a1d81-4d2c-48ba-98e6-e2ca4c878566
+```
+
+The dashboard generates one key for each intentional start. Automatic transport
+behavior must not replay the POST with a new key.
+
 Request body:
 
 ```json
 {
-  "limit": 5
+  "target": 5
 }
 ```
 
-`limit` defaults to `5` and must be between `1` and `10`.
+`target` defaults to `5` and must be between `1` and `10`. It is the number of
+successful Analysis Completions the run pursues. The removed `limit` body field
+is not an alias and is rejected. The unrelated queue-preview `limit` query
+parameter remains supported by `GET /applications/analysis/queue`.
 
-The route processes the backend's next eligible batch by `limit`, independent of the dashboard's current pagination cursor. The visible queue is a preview, not a selection mechanism.
+A newly accepted request returns `202` with a durable run snapshot before model
+work finishes. Run creation captures the first
+`min(eligible queue size, target × 2)` Application identities in canonical queue
+order. That fixed Candidate Set is independent of the visible pagination cursor
+and never admits later queue additions or reorderings.
 
-The route should process a bounded batch and return one final response. Each item failure should be isolated so one bad Application does not fail the whole batch.
+Repeating the same key and target returns the same run without duplicating work.
+Reusing a key with another target returns `409 idempotency_conflict`. A distinct
+start while work is active returns `409 analysis_run_active` with `activeRunId`;
+it does not queue or change the accepted target.
 
-There is no NDJSON, SSE, WebSocket, or automatic POST retry. The dashboard owns
-pending presentation until this final response arrives.
-
-The route does not intentionally rerun Application Analysis for already analyzed Applications. If it finds an existing readable `Application Analysis` section with `Analyzed = false`, it repairs the properties by setting `Analyzed = true` and recovering `Match Score` when possible. If the score cannot be recovered, `Match Score` should be left empty.
-
-For new analysis work, the backend writes the `Application Analysis` body first. It sets `Match Score` and `Analyzed = true` as the final commit.
-
-Success:
+Accepted response:
 
 ```json
 {
   "ok": true,
-  "result": "completed",
-  "processed": 5,
-  "succeeded": 4,
-  "failed": 1,
-  "repaired": 0,
-  "items": [
-    {
-      "applicationId": "app_123",
-      "title": "Senior Software Engineer at ExampleCo",
-      "companyName": "ExampleCo",
-      "role": "Senior Software Engineer",
-      "result": "analyzed",
-      "matchScore": 86,
-      "errors": []
+  "run": {
+    "runId": "analysis_run_123",
+    "lifecycle": "queued",
+    "outcome": null,
+    "reasonCode": null,
+    "target": 5,
+    "attemptBudget": 10,
+    "createdAt": "2026-08-12T14:00:00Z",
+    "updatedAt": "2026-08-12T14:00:00Z",
+    "startedAt": null,
+    "finishedAt": null,
+    "progress": {
+      "completions": 0,
+      "repaired": 0,
+      "evaluated": 0,
+      "skipped": 0,
+      "failed": 0,
+      "indeterminate": 0
     },
-    {
-      "applicationId": "app_456",
-      "title": "Platform Engineer at SampleCo",
-      "companyName": "SampleCo",
-      "role": "Platform Engineer",
-      "result": "failed",
-      "matchScore": null,
-      "errors": ["Job Content section was not readable."]
-    }
-  ],
+    "spend": {
+      "ceilingMicros": 500000,
+      "committedMicros": 0,
+      "verifiedCostMicros": 0,
+      "activeReservationMicros": 0,
+      "indeterminateReservationMicros": 0,
+      "remainingAuthorizedMicros": 500000
+    },
+    "candidates": [
+      {
+        "applicationId": "app_123",
+        "ordinal": 0,
+        "state": "pending",
+        "reasonCode": null,
+        "startedAt": null,
+        "completedAt": null
+      }
+    ]
+  },
+  "validationFailures": [],
   "errors": []
 }
 ```
+
+The worker reloads and revalidates each fixed candidate immediately before use,
+processes candidates sequentially, and keeps at most one provider call in flight.
+Newly analyzed and repaired Applications count after the readable body and final
+properties commit. Skips and Candidate-Scoped Failures consume their candidate
+slot but do not satisfy the target, so the worker may backfill within the fixed
+Attempt Budget.
+
+Every actual provider transmission, including retry and repair, must obtain a
+transactional worst-case reservation before dispatch. One Application has at
+most three actual transmissions, every call keeps thinking at high effort with
+an 8,000-token reasoning-inclusive ceiling, and run Committed Spend never
+exceeds 500,000 USD micros.
+
+There is no NDJSON, SSE, or WebSocket transport. The run snapshot is the progress
+interface. Its candidate entries and safe reason codes never include Job
+Content, prompts, provider payloads, generated analysis, or model reasoning.
+
+Active-run conflict:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "analysis_run_active",
+    "message": "An Analysis Run is already active.",
+    "requestId": null,
+    "activeRunId": "analysis_run_123"
+  },
+  "validationFailures": [],
+  "errors": ["An Analysis Run is already active."]
+}
+```
+
+### `GET /applications/analysis/runs/active`
+
+Returns the same safe run snapshot shape as the start response. When no run is
+active, success contains `"run": null`. Reloaded clients use this route to
+reconnect without retaining a run ID.
+
+### `GET /applications/analysis/runs/{runId}`
+
+Returns the current or terminal snapshot for exactly one run. An unknown ID
+returns the standard `404 not_found` envelope. A finished snapshot has exactly
+one outcome: `target_met`, `spend_limited`, `attempt_budget_exhausted`,
+`queue_exhausted`, `cancelled`, `authorization_blocked`, or `failed`.
+
+Candidate states are `pending`, `evaluating`, `analyzed`, `repaired`, `skipped`,
+`failed`, or `indeterminate`. `failed` at the run level is reserved for an
+unrecoverable Run-Scoped Failure; ordinary candidate failures may coexist with
+useful completions and a non-failed terminal outcome.
+
+The `spend.committedMicros` field is the conservative sum of verified cost,
+active reservations, and indeterminate reservations. It is not labeled as actual
+cost. Restart recovery preserves this snapshot, reclaims queued and expired-lease
+work, and reconciles uncertain sent calls before another dispatch.
+
+### `POST /applications/analysis/runs/{runId}/cancel`
+
+Requests cancellation for a queued, running, or cancelling run and returns its
+current snapshot. Repeated cancellation is idempotent; cancelling a finished run
+returns that terminal run unchanged. Cancellation prevents calls that have not
+started, but does not promise to interrupt or refund an in-flight call. A valid
+in-flight completion is committed and counted; an unreconcilable sent call is
+recorded as indeterminate with its reservation still committed. The eventual
+terminal outcome is `cancelled`, and all earlier completions remain intact.
 
 ## Resumes
 

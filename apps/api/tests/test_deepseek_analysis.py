@@ -3,6 +3,7 @@ import json
 import pytest
 import httpx
 import sys
+import time
 import types
 from pathlib import Path
 from fastapi.testclient import TestClient
@@ -10,6 +11,7 @@ from fastapi.testclient import TestClient
 from dataclasses import replace
 
 from merida_api.features.applications.workspace import (
+    AnalysisCallEvidence,
     ApplicationAnalysisDocument,
     ApplicationRecord,
 )
@@ -17,7 +19,9 @@ from merida_api.core.settings import Settings
 from merida_api.app import create_app
 from merida_api.features.applications.analysis_graph import ApplicationAnalysisGraph
 from merida_api.features.applications.analysis_model import (
+    AnalysisModelOutputError,
     DeepSeekApplicationAnalysisModel,
+    create_deepseek_analysis_model,
     validate_analysis_payload,
 )
 from merida_api.integrations.deepseek import DeepSeekJsonClient
@@ -43,6 +47,55 @@ class RecordedChatModel:
         if isinstance(response, Exception):
             raise response
         return type("Message", (), {"content": response})()
+
+    def render_request(self, messages: list[tuple[str, str]]) -> bytes:
+        return json.dumps(
+            {
+                "model": "deepseek-v4-flash",
+                "messages": [
+                    {
+                        "role": "system" if role == "system" else "user",
+                        "content": content,
+                    }
+                    for role, content in messages
+                ],
+                "max_tokens": 8000,
+                "response_format": {"type": "json_object"},
+                "stream": False,
+                "reasoning_effort": "high",
+                "thinking": {"type": "enabled"},
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode()
+
+    async def ainvoke_prepared(self, rendered_request: bytes):
+        document = json.loads(rendered_request)
+        messages = [
+            (
+                "system" if message["role"] == "system" else "human",
+                message["content"],
+            )
+            for message in document["messages"]
+        ]
+        response = await self.ainvoke(messages)
+        response.response_metadata = {
+            "finish_reason": "stop",
+            "model_name": "deepseek-v4-flash",
+            "request_id": f"recorded-{len(self.messages)}",
+            "token_usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 200,
+                "total_tokens": 300,
+                "prompt_cache_hit_tokens": 0,
+            },
+        }
+        response.usage_metadata = {
+            "input_tokens": 100,
+            "output_tokens": 200,
+            "total_tokens": 300,
+        }
+        return response
 
 
 class ProviderFailure(Exception):
@@ -78,6 +131,263 @@ def test_deepseek_chat_adapter_uses_only_supported_json_mode(monkeypatch):
     assert response == {"ok": True}
     assert captured["init"]["max_retries"] == 0
     assert captured["bind"] == {"response_format": {"type": "json_object"}}
+
+
+def test_application_analysis_explicitly_uses_bounded_high_effort_thinking(
+    monkeypatch,
+):
+    captured = {}
+
+    class FakeChatDeepSeek:
+        def __init__(self, **kwargs):
+            captured["init"] = kwargs
+
+        def bind(self, **kwargs):
+            captured["bind"] = kwargs
+            return self
+
+        async def ainvoke(self, messages):
+            captured["messages"] = messages
+            return type(
+                "Message",
+                (),
+                {
+                    "content": json.dumps(
+                        {
+                            "summary": ["One.", "Two.", "Three."],
+                            "skillSignals": [],
+                        }
+                    )
+                },
+            )()
+
+    module = types.ModuleType("langchain_deepseek")
+    module.ChatDeepSeek = FakeChatDeepSeek
+    monkeypatch.setitem(sys.modules, "langchain_deepseek", module)
+
+    model = create_deepseek_analysis_model(
+        api_key="test-key", model="deepseek-v4-flash"
+    )
+    asyncio.run(model.generate(application("Build Python services.")))
+
+    assert captured["init"] == {
+        "api_key": "test-key",
+        "model": "deepseek-v4-flash",
+        "max_tokens": 8000,
+        "timeout": httpx.Timeout(
+            connect=10,
+            read=120,
+            write=120,
+            pool=10,
+        ),
+        "max_retries": 0,
+        "reasoning_effort": "high",
+        "streaming": False,
+        "extra_body": {"thinking": {"type": "enabled"}},
+    }
+    assert captured["bind"] == {"response_format": {"type": "json_object"}}
+    prompt = captured["messages"][1][1]
+    assert "exactly three summary sentences" in prompt
+    assert "between three and ten candidate Skill Signals" in prompt
+
+
+def test_prepared_analysis_sends_the_exact_authorized_bytes(monkeypatch):
+    sent = {}
+
+    class Response:
+        headers = {"x-request-id": "request-1"}
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "id": "request-1",
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "summary": ["One.", "Two.", "Three."],
+                                    "skillSignals": [],
+                                }
+                            )
+                        },
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 100,
+                    "completion_tokens": 25,
+                    "total_tokens": 125,
+                },
+            }
+
+    class Client:
+        def __init__(self, *, timeout):
+            sent["timeout"] = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def post(self, endpoint, *, content, headers):
+            sent.update(endpoint=endpoint, content=content, headers=headers)
+            return Response()
+
+    monkeypatch.setattr(
+        "merida_api.integrations.deepseek.httpx.AsyncClient", Client
+    )
+    model = create_deepseek_analysis_model(
+        api_key="test-key", model="deepseek-v4-flash"
+    )
+    prepared = model.prepare(application("Build Python services."))
+    response = asyncio.run(model.transmit(prepared))
+
+    envelope = json.loads(prepared.rendered_request)
+    assert sent["content"] is prepared.rendered_request
+    assert sent["endpoint"] == prepared.endpoint
+    assert envelope["model"] == prepared.model
+    assert envelope["max_tokens"] == 8000
+    assert envelope["stream"] is False
+    assert envelope["reasoning_effort"] == "high"
+    assert envelope["thinking"] == {"type": "enabled"}
+    assert "temperature" not in envelope
+    assert response.call_evidence is not None
+    assert response.call_evidence.request_id == "request-1"
+    assert response.call_evidence.model_id is None
+
+
+def test_recorded_analysis_call_captures_only_safe_settlement_evidence():
+    private_reasoning = "PRIVATE_REASONING_MUST_NOT_BE_RECORDED"
+
+    class EvidenceChat:
+        async def ainvoke(self, _messages):
+            return type(
+                "Message",
+                (),
+                {
+                    "id": "request-123",
+                    "content": json.dumps(
+                        {
+                            "summary": ["One.", "Two.", "Three."],
+                            "skillSignals": [],
+                        }
+                    ),
+                    "response_metadata": {
+                        "finish_reason": "stop",
+                        "model_name": "deepseek-v4-flash-20260801",
+                        "token_usage": {
+                            "prompt_tokens": 321,
+                            "completion_tokens": 654,
+                            "total_tokens": 975,
+                            "prompt_cache_hit_tokens": 20,
+                            "prompt_cache_miss_tokens": 301,
+                            "completion_tokens_details": {
+                                "reasoning_tokens": 600
+                            },
+                        },
+                    },
+                    "additional_kwargs": {
+                        "reasoning_content": private_reasoning,
+                    },
+                    "reasoning_content": private_reasoning,
+                },
+            )()
+
+    model = DeepSeekApplicationAnalysisModel(
+        DeepSeekJsonClient(
+            EvidenceChat(),
+            requested_model_id="deepseek-v4-flash",
+        )
+    )
+
+    response = asyncio.run(model.generate(application("Build Python services.")))
+
+    assert response.call_evidence == AnalysisCallEvidence(
+        transmission_state="sent",
+        finish_reason="stop",
+        model_id="deepseek-v4-flash-20260801",
+        request_id="request-123",
+        input_tokens=321,
+        output_tokens=654,
+        total_tokens=975,
+        cache_hit_input_tokens=20,
+        cache_miss_input_tokens=301,
+        reasoning_output_tokens=600,
+    )
+    assert private_reasoning not in repr(response)
+
+
+def test_response_model_identity_is_never_synthesized_from_the_requested_model():
+    class MissingModelChat:
+        async def ainvoke(self, _messages):
+            return type(
+                "Message",
+                (),
+                {
+                    "id": "request-without-model",
+                    "content": '{"summary":["One.","Two.","Three."],"skillSignals":[]}',
+                    "response_metadata": {
+                        "finish_reason": "stop",
+                        "token_usage": {
+                            "prompt_tokens": 10,
+                            "completion_tokens": 20,
+                            "total_tokens": 30,
+                        },
+                    },
+                    "usage_metadata": {},
+                },
+            )()
+
+    response = asyncio.run(
+        DeepSeekJsonClient(
+            MissingModelChat(),
+            requested_model_id="deepseek-v4-flash",
+        ).request_json_once([("human", "Return JSON.")])
+    )
+
+    assert response.evidence.model_id is None
+
+
+def test_zero_optional_usage_counts_remain_available_for_consistency_checks():
+    class ZeroDetailsChat:
+        async def ainvoke(self, _messages):
+            return type(
+                "Message",
+                (),
+                {
+                    "id": "request-with-zero-details",
+                    "content": "{}",
+                    "response_metadata": {
+                        "model_name": "deepseek-v4-flash",
+                        "token_usage": {
+                            "prompt_tokens": 10,
+                            "completion_tokens": 20,
+                            "total_tokens": 30,
+                            "prompt_cache_hit_tokens": 0,
+                            "prompt_cache_miss_tokens": 0,
+                            "completion_tokens_details": {
+                                "reasoning_tokens": 0,
+                            },
+                        },
+                    },
+                    "usage_metadata": {},
+                },
+            )()
+
+    response = asyncio.run(
+        DeepSeekJsonClient(
+            ZeroDetailsChat(),
+            requested_model_id="deepseek-v4-flash",
+        ).request_json_once([("human", "Return JSON.")])
+    )
+
+    assert response.evidence.cache_hit_input_tokens == 0
+    assert response.evidence.cache_miss_input_tokens == 0
+    assert response.evidence.reasoning_output_tokens == 0
 
 
 class AnalysisStore:
@@ -161,6 +471,12 @@ def test_deepseek_analysis_returns_validated_evidence_without_model_score():
                             "importance": "preferred",
                             "evidence": "PostgreSQL",
                         },
+                        {
+                            "name": "Automated testing",
+                            "category": "testing_quality",
+                            "importance": "signal",
+                            "evidence": "automated testing",
+                        },
                     ],
                 }
             )
@@ -182,6 +498,7 @@ def test_deepseek_analysis_returns_validated_evidence_without_model_score():
     assert [(signal.name, signal.evidence) for signal in result.skill_signals] == [
         ("Python", "Python"),
         ("PostgreSQL", "PostgreSQL"),
+        ("Automated testing", "automated testing"),
     ]
     assert all("matchScore" not in message for _, message in chat.messages[0])
     assert "return json" in chat.messages[0][1][1].lower()
@@ -227,7 +544,19 @@ def test_deepseek_analysis_repairs_invalid_structured_output_once():
                             "category": "programming_language",
                             "importance": "required",
                             "evidence": "Python",
-                        }
+                        },
+                        {
+                            "name": "PostgreSQL",
+                            "category": "database",
+                            "importance": "preferred",
+                            "evidence": "PostgreSQL",
+                        },
+                        {
+                            "name": "Automated testing",
+                            "category": "testing_quality",
+                            "importance": "signal",
+                            "evidence": "automated tests",
+                        },
                     ],
                 }
             ),
@@ -235,7 +564,10 @@ def test_deepseek_analysis_repairs_invalid_structured_output_once():
     )
 
     result, _store = run_graph(
-        chat, application("Build production services with Python.")
+        chat,
+        application(
+            "Build production services with Python, PostgreSQL, and automated tests."
+        ),
     )
 
     assert result.result == "analyzed"
@@ -252,7 +584,19 @@ def test_deepseek_analysis_rejects_a_model_owned_match_score_then_repairs():
                 "category": "programming_language",
                 "importance": "required",
                 "evidence": "Python",
-            }
+            },
+            {
+                "name": "PostgreSQL",
+                "category": "database",
+                "importance": "preferred",
+                "evidence": "PostgreSQL",
+            },
+            {
+                "name": "Automated testing",
+                "category": "testing_quality",
+                "importance": "signal",
+                "evidence": "automated tests",
+            },
         ],
         "matchScore": 100,
     }
@@ -260,41 +604,34 @@ def test_deepseek_analysis_rejects_a_model_owned_match_score_then_repairs():
     chat = RecordedChatModel([json.dumps(invalid), json.dumps(valid)])
 
     result, _store = run_graph(
-        chat, application("Build production services with Python.")
+        chat,
+        application(
+            "Build production services with Python, PostgreSQL, and automated tests."
+        ),
     )
 
     assert result.result == "analyzed"
     assert "invalid_schema" in chat.messages[1][-1][1]
 
 
-def test_deepseek_transport_retries_only_retryable_provider_failures():
+def test_analysis_transport_exposes_retryability_without_retrying_itself():
     sleeps = []
 
     async def record_sleep(delay: float):
         sleeps.append(delay)
 
-    valid = json.dumps(
-        {
-            "summary": ["One.", "Two.", "Three."],
-            "skillSignals": [
-                {
-                    "name": "Python",
-                    "category": "programming_language",
-                    "importance": "required",
-                    "evidence": "Python",
-                }
-            ],
-        }
-    )
-    retrying_chat = RecordedChatModel([ProviderFailure(429), valid])
+    retrying_chat = RecordedChatModel([ProviderFailure(429)])
     model = DeepSeekApplicationAnalysisModel(
         DeepSeekJsonClient(retrying_chat, sleep=record_sleep, jitter=lambda: 0)
     )
 
-    asyncio.run(model.generate(application("Build Python services.")))
+    with pytest.raises(DeepSeekProviderError) as retryable:
+        asyncio.run(model.generate(application("Build Python services.")))
 
-    assert sleeps == [0.25]
-    assert len(retrying_chat.messages) == 2
+    assert retryable.value.code == "rate_limited"
+    assert retryable.value.retryable is True
+    assert sleeps == []
+    assert len(retrying_chat.messages) == 1
 
     rejected_chat = RecordedChatModel([ProviderFailure(401)])
     rejected = DeepSeekApplicationAnalysisModel(DeepSeekJsonClient(rejected_chat))
@@ -304,8 +641,17 @@ def test_deepseek_transport_retries_only_retryable_provider_failures():
     assert "private provider error" not in str(error.value)
     assert len(rejected_chat.messages) == 1
 
+    balance_chat = RecordedChatModel([ProviderFailure(402)])
+    balance = DeepSeekApplicationAnalysisModel(DeepSeekJsonClient(balance_chat))
+    with pytest.raises(DeepSeekProviderError) as balance_error:
+        asyncio.run(balance.generate(application("Build Python services.")))
+    assert balance_error.value.code == "balance_insufficient"
+    assert balance_error.value.retryable is False
+    assert balance_error.value.evidence.transmission_state == "sent"
+    assert len(balance_chat.messages) == 1
 
-def test_deepseek_transport_normalizes_timeout_after_bounded_retries():
+
+def test_analysis_transport_normalizes_timeout_for_the_owner_recovery_loop():
     sleeps = []
 
     async def record_sleep(delay: float):
@@ -324,8 +670,236 @@ def test_deepseek_transport_normalizes_timeout_after_bounded_retries():
 
     assert error.value.code == "transport_unavailable"
     assert error.value.retryable is True
-    assert sleeps == [0.25, 0.5]
+    assert sleeps == []
+    assert len(chat.messages) == 1
+
+
+def test_analysis_shares_three_transmissions_across_transport_and_json_repair():
+    valid = json.dumps(
+        {
+            "summary": ["One.", "Two.", "Three."],
+            "skillSignals": [
+                {
+                    "name": "Python",
+                    "category": "programming_language",
+                    "importance": "required",
+                    "evidence": "Python",
+                },
+                {
+                    "name": "PostgreSQL",
+                    "category": "database",
+                    "importance": "preferred",
+                    "evidence": "PostgreSQL",
+                },
+                {
+                    "name": "Automated testing",
+                    "category": "testing_quality",
+                    "importance": "signal",
+                    "evidence": "automated tests",
+                },
+            ],
+        }
+    )
+    chat = RecordedChatModel([ProviderFailure(429), "not-json", valid])
+
+    outcome, store = run_graph(
+        chat,
+        application(
+            "Build Python services with PostgreSQL and automated tests."
+        ),
+    )
+
+    assert outcome.result == "analyzed"
     assert len(chat.messages) == 3
+    assert len(outcome.call_evidence) == 3
+    assert store.document is not None
+
+
+def test_analysis_never_makes_a_fourth_transmission_after_mixed_recovery():
+    fourth_call_would_complete = json.dumps(
+        {
+            "summary": ["One.", "Two.", "Three."],
+            "skillSignals": [
+                {
+                    "name": "Python",
+                    "category": "programming_language",
+                    "importance": "required",
+                    "evidence": "Python",
+                },
+                {
+                    "name": "PostgreSQL",
+                    "category": "database",
+                    "importance": "preferred",
+                    "evidence": "PostgreSQL",
+                },
+                {
+                    "name": "Automated testing",
+                    "category": "testing_quality",
+                    "importance": "signal",
+                    "evidence": "automated tests",
+                },
+            ],
+        }
+    )
+    chat = RecordedChatModel(
+        [ProviderFailure(500), ProviderFailure(429), "not-json", fourth_call_would_complete]
+    )
+
+    outcome, store = run_graph(
+        chat,
+        application(
+            "Build Python services with PostgreSQL and automated tests."
+        ),
+    )
+
+    assert outcome.result == "failed"
+    assert len(chat.messages) == 3
+    assert len(chat.responses) == 1
+    assert len(outcome.call_evidence) == 3
+    assert store.document is None
+
+
+def test_proven_pretransmission_failure_does_not_consume_a_call_budget_slot():
+    valid = json.dumps(
+        {
+            "summary": ["One.", "Two.", "Three."],
+            "skillSignals": [
+                {
+                    "name": "Python",
+                    "category": "programming_language",
+                    "importance": "required",
+                    "evidence": "Python",
+                },
+                {
+                    "name": "PostgreSQL",
+                    "category": "database",
+                    "importance": "preferred",
+                    "evidence": "PostgreSQL",
+                },
+                {
+                    "name": "Automated testing",
+                    "category": "testing_quality",
+                    "importance": "signal",
+                    "evidence": "automated tests",
+                },
+            ],
+        }
+    )
+    connect_timeout = httpx.ConnectTimeout(
+        "private connect timeout",
+        request=httpx.Request("POST", "https://example.test"),
+    )
+    chat = RecordedChatModel(
+        [connect_timeout, ProviderFailure(500), "not-json", valid]
+    )
+
+    outcome, _store = run_graph(
+        chat,
+        application(
+            "Build Python services with PostgreSQL and automated tests."
+        ),
+    )
+
+    assert outcome.result == "analyzed"
+    assert len(chat.messages) == 4
+    assert [call.transmission_state for call in outcome.call_evidence] == [
+        "not_transmitted",
+        "sent",
+        "sent",
+        "sent",
+    ]
+    assert sum(call.consumed_transmission for call in outcome.call_evidence) == 3
+
+
+@pytest.mark.parametrize(
+    ("error_factory", "expected_state"),
+    [
+        (
+            lambda: httpx.ConnectTimeout(
+                "private connect timeout",
+                request=httpx.Request("POST", "https://example.test"),
+            ),
+            "not_transmitted",
+        ),
+        (
+            lambda: httpx.ReadTimeout(
+                "private read timeout",
+                request=httpx.Request("POST", "https://example.test"),
+            ),
+            "indeterminate",
+        ),
+    ],
+)
+def test_single_transmission_classifies_timeout_evidence(
+    error_factory, expected_state
+):
+    chat = RecordedChatModel([error_factory()])
+    client = DeepSeekJsonClient(
+        chat,
+        requested_model_id="deepseek-v4-flash",
+    )
+
+    with pytest.raises(DeepSeekProviderError) as caught:
+        asyncio.run(client.request_json_once([("human", "Return JSON.")]))
+
+    assert caught.value.evidence.transmission_state == expected_state
+    assert caught.value.evidence.model_id is None
+    assert "private" not in repr(caught.value.evidence)
+    assert len(chat.messages) == 1
+
+
+def test_single_transmission_absolute_deadline_is_indeterminate():
+    class StalledChat:
+        calls = 0
+
+        async def ainvoke(self, _messages):
+            self.calls += 1
+            await asyncio.sleep(60)
+
+    chat = StalledChat()
+    client = DeepSeekJsonClient(
+        chat,
+        requested_model_id="deepseek-v4-flash",
+        absolute_timeout=0.001,
+    )
+
+    with pytest.raises(DeepSeekProviderError) as caught:
+        asyncio.run(client.request_json_once([("human", "Return JSON.")]))
+
+    assert caught.value.code == "absolute_deadline_exceeded"
+    assert caught.value.evidence.transmission_state == "indeterminate"
+    assert chat.calls == 1
+
+
+def test_length_finish_consumes_a_call_and_never_persists_partial_output():
+    class LengthChat(RecordedChatModel):
+        async def ainvoke(self, messages):
+            self.messages.append(messages)
+            self.responses.pop(0)
+            return type(
+                "Message",
+                (),
+                {
+                    "id": f"request-{len(self.messages)}",
+                    "content": '{"summary":["partial',
+                    "response_metadata": {
+                        "finish_reason": "length",
+                        "model_name": "deepseek-v4-flash-20260801",
+                    },
+                },
+            )()
+
+    chat = LengthChat([None, None, None, None])
+    outcome, store = run_graph(chat, application("Build Python services."))
+
+    assert outcome.result == "failed"
+    assert len(chat.messages) == 3
+    assert [call.finish_reason for call in outcome.call_evidence] == [
+        "length",
+        "length",
+        "length",
+    ]
+    assert store.document is None
 
 
 def test_asgi_analysis_uses_validated_deepseek_output_and_local_matching(tmp_path):
@@ -334,7 +908,10 @@ def test_asgi_analysis_uses_validated_deepseek_output_and_local_matching(tmp_pat
             return (
                 EvidenceItem(
                     id="master-role-1",
-                    text="Built accessible React product interfaces.",
+                    text=(
+                        "Built accessible React product interfaces, REST APIs, "
+                        "and automated tests."
+                    ),
                     source_section="Software Engineer",
                 ),
             )
@@ -354,7 +931,19 @@ def test_asgi_analysis_uses_validated_deepseek_output_and_local_matching(tmp_pat
                             "category": "framework_library",
                             "importance": "required",
                             "evidence": "React",
-                        }
+                        },
+                        {
+                            "name": "REST APIs",
+                            "category": "api_integration",
+                            "importance": "preferred",
+                            "evidence": "REST APIs",
+                        },
+                        {
+                            "name": "Automated testing",
+                            "category": "testing_quality",
+                            "importance": "signal",
+                            "evidence": "automated tests",
+                        },
                     ],
                 }
             )
@@ -365,7 +954,9 @@ def test_asgi_analysis_uses_validated_deepseek_output_and_local_matching(tmp_pat
         recovery_journal_path=tmp_path / "recovery.json",
     )
     workspace = AnalysisWorkspace(tmp_path / "state.json")
-    analysis_model = DeepSeekApplicationAnalysisModel(DeepSeekJsonClient(chat))
+    analysis_model = DeepSeekApplicationAnalysisModel(
+        DeepSeekJsonClient(chat, requested_model_id="deepseek-v4-flash")
+    )
 
     with TestClient(
         create_test_app(
@@ -375,12 +966,471 @@ def test_asgi_analysis_uses_validated_deepseek_output_and_local_matching(tmp_pat
         )
     ) as client:
         response = client.post(
-            "/api/v1/applications/analysis/run", json={"limit": 1}
+            "/api/v1/applications/analysis/run",
+            headers={"Idempotency-Key": "validated-output"},
+            json={"target": 1},
+        )
+        run_id = response.json()["run"]["runId"]
+        for _ in range(200):
+            run = client.get(
+                f"/api/v1/applications/analysis/runs/{run_id}"
+            ).json()["run"]
+            if run["lifecycle"] == "finished":
+                break
+            time.sleep(0.005)
+
+    assert response.status_code == 202
+    assert run["outcome"] == "target_met"
+    stored = asyncio.run(workspace.load_analysis_input("app-northstar"))
+    assert stored.analyzed is True
+    assert stored.match_score == 94
+
+
+def test_public_analysis_discards_bad_signals_and_persists_a_prioritized_completion(
+    tmp_path, caplog
+):
+    private_reasoning = "PRIVATE_PROVIDER_REASONING_MUST_NOT_ESCAPE"
+
+    class AnalysisWorkspace(FakeWorkspace):
+        async def load_analysis_input(self, application_id):
+            record = await super().load_analysis_input(application_id)
+            return replace(
+                record,
+                job_content=(
+                    f"{record.job_content} "
+                    "The posting also mentions problem solving and leadership."
+                ),
+            )
+
+        async def load_analysis_evidence(self):
+            return (
+                EvidenceItem(
+                    id="master-react",
+                    text="Built accessible React interfaces.",
+                    source_section="Software Engineer",
+                ),
+                EvidenceItem(
+                    id="master-api",
+                    text="Built REST APIs.",
+                    source_section="Software Engineer",
+                ),
+                EvidenceItem(
+                    id="master-tests",
+                    text="Created reliable automated tests.",
+                    source_section="Software Engineer",
+                ),
+            )
+
+    class ReasoningChatModel(RecordedChatModel):
+        async def ainvoke(self, messages):
+            self.messages.append(messages)
+            response = self.responses.pop(0)
+            return type(
+                "Message",
+                (),
+                {
+                    "content": response,
+                    "additional_kwargs": {"reasoning_content": private_reasoning},
+                    "reasoning_content": private_reasoning,
+                },
+            )()
+
+    chat = ReasoningChatModel(
+        [
+            json.dumps(
+                {
+                    "summary": [
+                        "The role builds accessible product interfaces.",
+                        "React and REST APIs are explicit requirements.",
+                        "Reliable automated tests support delivery.",
+                    ],
+                    "skillSignals": [
+                        {
+                            "name": "Automated testing",
+                            "category": "testing_quality",
+                            "importance": "signal",
+                            "evidence": "automated tests",
+                        },
+                        {
+                            "name": "Accessibility",
+                            "category": "domain_knowledge",
+                            "importance": "preferred",
+                            "evidence": "accessible",
+                        },
+                        {
+                            "name": "Strong communication skills",
+                            "category": "other",
+                            "importance": "signal",
+                            "evidence": "interfaces",
+                        },
+                        {
+                            "name": "REST APIs",
+                            "category": "api_integration",
+                            "importance": "required",
+                            "evidence": "REST APIs",
+                        },
+                        {
+                            "name": "React framework",
+                            "category": "framework_library",
+                            "importance": "preferred",
+                            "evidence": "React",
+                        },
+                        {
+                            "name": "React",
+                            "category": "framework_library",
+                            "importance": "required",
+                            "evidence": "React",
+                        },
+                        {
+                            "name": "Kubernetes",
+                            "category": "cloud_platform",
+                            "importance": "signal",
+                            "evidence": "React",
+                        },
+                        {
+                            "name": "Problem solving skills",
+                            "category": "other",
+                            "importance": "signal",
+                            "evidence": "problem solving",
+                        },
+                        {
+                            "name": "Leadership skills",
+                            "category": "other",
+                            "importance": "signal",
+                            "evidence": "leadership",
+                        },
+                        {
+                            "name": "Design systems",
+                            "category": "not-a-category",
+                            "importance": "signal",
+                            "evidence": "design systems",
+                        },
+                    ],
+                }
+            )
+        ]
+    )
+    settings = Settings(
+        export_path=tmp_path / "export",
+        recovery_journal_path=tmp_path / "recovery.json",
+    )
+    workspace = AnalysisWorkspace(tmp_path / "state.json")
+
+    with TestClient(
+        create_test_app(
+            settings,
+            workspace=workspace,
+            analysis_model=DeepSeekApplicationAnalysisModel(
+                DeepSeekJsonClient(
+                    chat, requested_model_id="deepseek-v4-flash"
+                )
+            ),
+        )
+    ) as client:
+        response = client.post(
+            "/api/v1/applications/analysis/run",
+            headers={"Idempotency-Key": "prioritized-output"},
+            json={"target": 1},
+        )
+        run_id = response.json()["run"]["runId"]
+        for _ in range(200):
+            run_response = client.get(
+                f"/api/v1/applications/analysis/runs/{run_id}"
+            )
+            run = run_response.json()["run"]
+            if run["lifecycle"] == "finished":
+                break
+            time.sleep(0.005)
+
+    assert response.status_code == 202
+    assert run["outcome"] == "target_met"
+    assert run["candidates"][0]["state"] == "analyzed"
+    assert len(chat.messages) == 1
+    stored = asyncio.run(workspace.load_analysis_input("app-northstar"))
+    assert stored.analyzed is True
+    assert stored.analysis is not None
+    assert stored.match_score == 57
+    assert stored.analysis.summary == (
+        "The role builds accessible product interfaces. "
+        "React and REST APIs are explicit requirements. "
+        "Reliable automated tests support delivery."
+    )
+    assert [signal.name for signal in stored.analysis.skill_signals] == [
+        "REST APIs",
+        "React",
+        "Accessibility",
+        "Automated testing",
+    ]
+    assert private_reasoning not in response.text
+    assert private_reasoning not in run_response.text
+    assert private_reasoning not in repr(stored)
+    assert private_reasoning not in caplog.text
+
+
+def test_signal_evidence_supports_sensible_aliases_while_soft_traits_are_discarded():
+    result = validate_analysis_payload(
+        {
+            "summary": ["One.", "Two.", "Three."],
+            "skillSignals": [
+                {
+                    "name": "REST APIs",
+                    "category": "api_integration",
+                    "importance": "required",
+                    "evidence": "RESTful API development",
+                },
+                {
+                    "name": "PostgreSQL",
+                    "category": "database",
+                    "importance": "preferred",
+                    "evidence": "Postgres",
+                },
+                {
+                    "name": "Automated testing",
+                    "category": "testing_quality",
+                    "importance": "signal",
+                    "evidence": "automated tests",
+                },
+                {
+                    "name": "Problem solving skills",
+                    "category": "other",
+                    "importance": "signal",
+                    "evidence": "problem solving skills",
+                },
+                {
+                    "name": "Leadership skills",
+                    "category": "other",
+                    "importance": "signal",
+                    "evidence": "leadership skills",
+                },
+                {
+                    "name": "Adaptability",
+                    "category": "other",
+                    "importance": "signal",
+                    "evidence": "adaptability",
+                },
+            ],
+        },
+        (
+            "Own RESTful API development using Postgres and automated tests. "
+            "Bring problem solving skills, leadership skills, and adaptability."
+        ),
+    )
+
+    assert [signal.name for signal in result.skill_signals] == [
+        "REST APIs",
+        "PostgreSQL",
+        "Automated testing",
+    ]
+
+
+def test_signal_evidence_requires_token_boundaries_not_embedded_substrings():
+    with pytest.raises(
+        AnalysisModelOutputError, match="at least three concrete Skill Signals"
+    ):
+        validate_analysis_payload(
+            {
+                "summary": ["One.", "Two.", "Three."],
+                "skillSignals": [
+                    {
+                        "name": "React",
+                        "category": "framework_library",
+                        "importance": "required",
+                        "evidence": "React",
+                    },
+                    {
+                        "name": "Go",
+                        "category": "programming_language",
+                        "importance": "preferred",
+                        "evidence": "Go",
+                    },
+                    {
+                        "name": "Rust",
+                        "category": "programming_language",
+                        "importance": "signal",
+                        "evidence": "Rust",
+                    },
+                ],
+            },
+            "Coordinate preaction planning, ongoing delivery, and customer trust.",
         )
 
-    assert response.status_code == 200
-    assert response.json()["items"][0]["result"] == "analyzed"
-    assert response.json()["items"][0]["matchScore"] == 100
+
+def test_signal_evidence_rejects_partially_supported_composite_names():
+    with pytest.raises(
+        AnalysisModelOutputError, match="at least three concrete Skill Signals"
+    ):
+        validate_analysis_payload(
+            {
+                "summary": ["One.", "Two.", "Three."],
+                "skillSignals": [
+                    {
+                        "name": "Python and Kubernetes",
+                        "category": "programming_language",
+                        "importance": "required",
+                        "evidence": "Python",
+                    },
+                    {
+                        "name": "PostgreSQL and Terraform",
+                        "category": "database",
+                        "importance": "preferred",
+                        "evidence": "PostgreSQL",
+                    },
+                    {
+                        "name": "React development",
+                        "category": "framework_library",
+                        "importance": "signal",
+                        "evidence": "software development",
+                    },
+                ],
+            },
+            "Python, PostgreSQL, and software development are required.",
+        )
+
+
+def test_base_signal_and_development_descriptor_merge_deterministically():
+    result = validate_analysis_payload(
+        {
+            "summary": ["One.", "Two.", "Three."],
+            "skillSignals": [
+                {
+                    "name": "Python",
+                    "category": "programming_language",
+                    "importance": "required",
+                    "evidence": "Python",
+                },
+                {
+                    "name": "Python development",
+                    "category": "programming_language",
+                    "importance": "preferred",
+                    "evidence": "Python development",
+                },
+                {
+                    "name": "REST APIs",
+                    "category": "api_integration",
+                    "importance": "required",
+                    "evidence": "REST APIs",
+                },
+                {
+                    "name": "REST API development",
+                    "category": "api_integration",
+                    "importance": "signal",
+                    "evidence": "REST API development",
+                },
+                {
+                    "name": "PostgreSQL",
+                    "category": "database",
+                    "importance": "preferred",
+                    "evidence": "PostgreSQL",
+                },
+                {
+                    "name": "Kubernetes",
+                    "category": "cloud_platform",
+                    "importance": "preferred",
+                    "evidence": "Kubernetes",
+                },
+                {
+                    "name": "Kubernetes orchestration",
+                    "category": "cloud_platform",
+                    "importance": "signal",
+                    "evidence": "Kubernetes orchestration",
+                },
+            ],
+        },
+        "Use Python, PostgreSQL, and Kubernetes for Python development, REST API development, and Kubernetes orchestration. REST APIs are required.",
+    )
+
+    assert [signal.name for signal in result.skill_signals] == [
+        "Python",
+        "REST APIs",
+        "PostgreSQL",
+        "Kubernetes",
+    ]
+
+
+def test_analysis_with_fewer_than_three_valid_signals_does_not_complete():
+    insufficient = json.dumps(
+        {
+            "summary": ["One.", "Two.", "Three."],
+            "skillSignals": [
+                {
+                    "name": "Python",
+                    "category": "programming_language",
+                    "importance": "required",
+                    "evidence": "Python",
+                },
+                {
+                    "name": "React",
+                    "category": "framework_library",
+                    "importance": "preferred",
+                    "evidence": "React",
+                },
+            ],
+        }
+    )
+    chat = RecordedChatModel([insufficient, insufficient])
+
+    outcome, store = run_graph(
+        chat, application("Build production services with Python and React.")
+    )
+
+    assert outcome.result == "failed"
+    assert "insufficient_concrete_signals" in chat.messages[1][-1][1]
+    assert store.document is None
+    assert store.final_score is None
+
+
+def test_analysis_persists_only_the_ten_highest_priority_valid_signals():
+    candidates = [
+        ("Observability", "signal", "Observability"),
+        ("Terraform", "preferred", "Terraform"),
+        ("React", "required", "React"),
+        ("Automated testing", "signal", "Automated testing"),
+        ("Python", "required", "Python"),
+        ("AWS", "preferred", "AWS"),
+        ("Accessibility", "signal", "Accessibility"),
+        ("REST APIs", "required", "REST APIs"),
+        ("Docker", "preferred", "Docker"),
+        ("Continuous integration", "signal", "Continuous integration"),
+        ("PostgreSQL", "required", "PostgreSQL"),
+        ("Kubernetes", "preferred", "Kubernetes"),
+    ]
+    chat = RecordedChatModel(
+        [
+            json.dumps(
+                {
+                    "summary": ["One.", "Two.", "Three."],
+                    "skillSignals": [
+                        {
+                            "name": name,
+                            "category": "other",
+                            "importance": importance,
+                            "evidence": evidence,
+                        }
+                        for name, importance, evidence in candidates
+                    ],
+                }
+            )
+        ]
+    )
+    content = "Use " + ", ".join(evidence for _, _, evidence in candidates) + "."
+
+    outcome, store = run_graph(chat, application(content))
+
+    assert outcome.result == "analyzed"
+    assert len(chat.messages) == 1
+    assert store.document is not None
+    assert [signal.name for signal in store.document.skill_signals] == [
+        "React",
+        "Python",
+        "REST APIs",
+        "PostgreSQL",
+        "Terraform",
+        "AWS",
+        "Docker",
+        "Kubernetes",
+        "Observability",
+        "Automated testing",
+    ]
 
 
 def test_configured_product_composition_reports_real_analysis_ready(tmp_path):
@@ -436,7 +1486,7 @@ def test_configured_product_composition_reports_real_analysis_ready(tmp_path):
                     }
                 ],
             },
-            "no_concrete_signals",
+            "insufficient_concrete_signals",
         ),
     ],
 )
@@ -451,11 +1501,26 @@ def test_analysis_repairs_invalid_summary_and_generic_trait_variants(
                 "category": "programming_language",
                 "importance": "required",
                 "evidence": "Python",
-            }
+            },
+            {
+                "name": "React",
+                "category": "framework_library",
+                "importance": "preferred",
+                "evidence": "React",
+            },
+            {
+                "name": "Automated testing",
+                "category": "testing_quality",
+                "importance": "signal",
+                "evidence": "automated tests",
+            },
         ],
     }
     chat = RecordedChatModel([json.dumps(invalid_payload), json.dumps(valid)])
-    content = "Build Python services with strong communication skills."
+    content = (
+        "Build Python and React services with automated tests and "
+        "strong communication skills."
+    )
 
     result, _store = run_graph(chat, application(content))
 
@@ -483,8 +1548,8 @@ def test_graph_repairs_persisted_analysis_without_calling_deepseek():
     assert chat.messages == []
 
 
-def test_graph_returns_typed_failure_after_one_invalid_output_repair():
-    chat = RecordedChatModel(["not-json", "still-not-json"])
+def test_graph_returns_typed_failure_after_exhausting_structured_repairs():
+    chat = RecordedChatModel(["not-json", "still-not-json", "also-not-json"])
 
     outcome, store = run_graph(chat, application("Build Python services."))
 
@@ -492,7 +1557,7 @@ def test_graph_returns_typed_failure_after_one_invalid_output_repair():
     assert outcome.errors == ("Application Analysis output failed validation.",)
     assert store.document is None
     assert store.final_score is None
-    assert len(chat.messages) == 2
+    assert len(chat.messages) == 3
 
 
 def test_graph_preserves_body_first_partial_state_when_property_commit_fails():
@@ -500,7 +1565,7 @@ def test_graph_preserves_body_first_partial_state_when_property_commit_fails():
         async def finalize_application_analysis(self, application_id, *, match_score):
             raise RuntimeError("private Notion failure")
 
-    record = application("Build Python services.")
+    record = application("Build Python and React services with automated tests.")
     store = FailingFinalizeStore(record)
     chat = RecordedChatModel(
         [
@@ -513,7 +1578,19 @@ def test_graph_preserves_body_first_partial_state_when_property_commit_fails():
                             "category": "programming_language",
                             "importance": "required",
                             "evidence": "Python",
-                        }
+                        },
+                        {
+                            "name": "React",
+                            "category": "framework_library",
+                            "importance": "preferred",
+                            "evidence": "React",
+                        },
+                        {
+                            "name": "Automated testing",
+                            "category": "testing_quality",
+                            "importance": "signal",
+                            "evidence": "automated tests",
+                        },
                     ],
                 }
             )
@@ -548,7 +1625,19 @@ def test_analysis_models_share_the_graph_output_contract(model_kind):
                                 "category": "framework_library",
                                 "importance": "required",
                                 "evidence": "React",
-                            }
+                            },
+                            {
+                                "name": "Accessibility",
+                                "category": "domain_knowledge",
+                                "importance": "preferred",
+                                "evidence": "accessible",
+                            },
+                            {
+                                "name": "Automated testing",
+                                "category": "testing_quality",
+                                "importance": "signal",
+                                "evidence": "automated tests",
+                            },
                         ],
                     }
                 )
