@@ -157,15 +157,32 @@ export function createDashboardClient(
         ),
       }
     },
-    runAnalysis(target: number, idempotencyKey: string) {
-      return invokeDashboardData(
-        runApplicationAnalysis<true>({
-          client: generatedClient,
-          body: { target },
-          headers: { 'Idempotency-Key': idempotencyKey },
-          throwOnError: true,
-        }),
-      )
+    async runAnalysis(target: number, idempotencyKey: string) {
+      const requestMetadata = {
+        target,
+        idempotencyKeyPresent: idempotencyKey.length > 0,
+        idempotencyKeyLength: idempotencyKey.length,
+      }
+      console.info('[DEBUG-ANALYSIS-START] sending request', requestMetadata)
+      try {
+        return await invokeDashboardData(
+          runApplicationAnalysis<true>({
+            client: generatedClient,
+            body: { target },
+            headers: { 'Idempotency-Key': idempotencyKey },
+            throwOnError: true,
+          }),
+        )
+      } catch (error) {
+        const failure = toDashboardApiError(error)
+        console.error('[DEBUG-ANALYSIS-START] request rejected', {
+          ...requestMetadata,
+          code: failure.code,
+          message: failure.message,
+          validationFailures: failure.validationFailures,
+        })
+        throw failure
+      }
     },
     getActiveAnalysisRun() {
       return invokeDashboardData(

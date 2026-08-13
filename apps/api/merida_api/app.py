@@ -697,7 +697,33 @@ def create_app(
         )
 
     @app.exception_handler(RequestValidationError)
-    async def request_validation_handler(_request: Request, exc: RequestValidationError):
+    async def request_validation_handler(request: Request, exc: RequestValidationError):
+        if request.url.path == "/api/v1/applications/analysis/run":
+            body_fields = (
+                sorted(str(field) for field in exc.body)
+                if isinstance(exc.body, dict)
+                else []
+            )
+            idempotency_key = request.headers.get("Idempotency-Key")
+            logger.warning(
+                "[DEBUG-ANALYSIS-START] request validation failed "
+                "method=%s path=%s content_type=%s body_fields=%s "
+                "idempotency_key_present=%s idempotency_key_length=%s "
+                "failures=%s",
+                request.method,
+                request.url.path,
+                request.headers.get("content-type"),
+                body_fields,
+                idempotency_key is not None,
+                len(idempotency_key) if idempotency_key is not None else 0,
+                [
+                    {
+                        "location": tuple(error["loc"]),
+                        "type": error["type"],
+                    }
+                    for error in exc.errors()
+                ],
+            )
         if any(
             error["type"] == "missing"
             and tuple(error["loc"]) == ("header", "X-Capture-Token")
