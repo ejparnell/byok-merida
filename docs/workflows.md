@@ -92,7 +92,7 @@ Flow:
 
 1. `GET /api/v1/resumes/queue?limit=5` returns an eligible-only, Match Score-ordered queue.
 2. The operator selects **Create Resume** on one Application.
-3. `POST /api/v1/resumes/create` revalidates eligibility and returns `already_created` when the completion relation exists.
+3. `POST /api/v1/resumes/runs` captures a fixed server-selected Candidate Set and returns `202`; the dashboard follows the durable Run identity while work continues.
 4. The workflow loads Master Resume evidence, extracts Fit Requirements, runs deterministic Matching, and blocks before writes when evidence is insufficient.
 5. A validated Resume Document and Resume Fit Analysis are produced from evidence-backed claims.
 6. The artifact committer creates the Resume, PDF, and Note, then attaches the final Application relation last.

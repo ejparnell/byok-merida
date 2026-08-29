@@ -4,6 +4,7 @@ from datetime import date
 from types import SimpleNamespace
 
 import pytest
+import httpx
 from fastapi.testclient import TestClient
 
 from merida_api.app import create_app
@@ -76,28 +77,21 @@ def test_resume_builder_uses_analysis_model_for_fit_requirements_and_resume_mode
         resume_model="deepseek-v4-pro",
     )
 
-    assert [kwargs for kwargs, _client in clients] == [
-        {
-            "api_key": "test-key",
-            "model": "deepseek-v4-flash",
-            "max_tokens": 8000,
-            "timeout": 120,
-        },
-        {
-            "api_key": "test-key",
-            "model": "deepseek-v4-flash",
-            "max_tokens": 16000,
-            "timeout": 180,
-        },
-        {
-            "api_key": "test-key",
-            "model": "deepseek-v4-pro",
-            "max_tokens": 8000,
-        },
-    ]
+    assert len(clients) == 2
+    requirement, draft = (kwargs for kwargs, _client in clients)
+    assert requirement["model"] == "deepseek-v4-flash"
+    assert requirement["max_tokens"] == 8_000
+    assert draft["model"] == "deepseek-v4-pro"
+    assert draft["max_tokens"] == 16_000
+    for envelope in (requirement, draft):
+        assert envelope["reasoning_effort"] == "high"
+        assert envelope["thinking"] == "enabled"
+        assert envelope["absolute_timeout"] == 300
+        assert envelope["timeout"] == httpx.Timeout(
+            connect=10, pool=10, write=120, read=120
+        )
     assert builder._graph._requirement_model._client is clients[0][1]
-    assert builder._graph._draft_model._primary._client is clients[1][1]
-    assert builder._graph._draft_model._fallback._client is clients[2][1]
+    assert builder._graph._draft_model._client is clients[1][1]
 
 
 def analyzed_application(job_content: str) -> ApplicationRecord:

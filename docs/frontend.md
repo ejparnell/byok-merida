@@ -271,7 +271,7 @@ The dashboard should feel current without requiring a page reload.
 | Analysis queued or running           | Disable the run button, poll the durable snapshot, show progress and spend, and allow cancellation.      |
 | Analysis cancelling                  | Disable new starts, show that cancellation was requested, and poll until the run finishes.               |
 | Analysis finished                    | Keep the terminal outcome, spend detail, and safe per-Application results visible.                       |
-| Resume creation running              | Disable only the active row button unless the backend cannot safely run multiple creations.              |
+| Resume Run queued or running         | Follow the durable run, show progress and Committed Spend, and disable only Resume Run start.             |
 | Empty queue                          | Show a calm empty state with the next useful action in Notion or the Chrome extension.                   |
 
 ## Shared Components

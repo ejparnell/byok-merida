@@ -7,6 +7,8 @@ from merida_api.core.settings import Settings
 from merida_api.features.applications.analysis_run_store import (
     SqliteAnalysisRunStore,
 )
+from merida_api.features.resumes.run_store import SqliteResumeRunStore
+from merida_api.features.resumes.checkpoint_vault import ResumeCheckpointVault
 
 from .models import FakeApplicationAnalysisModel, FakeResumeDocumentBuilder
 from .workspace import FakeWorkspace
@@ -29,6 +31,16 @@ def create_test_app(
     options.setdefault(
         "analysis_run_store",
         SqliteAnalysisRunStore(state_path.parent / "analysis-runs.sqlite3"),
+    )
+    options.setdefault(
+        "resume_run_store",
+        SqliteResumeRunStore(state_path.parent / "resume-runs.sqlite3"),
+    )
+    settings = settings.model_copy(
+        update={
+            "resume_checkpoint_key": "eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHg=",
+            "resume_checkpoint_key_version": "test-key-1",
+        }
     )
     return create_app(
         settings,

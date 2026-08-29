@@ -13,7 +13,7 @@ Merida uses DeepSeek for bounded structured generation and deterministic Python 
 | Evidence matching       | Versioned deterministic `matching-v1` policy       |
 | Durable records         | Workflow-owned Notion store operations             |
 | Analysis coordination   | Applications-owned SQLite Analysis Run Store       |
-| Partial-effect recovery | Content-free JSON effect journal                   |
+| Resume coordination | Resumes-owned durable Run and Artifact Set records with conservative provider reservations |
 
 The graphs use no durable LangGraph checkpointer. Graph invocations are bounded,
 have no human interrupt, and may contain private Job Content or Master Resume
@@ -114,17 +114,21 @@ Matching is provider-independent. It owns:
 
 The active policy is versioned as `matching-v1`. Model variability cannot change deterministic scores or bypass evidence gates.
 
-## Artifact commit and recovery
+## Planned durable Resume Run artifact commit and recovery
 
-Resume artifacts use one validated source document for Notion and PDF rendering. Effects occur in this order:
+Resume Creation is accepted as a durable asynchronous Resume Run. Fit Requirements use Flash/8K and Drafts use Pro/16K; both are high-thinking, non-streaming JSON calls with two stage slots and no fallback. Each exact prepared call must fit the run's fixed $1.00 authorization ledger before transmission.
 
-1. stage the PDF locally;
-2. create the Resume draft;
-3. create the Resume Fit Analysis Note;
-4. publish the PDF;
-5. attach the Resume to the Application last.
+1. durably record the Resume Artifact Set intent;
+2. stage the PDF locally;
+3. create or reconcile the unlinked Resume draft;
+4. publish or reconcile the PDF;
+5. create or reconcile the Resume Fit Analysis Note;
+6. validate the complete Resume Artifact Set;
+7. attach and reread the Resume-to-Application relation last.
 
-Failures compensate completed effects in reverse order. Ambiguous residue is recorded in the content-free effect journal and blocks conflicting mutations until reconciliation or explicit operator acknowledgement.
+Verified same-run partial sets recover forward by performing only missing effects. Compensation is reserved for a candidate that later policy definitively stops and proceeds in reverse order only while ownership remains provable. Ambiguous ownership, effect results, or cleanup enter a durable Application-scoped quarantine that blocks conflicting mutations until audited evidence proves same-set recovery, complete commitment, or controlled strict compensation; acknowledgement alone never unlocks it.
+
+Each Resume and Note create will be one synchronous Notion enhanced-Markdown request containing the complete body, exact `Merida Artifact ID`, and its initial properties and relations. The durable recovery record captures the Artifact Request Digest before dispatch; multi-request child-block appends and asynchronous Notion creation are outside the recoverable artifact envelope.
 
 Use `npm run recovery -- inspect` before attempting repair. Recovery reports safe identifiers and phases, never private content.
 

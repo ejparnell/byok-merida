@@ -706,7 +706,10 @@ Missing-PDF repair is out of v1. Applications with an existing Resume relation d
 | --------- | ------------------------- | -------------------------------------------------------------------------------- |
 | `GET`     | `/resumes/queue`          | Lists analyzed Applications eligible for Resume Creation with cursor pagination. |
 | `POST`    | `/resumes/create`         | Creates a Job-Specific Resume for one queued Application.                        |
-| `GET`     | `/resumes/{resumeId}/pdf` | Downloads the generated PDF for a created Job-Specific Resume.                   |
+| `POST`    | `/resumes/runs` | Accepts one targeted durable Resume Run. |
+| `GET`     | `/resumes/runs/active`, `/latest`, `/{runId}` | Observes retained Resume Run state. |
+| `POST`    | `/resumes/runs/{runId}/cancel` | Stops future scheduling and preserves safe drain. |
+| `GET`     | `/resumes/artifact-sets/{artifactSetId}/pdf` | Downloads a digest-verified sealed Artifact Set PDF. |
 
 ### `GET /resumes/queue`
 

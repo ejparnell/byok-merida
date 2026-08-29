@@ -52,7 +52,7 @@ Routes and screens are adapters; workflow rules live in feature modules behind n
 | ------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | Application Capture       | `prepare(evidence)`, `confirm(draft)`                                                             | Parsing, duplicate detection, validation, and Notion writes.                                                  |
 | Application Analysis      | `get_queue(query)`, `start_run(target, key)`, `get_run(id)`, `get_active_run()`, `cancel_run(id)` | Fixed Candidate Sets, sequential evaluation, model repair, spend enforcement, durable progress, and recovery. |
-| Resume Creation           | `get_queue(query)`, `create(application_id)`                                                      | Evidence gates, model calls, claim repair, document rendering, and compensation.                              |
+| Resume Creation           | `get_queue(query)`, `start_run(target, key)`, run and Artifact Set reads/actions                  | Fixed candidates, evidence gates, provider spend, document rendering, recovery, and compensation.             |
 | Matching                  | `match(targets, evidence_items, scoring_policy)`                                                  | Normalization and deterministic scoring details.                                                              |
 | Resume Artifact Committer | `commit(application, bundle, staged_pdf)`                                                         | Ordered Notion/PDF effects, relations, rollback, and recovery reporting.                                      |
 | Extension evidence        | `collectCaptureEvidence()`                                                                        | Chrome tab/frame reads and bounded in-memory page content.                                                    |
@@ -72,6 +72,8 @@ The backend also writes three supported local artifact classes:
 - generated PDFs and their hidden resume-ID lookup metadata under `app-data/export/`;
 - incomplete-effect recovery entries under `app-data/recovery/effects.json`;
 - content-free Analysis Run coordination metadata under `app-data/recovery/analysis-runs.sqlite3`.
+
+Durable batched Resume Creation uses a separate Resumes-owned SQLite authority for retained content-free run, candidate, Artifact Set, idempotency, and integer-micro spend facts. Its fixed $1.00 authorization ceiling bounds local approvals under reviewed prices; it does not cap an incorrect external invoice.
 
 The Analysis Run Store is owned by the Applications context. It contains run and
 idempotency identities, the fixed ordered Candidate Set, lifecycle and outcome,

@@ -399,29 +399,27 @@ test('invalid queue cursors recover once by loading both first pages', async () 
   assert.equal(session.getState().resumeCursor, null)
 })
 
-test('created resume resets only the Resume Creation queue and keeps links', async () => {
-  const loads = []
+test('accepted Resume Run retains its durable snapshot and starts polling', async () => {
   const client = dashboardClient({
-    loadDashboard: async ({ analysisCursor, resumeCursor }) => {
-      loads.push([analysisCursor, resumeCursor])
-      return dashboardSnapshot()
-    },
-    createResume: async () => ({
+    startResumeRun: async () => ({
       ok: true,
-      result: 'created',
-      resume: { url: 'https://example.test/resume' },
-      note: { url: 'https://example.test/note' },
-      pdf: { downloadUrl: '/api/v1/resumes/resume-1/pdf' },
+      run: {
+        ...analysisRun(),
+        runId: 'resume-run-1',
+        revision: 1,
+        progress: {
+          completions: 0,
+          candidatesConsidered: 0,
+          evaluationsConsumed: 0,
+        },
+        candidates: [],
+      },
     }),
   })
   const session = createDashboardSession(client)
-  session.setCursors('analysis-page', 'resume-page')
 
-  await session.createResume('app-1')
+  await session.startResumeRun(5)
 
-  assert.deepEqual(loads, [['analysis-page', null]])
-  assert.equal(
-    session.getState().resumeResults['app-1'].pdf.downloadUrl,
-    '/api/v1/resumes/resume-1/pdf',
-  )
+  assert.equal(session.getState().resumeRun?.runId, 'resume-run-1')
+  session.dispose()
 })

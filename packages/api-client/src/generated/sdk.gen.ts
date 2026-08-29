@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { CancelApplicationAnalysisRunData, CancelApplicationAnalysisRunErrors, CancelApplicationAnalysisRunResponses, ConfirmApplicationData, ConfirmApplicationErrors, ConfirmApplicationResponses, CreateResumeData, CreateResumeErrors, CreateResumeResponses, DownloadResumePdfData, DownloadResumePdfErrors, DownloadResumePdfResponses, GetActiveApplicationAnalysisRunData, GetActiveApplicationAnalysisRunErrors, GetActiveApplicationAnalysisRunResponses, GetApplicationAnalysisHealthData, GetApplicationAnalysisHealthErrors, GetApplicationAnalysisHealthResponses, GetApplicationAnalysisQueueData, GetApplicationAnalysisQueueErrors, GetApplicationAnalysisQueueResponses, GetApplicationAnalysisRunData, GetApplicationAnalysisRunErrors, GetApplicationAnalysisRunResponses, GetApplicationCaptureMatchesData, GetApplicationCaptureMatchesErrors, GetApplicationCaptureMatchesResponses, GetHealthData, GetHealthErrors, GetHealthResponses, GetNotionHealthData, GetNotionHealthErrors, GetNotionHealthResponses, GetOperatorSettingsData, GetOperatorSettingsErrors, GetOperatorSettingsResponses, GetResumeCreationHealthData, GetResumeCreationHealthErrors, GetResumeCreationHealthResponses, GetResumeCreationQueueData, GetResumeCreationQueueErrors, GetResumeCreationQueueResponses, PrepareApplicationData, PrepareApplicationErrors, PrepareApplicationResponses, RunApplicationAnalysisData, RunApplicationAnalysisErrors, RunApplicationAnalysisResponses } from './types.gen';
+import type { CancelApplicationAnalysisRunData, CancelApplicationAnalysisRunErrors, CancelApplicationAnalysisRunResponses, CancelResumeRunData, CancelResumeRunErrors, CancelResumeRunResponses, CompensateResumeArtifactSetData, CompensateResumeArtifactSetErrors, CompensateResumeArtifactSetResponses, ConfirmApplicationData, ConfirmApplicationErrors, ConfirmApplicationResponses, DownloadResumeArtifactSetPdfData, DownloadResumeArtifactSetPdfErrors, DownloadResumeArtifactSetPdfResponses, GetActiveApplicationAnalysisRunData, GetActiveApplicationAnalysisRunErrors, GetActiveApplicationAnalysisRunResponses, GetActiveResumeRunData, GetActiveResumeRunErrors, GetActiveResumeRunResponses, GetApplicationAnalysisHealthData, GetApplicationAnalysisHealthErrors, GetApplicationAnalysisHealthResponses, GetApplicationAnalysisQueueData, GetApplicationAnalysisQueueErrors, GetApplicationAnalysisQueueResponses, GetApplicationAnalysisRunData, GetApplicationAnalysisRunErrors, GetApplicationAnalysisRunResponses, GetApplicationCaptureMatchesData, GetApplicationCaptureMatchesErrors, GetApplicationCaptureMatchesResponses, GetHealthData, GetHealthErrors, GetHealthResponses, GetLatestResumeRunData, GetLatestResumeRunErrors, GetLatestResumeRunResponses, GetNotionHealthData, GetNotionHealthErrors, GetNotionHealthResponses, GetOperatorSettingsData, GetOperatorSettingsErrors, GetOperatorSettingsResponses, GetResumeArtifactSetData, GetResumeArtifactSetErrors, GetResumeArtifactSetResponses, GetResumeCreationHealthData, GetResumeCreationHealthErrors, GetResumeCreationHealthResponses, GetResumeCreationQueueData, GetResumeCreationQueueErrors, GetResumeCreationQueueResponses, GetResumeRunData, GetResumeRunErrors, GetResumeRunResponses, ListResumeArtifactQuarantinesData, ListResumeArtifactQuarantinesErrors, ListResumeArtifactQuarantinesResponses, PrepareApplicationData, PrepareApplicationErrors, PrepareApplicationResponses, ReconcileResumeArtifactSetData, ReconcileResumeArtifactSetErrors, ReconcileResumeArtifactSetResponses, RunApplicationAnalysisData, RunApplicationAnalysisErrors, RunApplicationAnalysisResponses, StartResumeRunData, StartResumeRunErrors, StartResumeRunResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -105,10 +105,37 @@ export const getResumeCreationHealth = <ThrowOnError extends boolean = false>(op
 export const getOperatorSettings = <ThrowOnError extends boolean = false>(options?: Options<GetOperatorSettingsData, ThrowOnError>): RequestResult<GetOperatorSettingsResponses, GetOperatorSettingsErrors, ThrowOnError> => (options?.client ?? client).get<GetOperatorSettingsResponses, GetOperatorSettingsErrors, ThrowOnError>({ url: '/api/v1/operator/settings', ...options });
 
 /**
- * Create Resume
+ * List Resume Artifact Quarantines
  */
-export const createResume = <ThrowOnError extends boolean = false>(options: Options<CreateResumeData, ThrowOnError>): RequestResult<CreateResumeResponses, CreateResumeErrors, ThrowOnError> => (options.client ?? client).post<CreateResumeResponses, CreateResumeErrors, ThrowOnError>({
-    url: '/api/v1/resumes/create',
+export const listResumeArtifactQuarantines = <ThrowOnError extends boolean = false>(options?: Options<ListResumeArtifactQuarantinesData, ThrowOnError>): RequestResult<ListResumeArtifactQuarantinesResponses, ListResumeArtifactQuarantinesErrors, ThrowOnError> => (options?.client ?? client).get<ListResumeArtifactQuarantinesResponses, ListResumeArtifactQuarantinesErrors, ThrowOnError>({ url: '/api/v1/resumes/artifact-quarantines', ...options });
+
+/**
+ * Get Resume Artifact Set
+ */
+export const getResumeArtifactSet = <ThrowOnError extends boolean = false>(options: Options<GetResumeArtifactSetData, ThrowOnError>): RequestResult<GetResumeArtifactSetResponses, GetResumeArtifactSetErrors, ThrowOnError> => (options.client ?? client).get<GetResumeArtifactSetResponses, GetResumeArtifactSetErrors, ThrowOnError>({ url: '/api/v1/resumes/artifact-sets/{artifactSetId}', ...options });
+
+/**
+ * Compensate Resume Artifact Set
+ */
+export const compensateResumeArtifactSet = <ThrowOnError extends boolean = false>(options: Options<CompensateResumeArtifactSetData, ThrowOnError>): RequestResult<CompensateResumeArtifactSetResponses, CompensateResumeArtifactSetErrors, ThrowOnError> => (options.client ?? client).post<CompensateResumeArtifactSetResponses, CompensateResumeArtifactSetErrors, ThrowOnError>({
+    url: '/api/v1/resumes/artifact-sets/{artifactSetId}/compensate',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Download Resume Artifact Set Pdf
+ */
+export const downloadResumeArtifactSetPdf = <ThrowOnError extends boolean = false>(options: Options<DownloadResumeArtifactSetPdfData, ThrowOnError>): RequestResult<DownloadResumeArtifactSetPdfResponses, DownloadResumeArtifactSetPdfErrors, ThrowOnError> => (options.client ?? client).get<DownloadResumeArtifactSetPdfResponses, DownloadResumeArtifactSetPdfErrors, ThrowOnError>({ url: '/api/v1/resumes/artifact-sets/{artifactSetId}/pdf', ...options });
+
+/**
+ * Reconcile Resume Artifact Set
+ */
+export const reconcileResumeArtifactSet = <ThrowOnError extends boolean = false>(options: Options<ReconcileResumeArtifactSetData, ThrowOnError>): RequestResult<ReconcileResumeArtifactSetResponses, ReconcileResumeArtifactSetErrors, ThrowOnError> => (options.client ?? client).post<ReconcileResumeArtifactSetResponses, ReconcileResumeArtifactSetErrors, ThrowOnError>({
+    url: '/api/v1/resumes/artifact-sets/{artifactSetId}/reconcile',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -122,6 +149,33 @@ export const createResume = <ThrowOnError extends boolean = false>(options: Opti
 export const getResumeCreationQueue = <ThrowOnError extends boolean = false>(options?: Options<GetResumeCreationQueueData, ThrowOnError>): RequestResult<GetResumeCreationQueueResponses, GetResumeCreationQueueErrors, ThrowOnError> => (options?.client ?? client).get<GetResumeCreationQueueResponses, GetResumeCreationQueueErrors, ThrowOnError>({ url: '/api/v1/resumes/queue', ...options });
 
 /**
- * Download Resume Pdf
+ * Start Resume Run
  */
-export const downloadResumePdf = <ThrowOnError extends boolean = false>(options: Options<DownloadResumePdfData, ThrowOnError>): RequestResult<DownloadResumePdfResponses, DownloadResumePdfErrors, ThrowOnError> => (options.client ?? client).get<DownloadResumePdfResponses, DownloadResumePdfErrors, ThrowOnError>({ url: '/api/v1/resumes/{resumeId}/pdf', ...options });
+export const startResumeRun = <ThrowOnError extends boolean = false>(options: Options<StartResumeRunData, ThrowOnError>): RequestResult<StartResumeRunResponses, StartResumeRunErrors, ThrowOnError> => (options.client ?? client).post<StartResumeRunResponses, StartResumeRunErrors, ThrowOnError>({
+    url: '/api/v1/resumes/runs',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Get Active Resume Run
+ */
+export const getActiveResumeRun = <ThrowOnError extends boolean = false>(options?: Options<GetActiveResumeRunData, ThrowOnError>): RequestResult<GetActiveResumeRunResponses, GetActiveResumeRunErrors, ThrowOnError> => (options?.client ?? client).get<GetActiveResumeRunResponses, GetActiveResumeRunErrors, ThrowOnError>({ url: '/api/v1/resumes/runs/active', ...options });
+
+/**
+ * Get Latest Resume Run
+ */
+export const getLatestResumeRun = <ThrowOnError extends boolean = false>(options?: Options<GetLatestResumeRunData, ThrowOnError>): RequestResult<GetLatestResumeRunResponses, GetLatestResumeRunErrors, ThrowOnError> => (options?.client ?? client).get<GetLatestResumeRunResponses, GetLatestResumeRunErrors, ThrowOnError>({ url: '/api/v1/resumes/runs/latest', ...options });
+
+/**
+ * Get Resume Run
+ */
+export const getResumeRun = <ThrowOnError extends boolean = false>(options: Options<GetResumeRunData, ThrowOnError>): RequestResult<GetResumeRunResponses, GetResumeRunErrors, ThrowOnError> => (options.client ?? client).get<GetResumeRunResponses, GetResumeRunErrors, ThrowOnError>({ url: '/api/v1/resumes/runs/{runId}', ...options });
+
+/**
+ * Cancel Resume Run
+ */
+export const cancelResumeRun = <ThrowOnError extends boolean = false>(options: Options<CancelResumeRunData, ThrowOnError>): RequestResult<CancelResumeRunResponses, CancelResumeRunErrors, ThrowOnError> => (options.client ?? client).post<CancelResumeRunResponses, CancelResumeRunErrors, ThrowOnError>({ url: '/api/v1/resumes/runs/{runId}/cancel', ...options });

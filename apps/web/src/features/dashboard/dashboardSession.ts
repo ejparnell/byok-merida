@@ -1,7 +1,9 @@
 import type {
   AnalysisRunResponse,
   AnalysisRunSnapshot,
-  CreateResumeResponse,
+  ResumeArtifactSetSnapshot,
+  ResumeRunResponse,
+  ResumeRunSnapshot,
 } from '@merida/api-client'
 import type {
   DashboardApiError,
@@ -32,8 +34,10 @@ export type DashboardState = {
   analysisStarting: boolean
   analysisCancelPending: boolean
   analysisRun: AnalysisRunSnapshot | null
-  activeResumeId: string | null
-  resumeResults: Record<string, CreateResumeResponse>
+  resumeStarting: boolean
+  resumeCancelPending: boolean
+  resumeRun: ResumeRunSnapshot | null
+  resumeQuarantines: ResumeArtifactSetSnapshot[]
   errors: string[]
 }
 
@@ -58,7 +62,12 @@ export interface DashboardSession {
   }): Promise<DashboardSnapshot | null>
   runAnalysis(target: unknown): Promise<AnalysisRunResponse | null>
   cancelAnalysisRun(): Promise<AnalysisRunResponse | null>
-  createResume(applicationId: string): Promise<CreateResumeResponse | null>
+  startResumeRun(target: unknown): Promise<ResumeRunResponse | null>
+  cancelResumeRun(): Promise<ResumeRunResponse | null>
+  actOnResumeArtifact(
+    artifact: ResumeArtifactSetSnapshot,
+    kind: 'reconcile' | 'compensate',
+  ): Promise<void>
   dispose(): void
 }
 
@@ -95,8 +104,10 @@ export function createDashboardSession(
     analysisStarting: false,
     analysisCancelPending: false,
     analysisRun: null,
-    activeResumeId: null,
-    resumeResults: {},
+    resumeStarting: false,
+    resumeCancelPending: false,
+    resumeRun: null,
+    resumeQuarantines: [],
     errors: [],
   }
 
@@ -113,8 +124,23 @@ export function createDashboardSession(
 
   const schedulePoll = () => {
     cancelScheduledPoll()
-    if (disposed || !isAnalysisRunActive(state.analysisRun)) return
-    pollHandle = scheduler.schedule(pollAnalysisRun, pollIntervalMs)
+    if (
+      disposed ||
+      (!isAnalysisRunActive(state.analysisRun) &&
+        (!state.resumeRun || state.resumeRun.lifecycle === 'finished'))
+    )
+      return
+    pollHandle = scheduler.schedule(pollDurableResources, pollIntervalMs)
+  }
+
+  const acceptResumeRun = (run: ResumeRunSnapshot) => {
+    if (
+      state.resumeRun?.runId === run.runId &&
+      state.resumeRun.revision > run.revision
+    )
+      return
+    publish({ resumeRun: run })
+    if (run.lifecycle !== 'finished') schedulePoll()
   }
 
   const acceptAnalysisRun = async (run: AnalysisRunSnapshot) => {
@@ -166,6 +192,23 @@ export function createDashboardSession(
     }
   }
 
+  async function pollDurableResources() {
+    pollHandle = null
+    await Promise.all([
+      pollAnalysisRun(),
+      (async () => {
+        const run = state.resumeRun
+        if (!run || run.lifecycle === 'finished') return
+        try {
+          acceptResumeRun((await client.getResumeRun(run.runId)).run)
+        } catch (error) {
+          publish({ errors: [operatorError(error).message] })
+        }
+      })(),
+    ])
+    schedulePoll()
+  }
+
   async function load({
     reset = false,
     checkActiveAnalysisRun = true,
@@ -197,6 +240,20 @@ export function createDashboardSession(
               failure.message || 'Active Analysis Run could not be loaded.',
             ],
           })
+        }
+        try {
+          const [activeResume, quarantines] = await Promise.all([
+            client.getActiveResumeRun(),
+            client.listResumeArtifactQuarantines(),
+          ])
+          if (activeResume.run) acceptResumeRun(activeResume.run)
+          else {
+            const latest = await client.getLatestResumeRun()
+            if (latest.run) acceptResumeRun(latest.run)
+          }
+          publish({ resumeQuarantines: quarantines.items })
+        } catch (error) {
+          publish({ errors: [...state.errors, operatorError(error).message] })
         }
       }
       publish({ loading: false })
@@ -299,30 +356,66 @@ export function createDashboardSession(
         return null
       }
     },
-    async createResume(applicationId: string) {
-      if (state.activeResumeId) return null
-      publish({ activeResumeId: applicationId, errors: [] })
+    async startResumeRun(target: unknown) {
+      if (
+        state.resumeStarting ||
+        (state.resumeRun && state.resumeRun.lifecycle !== 'finished')
+      )
+        return null
+      publish({ resumeStarting: true, errors: [] })
       try {
-        const result = await client.createResume(applicationId)
-        publish({
-          activeResumeId: null,
-          resumeResults: { ...state.resumeResults, [applicationId]: result },
-          resumeCursor:
-            result.ok && result.result === 'created'
-              ? null
-              : state.resumeCursor,
-        })
-        await load()
+        const result = await client.startResumeRun(
+          clampTarget(target),
+          createIdempotencyKey(),
+        )
+        publish({ resumeStarting: false })
+        acceptResumeRun(result.run)
         return result
       } catch (error) {
         publish({
-          activeResumeId: null,
+          resumeStarting: false,
           errors: [
-            operatorError(error).message ||
-              'Resume Creation could not be completed.',
+            operatorError(error).message || 'Resume Run could not be started.',
           ],
         })
         return null
+      }
+    },
+    async cancelResumeRun() {
+      const run = state.resumeRun
+      if (!run || run.lifecycle === 'finished' || state.resumeCancelPending)
+        return null
+      publish({ resumeCancelPending: true, errors: [] })
+      try {
+        const result = await client.cancelResumeRun(run.runId)
+        publish({ resumeCancelPending: false })
+        acceptResumeRun(result.run)
+        return result
+      } catch (error) {
+        publish({
+          resumeCancelPending: false,
+          errors: [operatorError(error).message],
+        })
+        return null
+      }
+    },
+    async actOnResumeArtifact(artifact, kind) {
+      try {
+        const result = await client.actOnResumeArtifact(
+          artifact.artifactSetId,
+          kind,
+          artifact.revision,
+          createIdempotencyKey(),
+        )
+        publish({
+          resumeQuarantines: state.resumeQuarantines.map((item) =>
+            item.artifactSetId === result.artifactSet.artifactSetId
+              ? result.artifactSet
+              : item,
+          ),
+        })
+      } catch (error) {
+        publish({ errors: [operatorError(error).message] })
       }
     },
     dispose() {

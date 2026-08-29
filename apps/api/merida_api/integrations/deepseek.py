@@ -87,6 +87,14 @@ class DeepSeekJsonClient:
             raise RuntimeError("The Analysis provider model identity is unavailable.")
         return self._requested_model_id
 
+    @property
+    def supports_prepared_requests(self) -> bool:
+        return bool(
+            self._requested_model_id
+            and callable(getattr(self._chat_model, "render_request", None))
+            and callable(getattr(self._chat_model, "ainvoke_prepared", None))
+        )
+
     async def request_json(self, messages: list[tuple[str, str]]) -> dict:
         """Legacy bounded transport recovery used by Resume Creation."""
         for attempt in range(3):
@@ -122,7 +130,8 @@ class DeepSeekJsonClient:
     ) -> DeepSeekJsonResponse:
         """Perform exactly one provider invocation for Analysis-owned recovery."""
         return await self._request_json_once(
-            lambda: self._chat_model.ainvoke(messages)
+            lambda: self._chat_model.ainvoke(messages),
+            require_stop=False,
         )
 
     def prepare_json_request(self, messages: list[tuple[str, str]]) -> bytes:
@@ -146,10 +155,16 @@ class DeepSeekJsonClient:
             raise RuntimeError(
                 "The configured Analysis provider cannot send a prepared request."
             )
-        return await self._request_json_once(lambda: invoke(rendered_request))
+        return await self._request_json_once(
+            lambda: invoke(rendered_request),
+            require_stop=True,
+        )
 
     async def _request_json_once(
-        self, invoke: Callable[[], Awaitable[Any]]
+        self,
+        invoke: Callable[[], Awaitable[Any]],
+        *,
+        require_stop: bool,
     ) -> DeepSeekJsonResponse:
         try:
             response = await asyncio.wait_for(
@@ -173,6 +188,12 @@ class DeepSeekJsonClient:
             raise DeepSeekStructuredOutputError(
                 "length_truncated",
                 "DeepSeek stopped before completing JSON output.",
+                evidence=evidence,
+            )
+        if require_stop and evidence.finish_reason != "stop":
+            raise DeepSeekStructuredOutputError(
+                "finish_reason_not_stop",
+                "DeepSeek did not complete the JSON response normally.",
                 evidence=evidence,
             )
         content = _message_text(response)

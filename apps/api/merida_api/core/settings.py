@@ -34,11 +34,17 @@ class Settings(BaseSettings):
     analysis_run_store_path: Path = (
         REPOSITORY_ROOT / "app-data/recovery/analysis-runs.sqlite3"
     )
+    resume_run_store_path: Path = (
+        REPOSITORY_ROOT / "app-data/recovery/resume-runs.sqlite3"
+    )
+    resume_checkpoint_key: str = ""
+    resume_checkpoint_key_version: str = ""
 
     @field_validator(
         "export_path",
         "recovery_journal_path",
         "analysis_run_store_path",
+        "resume_run_store_path",
         mode="after",
     )
     @classmethod

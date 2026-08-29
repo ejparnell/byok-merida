@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "stage": "requirements",
+      "provider": "deepseek",
+      "endpoint": "https://api.deepseek.com/v1/chat/completions",
+      "model": "deepseek-v4-flash",
+      "verifiedOn": "2026-08-13",
+      "validThrough": "2026-09-12",
+      "cacheHitInputUsdMicrosPerMillionTokens": 2800,
+      "cacheMissInputUsdMicrosPerMillionTokens": 140000,
+      "reasoningInclusiveOutputUsdMicrosPerMillionTokens": 280000,
+      "maxOutputTokens": 8000,
+      "maxContextTokens": 1000000,
+      "protocolOverheadTokens": 27,
+      "protocolMaximumMessages": 3,
+      "tokenizerArtifact": "../applications/analysis_deepseek_v4_tokenizer.60d8d707.json.gz",
+      "tokenizerArtifactSha256": "8423aea16f705997ec67b2f6cd41e0d312f5e9a6beb1c2bea5b2438d93de3a8e"
+    },
+    {
+      "stage": "draft",
+      "provider": "deepseek",
+      "endpoint": "https://api.deepseek.com/v1/chat/completions",
+      "model": "deepseek-v4-pro",
+      "verifiedOn": "2026-08-13",
+      "validThrough": "2026-09-12",
+      "cacheHitInputUsdMicrosPerMillionTokens": 8700,
+      "cacheMissInputUsdMicrosPerMillionTokens": 435000,
+      "reasoningInclusiveOutputUsdMicrosPerMillionTokens": 870000,
+      "maxOutputTokens": 16000,
+      "maxContextTokens": 1000000,
+      "protocolOverheadTokens": 27,
+      "protocolMaximumMessages": 3,
+      "tokenizerArtifact": "../applications/analysis_deepseek_v4_tokenizer.60d8d707.json.gz",
+      "tokenizerArtifactSha256": "8423aea16f705997ec67b2f6cd41e0d312f5e9a6beb1c2bea5b2438d93de3a8e"
+    }
+  ]
+}

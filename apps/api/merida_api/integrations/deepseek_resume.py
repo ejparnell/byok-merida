@@ -1,5 +1,12 @@
+from dataclasses import dataclass
+from contextlib import contextmanager
+from contextvars import ContextVar
 import hashlib
 import logging
+from collections.abc import Awaitable, Callable, Iterator
+from typing import Generic, TypeVar, cast
+
+import httpx
 
 from pydantic import BaseModel, Field
 
@@ -12,13 +19,31 @@ from ..features.resumes.ports import (
 from ..features.resumes.resume_builder import DeepSeekResumeDocumentBuilder
 from ..shared.prompt_payload import JsonPromptPayloadEncoder
 from .deepseek import (
+    DeepSeekCallEvidence,
     DeepSeekJsonClient,
-    DeepSeekProviderError,
     create_deepseek_json_client,
 )
 
 
 logger = logging.getLogger(__name__)
+StagePayload = TypeVar("StagePayload")
+ResumeStageTransport = Callable[["PreparedResumeStageCall"], Awaitable["ResumeStageResult"]]
+ResumeStageDispatcher = Callable[
+    ["PreparedResumeStageCall", ResumeStageTransport], Awaitable["ResumeStageResult"]
+]
+_resume_stage_dispatcher: ContextVar[ResumeStageDispatcher | None] = ContextVar(
+    "resume_stage_dispatcher", default=None
+)
+
+
+@contextmanager
+def resume_stage_dispatch_scope(dispatcher: ResumeStageDispatcher) -> Iterator[None]:
+    """Bind one durable run's authorization boundary to every exact stage call."""
+    token = _resume_stage_dispatcher.set(dispatcher)
+    try:
+        yield
+    finally:
+        _resume_stage_dispatcher.reset(token)
 
 
 class _PersistedSignalPrompt(BaseModel):
@@ -132,12 +157,57 @@ class DeepSeekFitRequirementModel:
         *,
         repair_code: str | None = None,
     ) -> FitRequirementsProposal:
-        payload = await self._client.request_json(
-            _requirement_messages(
-                job_content, analysis, self._encoder, repair_code
-            )
+        messages = _requirement_messages(
+            job_content, analysis, self._encoder, repair_code
         )
-        return FitRequirementsProposal.model_validate(payload)
+        if not self._client.supports_prepared_requests:
+            response = await self._client.request_json_once(messages)
+            return FitRequirementsProposal.model_validate(response.payload)
+        prepared = self._prepare(messages)
+        return (await self.transmit(prepared)).payload
+
+    def prepare(
+        self,
+        job_content: str,
+        analysis: ApplicationAnalysisDocument,
+        *,
+        repair_code: str | None = None,
+    ) -> "PreparedResumeStageCall":
+        return self._prepare(_requirement_messages(
+            job_content, analysis, self._encoder, repair_code
+        ))
+
+    def _prepare(
+        self, messages: list[tuple[str, str]]
+    ) -> "PreparedResumeStageCall":
+        return PreparedResumeStageCall(
+            stage="requirements",
+            endpoint="https://api.deepseek.com/v1/chat/completions",
+            model=self._client.requested_model_id,
+            max_output_tokens=8_000,
+            rendered_request=self._client.prepare_json_request(messages),
+        )
+
+    async def transmit(
+        self, prepared: "PreparedResumeStageCall"
+    ) -> "ResumeStageResult[FitRequirementsProposal]":
+        dispatcher = _resume_stage_dispatcher.get()
+        if dispatcher is not None:
+            return cast(ResumeStageResult[FitRequirementsProposal], await dispatcher(
+                prepared, self._transmit_direct
+            ))
+        return await self._transmit_direct(prepared)
+
+    async def _transmit_direct(
+        self, prepared: "PreparedResumeStageCall"
+    ) -> "ResumeStageResult[FitRequirementsProposal]":
+        response = await self._client.request_json_once_prepared(
+            prepared.rendered_request
+        )
+        return ResumeStageResult(
+            payload=FitRequirementsProposal.model_validate(response.payload),
+            evidence=response.evidence,
+        )
 
 
 class DeepSeekResumeDraftModel:
@@ -151,31 +221,67 @@ class DeepSeekResumeDraftModel:
         *,
         repair_code: str | None = None,
     ) -> GeneratedResumeProposal:
-        payload = await self._client.request_json(
-            _resume_messages(input, self._encoder, repair_code)
-        )
-        return GeneratedResumeProposal.model_validate(payload)
+        messages = _resume_messages(input, self._encoder, repair_code)
+        if not self._client.supports_prepared_requests:
+            response = await self._client.request_json_once(messages)
+            return GeneratedResumeProposal.model_validate(response.payload)
+        prepared = self._prepare(messages)
+        return (await self.transmit(prepared)).payload
 
-
-class _FallbackResumeDraftModel:
-    def __init__(
-        self,
-        primary: DeepSeekResumeDraftModel,
-        fallback: DeepSeekResumeDraftModel,
-    ):
-        self._primary = primary
-        self._fallback = fallback
-
-    async def generate(
+    def prepare(
         self,
         input: ResumeDraftInput,
         *,
         repair_code: str | None = None,
-    ) -> GeneratedResumeProposal:
-        try:
-            return await self._primary.generate(input, repair_code=repair_code)
-        except DeepSeekProviderError:
-            return await self._fallback.generate(input, repair_code=repair_code)
+    ) -> "PreparedResumeStageCall":
+        return self._prepare(_resume_messages(input, self._encoder, repair_code))
+
+    def _prepare(
+        self, messages: list[tuple[str, str]]
+    ) -> "PreparedResumeStageCall":
+        return PreparedResumeStageCall(
+            stage="draft",
+            endpoint="https://api.deepseek.com/v1/chat/completions",
+            model=self._client.requested_model_id,
+            max_output_tokens=16_000,
+            rendered_request=self._client.prepare_json_request(messages),
+        )
+
+    async def transmit(
+        self, prepared: "PreparedResumeStageCall"
+    ) -> "ResumeStageResult[GeneratedResumeProposal]":
+        dispatcher = _resume_stage_dispatcher.get()
+        if dispatcher is not None:
+            return cast(ResumeStageResult[GeneratedResumeProposal], await dispatcher(
+                prepared, self._transmit_direct
+            ))
+        return await self._transmit_direct(prepared)
+
+    async def _transmit_direct(
+        self, prepared: "PreparedResumeStageCall"
+    ) -> "ResumeStageResult[GeneratedResumeProposal]":
+        response = await self._client.request_json_once_prepared(
+            prepared.rendered_request
+        )
+        return ResumeStageResult(
+            payload=GeneratedResumeProposal.model_validate(response.payload),
+            evidence=response.evidence,
+        )
+
+
+@dataclass(frozen=True)
+class PreparedResumeStageCall:
+    stage: str
+    endpoint: str
+    model: str
+    max_output_tokens: int
+    rendered_request: bytes
+
+
+@dataclass(frozen=True)
+class ResumeStageResult(Generic[StagePayload]):
+    payload: StagePayload
+    evidence: DeepSeekCallEvidence
 
 
 def create_deepseek_resume_builder(
@@ -185,22 +291,22 @@ def create_deepseek_resume_builder(
         api_key=api_key,
         model=requirement_model,
         max_tokens=8000,
-        timeout=120,
-    )
-    fast_draft_client = create_deepseek_json_client(
-        api_key=api_key,
-        model=requirement_model,
-        max_tokens=16000,
-        timeout=180,
+        timeout=httpx.Timeout(connect=10, pool=10, write=120, read=120),
+        reasoning_effort="high",
+        thinking="enabled",
+        absolute_timeout=300,
     )
     resume_draft_client = create_deepseek_json_client(
-        api_key=api_key, model=resume_model, max_tokens=8000
+        api_key=api_key,
+        model=resume_model,
+        max_tokens=16000,
+        timeout=httpx.Timeout(connect=10, pool=10, write=120, read=120),
+        reasoning_effort="high",
+        thinking="enabled",
+        absolute_timeout=300,
     )
     encoder = JsonPromptPayloadEncoder()
     return DeepSeekResumeDocumentBuilder(
         DeepSeekFitRequirementModel(requirement_client, encoder),
-        _FallbackResumeDraftModel(
-            DeepSeekResumeDraftModel(fast_draft_client, encoder),
-            DeepSeekResumeDraftModel(resume_draft_client, encoder),
-        ),
+        DeepSeekResumeDraftModel(resume_draft_client, encoder),
     )

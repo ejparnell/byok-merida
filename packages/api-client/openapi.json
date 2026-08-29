@@ -466,8 +466,13 @@
               "method_not_allowed",
               "conflict",
               "analysis_run_active",
+              "resume_run_active",
               "idempotency_conflict",
               "analysis_authorization_blocked",
+              "resume_authorization_blocked",
+              "resume_artifact_state_changed",
+              "resume_artifact_action_active",
+              "resume_artifact_action_unavailable",
               "payload_too_large",
               "unsupported_media_type",
               "internal_error"
@@ -1462,33 +1467,6 @@
         "title": "CapturedApplication",
         "type": "object"
       },
-      "CleanupSummary": {
-        "additionalProperties": false,
-        "properties": {
-          "errors": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Errors",
-            "type": "array"
-          },
-          "status": {
-            "enum": [
-              "not_required",
-              "completed",
-              "incomplete"
-            ],
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "status",
-          "errors"
-        ],
-        "title": "CleanupSummary",
-        "type": "object"
-      },
       "ConfigurationValidationFailure": {
         "additionalProperties": false,
         "properties": {
@@ -1597,47 +1575,6 @@
         ],
         "title": "ConfirmedApplicationDraft",
         "type": "object"
-      },
-      "CreateResumeRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "applicationId": {
-            "minLength": 1,
-            "title": "Applicationid",
-            "type": "string"
-          }
-        },
-        "required": [
-          "applicationId"
-        ],
-        "title": "CreateResumeRequest",
-        "type": "object"
-      },
-      "CreateResumeResponse": {
-        "discriminator": {
-          "mapping": {
-            "already_created": "#/components/schemas/ResumeAlreadyCreatedResponse",
-            "blocked": "#/components/schemas/ResumeCreationBlockedResponse",
-            "created": "#/components/schemas/ResumeCreatedResponse",
-            "failed": "#/components/schemas/ResumeCreationFailedResponse"
-          },
-          "propertyName": "result"
-        },
-        "oneOf": [
-          {
-            "$ref": "#/components/schemas/ResumeCreatedResponse"
-          },
-          {
-            "$ref": "#/components/schemas/ResumeAlreadyCreatedResponse"
-          },
-          {
-            "$ref": "#/components/schemas/ResumeCreationBlockedResponse"
-          },
-          {
-            "$ref": "#/components/schemas/ResumeCreationFailedResponse"
-          }
-        ],
-        "title": "CreateResumeResponse"
       },
       "GetApplicationAnalysisQueueResponse": {
         "anyOf": [
@@ -2017,25 +1954,6 @@
         "title": "Pagination",
         "type": "object"
       },
-      "PdfArtifactSummary": {
-        "additionalProperties": false,
-        "properties": {
-          "downloadUrl": {
-            "title": "Downloadurl",
-            "type": "string"
-          },
-          "filename": {
-            "title": "Filename",
-            "type": "string"
-          }
-        },
-        "required": [
-          "filename",
-          "downloadUrl"
-        ],
-        "title": "PdfArtifactSummary",
-        "type": "object"
-      },
       "PrepareApplicationRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2228,12 +2146,71 @@
         "title": "RequestValidationFailure",
         "type": "object"
       },
-      "ResumeAlreadyCreatedResponse": {
+      "ResumeArtifactActionRequest": {
         "additionalProperties": false,
         "properties": {
-          "application": {
-            "$ref": "#/components/schemas/ResumeApplicationSummary"
+          "expectedRevision": {
+            "minimum": 1.0,
+            "title": "Expectedrevision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expectedRevision"
+        ],
+        "title": "ResumeArtifactActionRequest",
+        "type": "object"
+      },
+      "ResumeArtifactActiveAction": {
+        "additionalProperties": false,
+        "properties": {
+          "acceptedAt": {
+            "title": "Acceptedat",
+            "type": "string"
           },
+          "kind": {
+            "enum": [
+              "reconcile",
+              "compensate"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "acceptedAt"
+        ],
+        "title": "ResumeArtifactActiveAction",
+        "type": "object"
+      },
+      "ResumeArtifactQuarantine": {
+        "additionalProperties": false,
+        "properties": {
+          "enteredAt": {
+            "title": "Enteredat",
+            "type": "string"
+          },
+          "lastAssessedAt": {
+            "title": "Lastassessedat",
+            "type": "string"
+          },
+          "reasonCode": {
+            "title": "Reasoncode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reasonCode",
+          "enteredAt",
+          "lastAssessedAt"
+        ],
+        "title": "ResumeArtifactQuarantine",
+        "type": "object"
+      },
+      "ResumeArtifactQuarantineListResponse": {
+        "additionalProperties": false,
+        "properties": {
           "errors": {
             "items": {
               "type": "string"
@@ -2241,38 +2218,20 @@
             "title": "Errors",
             "type": "array"
           },
-          "note": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ResumeArtifactSummary"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ResumeArtifactSetSnapshot"
+            },
+            "title": "Items",
+            "type": "array"
           },
           "ok": {
             "const": true,
             "title": "Ok",
             "type": "boolean"
           },
-          "pdf": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/PdfArtifactSummary"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "result": {
-            "const": "already_created",
-            "title": "Result",
-            "type": "string"
-          },
-          "resume": {
-            "$ref": "#/components/schemas/ResumeArtifactSummary"
+          "pagination": {
+            "$ref": "#/components/schemas/ResumeArtifactQuarantinePagination"
           },
           "validationFailures": {
             "items": {
@@ -2304,61 +2263,223 @@
           "ok",
           "validationFailures",
           "errors",
-          "result",
-          "application",
-          "resume",
-          "note",
-          "pdf"
+          "items",
+          "pagination"
         ],
-        "title": "ResumeAlreadyCreatedResponse",
+        "title": "ResumeArtifactQuarantineListResponse",
         "type": "object"
       },
-      "ResumeApplicationSummary": {
+      "ResumeArtifactQuarantinePagination": {
         "additionalProperties": false,
         "properties": {
-          "companyName": {
-            "title": "Companyname",
+          "hasMore": {
+            "title": "Hasmore",
+            "type": "boolean"
+          },
+          "limit": {
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextcursor"
+          }
+        },
+        "required": [
+          "limit",
+          "nextCursor",
+          "hasMore"
+        ],
+        "title": "ResumeArtifactQuarantinePagination",
+        "type": "object"
+      },
+      "ResumeArtifactSetResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "artifactSet": {
+            "$ref": "#/components/schemas/ResumeArtifactSetSnapshot"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "ok": {
+            "const": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "artifactSet"
+        ],
+        "title": "ResumeArtifactSetResponse",
+        "type": "object"
+      },
+      "ResumeArtifactSetSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "activeAction": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResumeArtifactActiveAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "applicationId": {
+            "title": "Applicationid",
             "type": "string"
           },
-          "id": {
-            "title": "Id",
+          "applicationLabel": {
+            "title": "Applicationlabel",
             "type": "string"
           },
-          "role": {
-            "title": "Role",
+          "artifactSetId": {
+            "title": "Artifactsetid",
             "type": "string"
           },
-          "title": {
-            "title": "Title",
+          "availableActions": {
+            "items": {
+              "enum": [
+                "reconcile",
+                "compensate"
+              ],
+              "type": "string"
+            },
+            "title": "Availableactions",
+            "type": "array"
+          },
+          "candidateOrdinal": {
+            "maximum": 19.0,
+            "minimum": 0.0,
+            "title": "Candidateordinal",
+            "type": "integer"
+          },
+          "completion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResumeCompletionSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "disposition": {
+            "enum": [
+              "recoverable",
+              "compensation_required",
+              "sealed",
+              "compensated"
+            ],
+            "title": "Disposition",
+            "type": "string"
+          },
+          "pendingBoundary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pendingboundary"
+          },
+          "quarantine": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResumeArtifactQuarantine"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revision": {
+            "minimum": 1.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "runId": {
+            "title": "Runid",
+            "type": "string"
+          },
+          "updatedAt": {
+            "title": "Updatedat",
             "type": "string"
           }
         },
         "required": [
-          "id",
-          "title",
-          "companyName",
-          "role"
+          "artifactSetId",
+          "runId",
+          "applicationId",
+          "candidateOrdinal",
+          "applicationLabel",
+          "revision",
+          "createdAt",
+          "updatedAt",
+          "disposition",
+          "pendingBoundary",
+          "quarantine",
+          "availableActions",
+          "activeAction",
+          "completion"
         ],
-        "title": "ResumeApplicationSummary",
+        "title": "ResumeArtifactSetSnapshot",
         "type": "object"
       },
-      "ResumeArtifactSummary": {
+      "ResumeCompletionLink": {
         "additionalProperties": false,
         "properties": {
-          "companyName": {
-            "title": "Companyname",
-            "type": "string"
-          },
           "id": {
             "title": "Id",
-            "type": "string"
-          },
-          "role": {
-            "title": "Role",
-            "type": "string"
-          },
-          "title": {
-            "title": "Title",
             "type": "string"
           },
           "url": {
@@ -2368,148 +2489,54 @@
         },
         "required": [
           "id",
-          "title",
-          "companyName",
-          "role",
           "url"
         ],
-        "title": "ResumeArtifactSummary",
+        "title": "ResumeCompletionLink",
         "type": "object"
       },
-      "ResumeCreatedResponse": {
+      "ResumeCompletionPdf": {
         "additionalProperties": false,
         "properties": {
-          "application": {
-            "$ref": "#/components/schemas/ResumeApplicationSummary"
-          },
-          "errors": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Errors",
-            "type": "array"
-          },
-          "note": {
-            "$ref": "#/components/schemas/ResumeArtifactSummary"
-          },
-          "ok": {
-            "const": true,
-            "title": "Ok",
-            "type": "boolean"
-          },
-          "pdf": {
-            "$ref": "#/components/schemas/PdfArtifactSummary"
-          },
-          "result": {
-            "const": "created",
-            "title": "Result",
+          "downloadUrl": {
+            "title": "Downloadurl",
             "type": "string"
           },
-          "resume": {
-            "$ref": "#/components/schemas/ResumeArtifactSummary"
-          },
-          "validationFailures": {
-            "items": {
-              "discriminator": {
-                "mapping": {
-                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
-                  "request": "#/components/schemas/RequestValidationFailure",
-                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
-                },
-                "propertyName": "kind"
-              },
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/RequestValidationFailure"
-                },
-                {
-                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
-                },
-                {
-                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
-                }
-              ]
-            },
-            "title": "Validationfailures",
-            "type": "array"
+          "filename": {
+            "title": "Filename",
+            "type": "string"
           }
         },
         "required": [
-          "ok",
-          "validationFailures",
-          "errors",
-          "result",
-          "application",
+          "filename",
+          "downloadUrl"
+        ],
+        "title": "ResumeCompletionPdf",
+        "type": "object"
+      },
+      "ResumeCompletionSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "$ref": "#/components/schemas/ResumeCompletionLink"
+          },
+          "pdf": {
+            "$ref": "#/components/schemas/ResumeCompletionPdf"
+          },
+          "resume": {
+            "$ref": "#/components/schemas/ResumeCompletionLink"
+          },
+          "sealedAt": {
+            "title": "Sealedat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sealedAt",
           "resume",
           "note",
           "pdf"
         ],
-        "title": "ResumeCreatedResponse",
-        "type": "object"
-      },
-      "ResumeCreationBlockedResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "cleanup": {
-            "$ref": "#/components/schemas/CleanupSummary"
-          },
-          "errors": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Errors",
-            "type": "array"
-          },
-          "ok": {
-            "const": false,
-            "title": "Ok",
-            "type": "boolean"
-          },
-          "result": {
-            "const": "blocked",
-            "title": "Result",
-            "type": "string"
-          },
-          "status": {
-            "const": "blocked",
-            "title": "Status",
-            "type": "string"
-          },
-          "validationFailures": {
-            "items": {
-              "discriminator": {
-                "mapping": {
-                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
-                  "request": "#/components/schemas/RequestValidationFailure",
-                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
-                },
-                "propertyName": "kind"
-              },
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/RequestValidationFailure"
-                },
-                {
-                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
-                },
-                {
-                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
-                }
-              ]
-            },
-            "title": "Validationfailures",
-            "type": "array"
-          }
-        },
-        "required": [
-          "ok",
-          "validationFailures",
-          "errors",
-          "status",
-          "result",
-          "cleanup"
-        ],
-        "title": "ResumeCreationBlockedResponse",
+        "title": "ResumeCompletionSummary",
         "type": "object"
       },
       "ResumeCreationChecks": {
@@ -2569,71 +2596,6 @@
           "pdfExport"
         ],
         "title": "ResumeCreationChecks",
-        "type": "object"
-      },
-      "ResumeCreationFailedResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "cleanup": {
-            "$ref": "#/components/schemas/CleanupSummary"
-          },
-          "errors": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Errors",
-            "type": "array"
-          },
-          "ok": {
-            "const": false,
-            "title": "Ok",
-            "type": "boolean"
-          },
-          "result": {
-            "const": "failed",
-            "title": "Result",
-            "type": "string"
-          },
-          "status": {
-            "const": "failed",
-            "title": "Status",
-            "type": "string"
-          },
-          "validationFailures": {
-            "items": {
-              "discriminator": {
-                "mapping": {
-                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
-                  "request": "#/components/schemas/RequestValidationFailure",
-                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
-                },
-                "propertyName": "kind"
-              },
-              "oneOf": [
-                {
-                  "$ref": "#/components/schemas/RequestValidationFailure"
-                },
-                {
-                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
-                },
-                {
-                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
-                }
-              ]
-            },
-            "title": "Validationfailures",
-            "type": "array"
-          }
-        },
-        "required": [
-          "ok",
-          "validationFailures",
-          "errors",
-          "status",
-          "result",
-          "cleanup"
-        ],
-        "title": "ResumeCreationFailedResponse",
         "type": "object"
       },
       "ResumeCreationHealthResponse": {
@@ -2902,6 +2864,461 @@
         "title": "ResumeQueueItem",
         "type": "object"
       },
+      "ResumeRunCandidate": {
+        "additionalProperties": false,
+        "properties": {
+          "applicationId": {
+            "title": "Applicationid",
+            "type": "string"
+          },
+          "applicationLabel": {
+            "title": "Applicationlabel",
+            "type": "string"
+          },
+          "artifactSetId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifactsetid"
+          },
+          "completion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResumeCompletionSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "consideredAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consideredat"
+          },
+          "evaluationConsumed": {
+            "title": "Evaluationconsumed",
+            "type": "boolean"
+          },
+          "ordinal": {
+            "maximum": 19.0,
+            "minimum": 0.0,
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "reasonCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoncode"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "enum": [
+                  "admission",
+                  "requirements",
+                  "draft",
+                  "artifact_recovery",
+                  "completion_gate",
+                  "compensation"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "evaluating",
+              "recovering",
+              "compensating",
+              "completed",
+              "skipped",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "terminalAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminalat"
+          },
+          "updatedAt": {
+            "title": "Updatedat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "applicationId",
+          "applicationLabel",
+          "ordinal",
+          "state",
+          "stage",
+          "reasonCode",
+          "evaluationConsumed",
+          "artifactSetId",
+          "completion",
+          "consideredAt",
+          "updatedAt",
+          "terminalAt"
+        ],
+        "title": "ResumeRunCandidate",
+        "type": "object"
+      },
+      "ResumeRunLookupResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "ok": {
+            "const": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResumeRunSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "run"
+        ],
+        "title": "ResumeRunLookupResponse",
+        "type": "object"
+      },
+      "ResumeRunProgress": {
+        "additionalProperties": false,
+        "properties": {
+          "candidatesConsidered": {
+            "minimum": 0.0,
+            "title": "Candidatesconsidered",
+            "type": "integer"
+          },
+          "completions": {
+            "minimum": 0.0,
+            "title": "Completions",
+            "type": "integer"
+          },
+          "evaluationsConsumed": {
+            "minimum": 0.0,
+            "title": "Evaluationsconsumed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "completions",
+          "candidatesConsidered",
+          "evaluationsConsumed"
+        ],
+        "title": "ResumeRunProgress",
+        "type": "object"
+      },
+      "ResumeRunResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "ok": {
+            "const": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "run": {
+            "$ref": "#/components/schemas/ResumeRunSnapshot"
+          },
+          "validationFailures": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "configuration": "#/components/schemas/ConfigurationValidationFailure",
+                  "request": "#/components/schemas/RequestValidationFailure",
+                  "workspace_schema": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequestValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfigurationValidationFailure"
+                },
+                {
+                  "$ref": "#/components/schemas/WorkspaceSchemaValidationFailure"
+                }
+              ]
+            },
+            "title": "Validationfailures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ok",
+          "validationFailures",
+          "errors",
+          "run"
+        ],
+        "title": "ResumeRunResponse",
+        "type": "object"
+      },
+      "ResumeRunSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "attemptBudget": {
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Attemptbudget",
+            "type": "integer"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/ResumeRunCandidate"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finishedat"
+          },
+          "lifecycle": {
+            "enum": [
+              "queued",
+              "running",
+              "cancelling",
+              "finished"
+            ],
+            "title": "Lifecycle",
+            "type": "string"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "enum": [
+                  "target_met",
+                  "spend_limited",
+                  "attempt_budget_exhausted",
+                  "queue_exhausted",
+                  "cancelled",
+                  "authorization_blocked",
+                  "failed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/ResumeRunProgress"
+          },
+          "reasonCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoncode"
+          },
+          "revision": {
+            "minimum": 1.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "runId": {
+            "title": "Runid",
+            "type": "string"
+          },
+          "spend": {
+            "$ref": "#/components/schemas/ResumeSpendSnapshot"
+          },
+          "startedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Startedat"
+          },
+          "stoppingDecidedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stoppingdecidedat"
+          },
+          "target": {
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Target",
+            "type": "integer"
+          },
+          "updatedAt": {
+            "title": "Updatedat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "runId",
+          "revision",
+          "lifecycle",
+          "outcome",
+          "reasonCode",
+          "target",
+          "attemptBudget",
+          "createdAt",
+          "startedAt",
+          "stoppingDecidedAt",
+          "finishedAt",
+          "updatedAt",
+          "progress",
+          "spend",
+          "candidates"
+        ],
+        "title": "ResumeRunSnapshot",
+        "type": "object"
+      },
+      "ResumeSpendSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "activeReservationMicros": {
+            "minimum": 0.0,
+            "title": "Activereservationmicros",
+            "type": "integer"
+          },
+          "ceilingMicros": {
+            "minimum": 0.0,
+            "title": "Ceilingmicros",
+            "type": "integer"
+          },
+          "committedMicros": {
+            "minimum": 0.0,
+            "title": "Committedmicros",
+            "type": "integer"
+          },
+          "indeterminateReservationMicros": {
+            "minimum": 0.0,
+            "title": "Indeterminatereservationmicros",
+            "type": "integer"
+          },
+          "remainingAuthorizedMicros": {
+            "minimum": 0.0,
+            "title": "Remainingauthorizedmicros",
+            "type": "integer"
+          },
+          "verifiedCostMicros": {
+            "minimum": 0.0,
+            "title": "Verifiedcostmicros",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ceilingMicros",
+          "committedMicros",
+          "verifiedCostMicros",
+          "activeReservationMicros",
+          "indeterminateReservationMicros",
+          "remainingAuthorizedMicros"
+        ],
+        "title": "ResumeSpendSnapshot",
+        "type": "object"
+      },
       "RunApplicationAnalysisRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2914,6 +3331,22 @@
           }
         },
         "title": "RunApplicationAnalysisRequest",
+        "type": "object"
+      },
+      "StartResumeRunRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "target": {
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Target",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "title": "StartResumeRunRequest",
         "type": "object"
       },
       "ValidationError": {
@@ -3717,31 +4150,193 @@
         "summary": "Get Operator Settings"
       }
     },
-    "/api/v1/resumes/create": {
-      "post": {
-        "operationId": "createResume",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateResumeRequest"
-              }
+    "/api/v1/resumes/artifact-quarantines": {
+      "get": {
+        "operationId": "listResumeArtifactQuarantines",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
             }
           },
-          "required": true
-        },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Cursor",
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CreateResumeResponse"
+                  "$ref": "#/components/schemas/ResumeArtifactQuarantineListResponse"
                 }
               }
             },
             "description": "Successful Response"
           },
           "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          }
+        },
+        "summary": "List Resume Artifact Quarantines"
+      }
+    },
+    "/api/v1/resumes/artifact-sets/{artifactSetId}": {
+      "get": {
+        "operationId": "getResumeArtifactSet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifactSetId",
+            "required": true,
+            "schema": {
+              "title": "Artifactsetid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeArtifactSetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          }
+        },
+        "summary": "Get Resume Artifact Set"
+      }
+    },
+    "/api/v1/resumes/artifact-sets/{artifactSetId}/compensate": {
+      "post": {
+        "operationId": "compensateResumeArtifactSet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifactSetId",
+            "required": true,
+            "schema": {
+              "title": "Artifactsetid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResumeArtifactActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeArtifactSetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "404": {
             "content": {
               "application/json": {
                 "schema": {
@@ -3780,9 +4375,177 @@
               }
             },
             "description": "Technical error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
           }
         },
-        "summary": "Create Resume"
+        "summary": "Compensate Resume Artifact Set"
+      }
+    },
+    "/api/v1/resumes/artifact-sets/{artifactSetId}/pdf": {
+      "get": {
+        "operationId": "downloadResumeArtifactSetPdf",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifactSetId",
+            "required": true,
+            "schema": {
+              "title": "Artifactsetid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          }
+        },
+        "summary": "Download Resume Artifact Set Pdf"
+      }
+    },
+    "/api/v1/resumes/artifact-sets/{artifactSetId}/reconcile": {
+      "post": {
+        "operationId": "reconcileResumeArtifactSet",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifactSetId",
+            "required": true,
+            "schema": {
+              "title": "Artifactsetid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResumeArtifactActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeArtifactSetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          }
+        },
+        "summary": "Reconcile Resume Artifact Set"
       }
     },
     "/api/v1/resumes/queue": {
@@ -3853,16 +4616,184 @@
         "summary": "Get Resume Queue"
       }
     },
-    "/api/v1/resumes/{resumeId}/pdf": {
+    "/api/v1/resumes/runs": {
+      "post": {
+        "operationId": "startResumeRun",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartResumeRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          }
+        },
+        "summary": "Start Resume Run"
+      }
+    },
+    "/api/v1/resumes/runs/active": {
       "get": {
-        "operationId": "downloadResumePdf",
+        "operationId": "getActiveResumeRun",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeRunLookupResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          }
+        },
+        "summary": "Get Active Resume Run"
+      }
+    },
+    "/api/v1/resumes/runs/latest": {
+      "get": {
+        "operationId": "getLatestResumeRun",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeRunLookupResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          }
+        },
+        "summary": "Get Latest Resume Run"
+      }
+    },
+    "/api/v1/resumes/runs/{runId}": {
+      "get": {
+        "operationId": "getResumeRun",
         "parameters": [
           {
             "in": "path",
-            "name": "resumeId",
+            "name": "runId",
             "required": true,
             "schema": {
-              "title": "Resumeid",
+              "title": "Runid",
               "type": "string"
             }
           }
@@ -3870,10 +4801,9 @@
         "responses": {
           "200": {
             "content": {
-              "application/pdf": {
+              "application/json": {
                 "schema": {
-                  "format": "binary",
-                  "type": "string"
+                  "$ref": "#/components/schemas/ResumeRunResponse"
                 }
               }
             },
@@ -3898,9 +4828,78 @@
               }
             },
             "description": "Technical error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
           }
         },
-        "summary": "Download Resume Pdf"
+        "summary": "Get Resume Run"
+      }
+    },
+    "/api/v1/resumes/runs/{runId}/cancel": {
+      "post": {
+        "operationId": "cancelResumeRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "title": "Runid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Technical error"
+          }
+        },
+        "summary": "Cancel Resume Run"
       }
     }
   }

@@ -380,7 +380,8 @@ class FakeWorkspace:
         )
 
     async def create_resume_draft(
-        self, name: str, document: tuple[DocumentBlock, ...], *, on_created=None
+        self, name: str, document: tuple[DocumentBlock, ...], *,
+        artifact_set_id=None, on_created=None
     ) -> ResumeRecord:
         resume_id = f"resume-{uuid4().hex[:10]}"
         resume = {
@@ -390,6 +391,7 @@ class FakeWorkspace:
             "applicationId": None,
             "document": [block.__dict__ for block in document],
             "archived": False,
+            "artifactSetId": artifact_set_id,
         }
         self._state["resumes"][resume_id] = resume
         self._save()
@@ -405,6 +407,7 @@ class FakeWorkspace:
         application_id: str,
         resume_id: str,
         document: tuple[DocumentBlock, ...],
+        artifact_set_id=None,
         on_created=None,
     ) -> NoteRecord:
         note_id = f"note-{uuid4().hex[:10]}"
@@ -416,6 +419,7 @@ class FakeWorkspace:
             "resumeId": resume_id,
             "document": [block.__dict__ for block in document],
             "archived": False,
+            "artifactSetId": artifact_set_id,
         }
         self._state["notes"][note_id] = note
         self._save()

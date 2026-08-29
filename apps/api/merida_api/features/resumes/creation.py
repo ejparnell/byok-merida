@@ -374,6 +374,40 @@ class ResumeCreation:
     def pdf_path(self, resume_id: str):
         return self._committer.pdf_path(resume_id)
 
+    async def build_fixed_sources(
+        self,
+        application: ApplicationRecord,
+        master_resume: ResumeDocument,
+        *,
+        run_id: str,
+    ) -> ResumeArtifactBundle:
+        return await self._builder.build(
+            application,
+            master_resume,
+            run_id=run_id,
+            workflow="resume_run",
+        )
+
+    def stage_fixed_bundle(self, bundle: ResumeArtifactBundle) -> Path:
+        return self._committer.stage(bundle)
+
+    async def commit_fixed_bundle(
+        self,
+        application: ApplicationRecord,
+        bundle: ResumeArtifactBundle,
+        *,
+        run_id: str,
+        artifact_set_id: str,
+        staged_pdf: Path,
+    ):
+        return await self._committer.commit(
+            application,
+            bundle,
+            run_id=run_id,
+            artifact_set_id=artifact_set_id,
+            staged_pdf=staged_pdf,
+        )
+
     async def reconcile(self, run_id: str | None = None) -> None:
         if self._journal is None:
             return

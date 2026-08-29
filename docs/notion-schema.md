@@ -96,12 +96,15 @@ Resume creation reads `Job Content` and `Application Analysis` from the page bod
 
 ## Resumes Database
 
+The `Merida Artifact ID` property is required by durable Resume Runs. Readiness fails closed when either the Resumes or Notes database lacks it.
+
 Required properties:
 
 | Property      | Type     | Required behavior                                                                                 |
 | ------------- | -------- | ------------------------------------------------------------------------------------------------- |
 | `Name`        | title    | `Master Resume` for the source resume, or `{Role} at {Company Name}` for generated resumes.       |
 | `Job Posting` | relation | Must target the Applications database. The Applications inverse relation must be named `Resumes`. |
+| `Merida Artifact ID` | rich text | Carries the owning Resume Artifact Set ID on generated Job-Specific Resumes; the Master Resume leaves it empty. |
 
 Required relation for Notes:
 
@@ -159,6 +162,8 @@ Non-work-experience sections from the Master Resume are preserved semantically u
 
 Resume Fit Analysis, evidence traces, gaps, and guardrails are stored in a related Note, not in the Resume body.
 
+Durable Resume Runs will create each generated Resume synchronously with its complete canonical enhanced-Markdown body and initial properties in one request. Recovery accepts a page only when its exact `Merida Artifact ID`, expected unlinked or final relation state, and canonical content digest match the owning Resume Artifact Set.
+
 ## Notes Database
 
 For v1, Notes are app-created Resume Fit Analysis Notes only. Merida does not provide a general notes system or a notes editor.
@@ -170,6 +175,7 @@ Required properties:
 | `Name`        | title    | For resume fit notes: `Resume Fit Analysis - {Role} at {Company Name}`.                         |
 | `Application` | relation | Must target the Applications database. The Applications inverse relation must be named `Notes`. |
 | `Resume`      | relation | Must target the Resumes database. The Resumes inverse relation must be named `Notes`.           |
+| `Merida Artifact ID` | rich text | Carries the same Resume Artifact Set ID as the Note's related generated Resume and PDF. |
 
 ### Resume Fit Analysis Note Body
 
@@ -184,3 +190,5 @@ Resume creation writes a related Note containing:
 - `Generation Guardrails`
 
 The Note is related to both the Application and the generated Resume.
+
+Durable Resume Runs will create each Resume Fit Analysis Note synchronously with its complete canonical enhanced-Markdown body and all three ownership properties in one request. Title or relation similarity without an exact `Merida Artifact ID` match is not ownership evidence.

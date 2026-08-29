@@ -39,6 +39,7 @@ class ResumeCreationStore(Protocol):
         name: str,
         document: tuple[DocumentBlock, ...],
         *,
+        artifact_set_id: str | None = None,
         on_created: Callable[[ResumeRecord], None] | None = None,
     ) -> ResumeRecord: ...
     async def create_resume_fit_note(
@@ -48,6 +49,7 @@ class ResumeCreationStore(Protocol):
         application_id: str,
         resume_id: str,
         document: tuple[DocumentBlock, ...],
+        artifact_set_id: str | None = None,
         on_created: Callable[[NoteRecord], None] | None = None,
     ) -> NoteRecord: ...
     async def attach_resume_to_application(
@@ -200,7 +202,13 @@ class ResumeDraftModel(Protocol):
 class ResumePdfArtifacts(Protocol):
     def stage(self, document: tuple[DocumentBlock, ...]) -> Path: ...
     def publish(
-        self, resume_id: str, company_name: str, staged: Path
+        self,
+        resume_id: str,
+        company_name: str,
+        staged: Path,
+        *,
+        role_name: str | None = None,
+        artifact_set_id: str | None = None,
     ) -> Path: ...
     def discard(self, staged: Path) -> None: ...
     def remove(self, resume_id: str) -> None: ...

@@ -50,9 +50,30 @@ from .features.applications.analysis_spend import (
 from .features.resumes import ResumeCreation
 from .features.resumes.commit import ResumeArtifactCommitter
 from .features.resumes.schemas import (
-    CreateResumeRequest,
-    CreateResumeResponse,
     GetResumeCreationQueueResponse,
+    ResumeArtifactActionRequest,
+    ResumeArtifactQuarantineListResponse,
+    ResumeArtifactSetResponse,
+    ResumeRunLookupResponse,
+    ResumeRunResponse,
+    StartResumeRunRequest,
+)
+from .features.resumes.run_store import (
+    ActiveResumeRunError,
+    ResumeArtifactActionUnavailable,
+    ResumeArtifactStateChanged,
+    ResumeRunIdempotencyConflictError,
+    SqliteResumeRunStore,
+)
+from .features.resumes.checkpoint_vault import (
+    CheckpointAuthorityError,
+    ResumeCheckpointVault,
+)
+from .features.resumes.resume_spend import ResumeRateCard, ResumeSpendPolicy
+from .features.resumes.runs import (
+    ResumeRunService,
+    ResumeRunStartBlocked,
+    ResumeRunWorker,
 )
 from .integrations.notion_workspace import NotionWorkspace
 from .features.applications.analysis_model import create_deepseek_analysis_model
@@ -370,6 +391,9 @@ def create_app(
     analysis_clock=None,
     analysis_run_id_factory=None,
     analysis_worker=None,
+    resume_run_store=None,
+    resume_run_id_factory=None,
+    resume_worker=None,
 ) -> FastAPI:
     settings = settings or Settings()
     workspace_injected = workspace is not None
@@ -505,6 +529,31 @@ def create_app(
         coordinator,
         journal,
     )
+    resume_run_store = resume_run_store or SqliteResumeRunStore(
+        settings.resume_run_store_path
+    )
+    try:
+        resume_spend_policy = ResumeSpendPolicy(ResumeRateCard.load())
+    except Exception:
+        resume_spend_policy = None
+    try:
+        resume_checkpoint_vault = ResumeCheckpointVault.from_base64(
+            settings.resume_checkpoint_key,
+            key_version=settings.resume_checkpoint_key_version,
+        )
+    except CheckpointAuthorityError:
+        resume_checkpoint_vault = None
+    resume_run_service = ResumeRunService(
+        resumes=resumes,
+        workspace=workspace,
+        store=resume_run_store,
+        user_name=settings.user_name,
+        run_id_factory=resume_run_id_factory,
+        spend_policy=resume_spend_policy,
+        pdf_store_root=settings.export_path,
+        checkpoint_vault=resume_checkpoint_vault,
+    )
+    resume_worker = resume_worker or ResumeRunWorker(resume_run_service)
     require_capture_token = capture_token_dependency(settings)
 
     @asynccontextmanager
@@ -514,10 +563,12 @@ def create_app(
         await resumes.reconcile()
         journal.compact()
         analysis_worker.start()
+        resume_worker.start()
         try:
             yield
         finally:
             await analysis_worker.stop()
+            await resume_worker.stop()
 
     app = FastAPI(
         title="Merida API",
@@ -550,6 +601,9 @@ def create_app(
     app.state.analysis_runs = analysis_run_service
     app.state.analysis_worker = analysis_worker
     app.state.analysis_run_store = analysis_run_store
+    app.state.resume_runs = resume_run_service
+    app.state.resume_worker = resume_worker
+    app.state.resume_run_store = resume_run_store
     origins = [settings.web_origin, "http://localhost:5173", "http://127.0.0.1:5173"]
     if settings.extension_origin:
         origins.append(settings.extension_origin)
@@ -565,12 +619,18 @@ def create_app(
         "/api/v1/applications/prepare",
         "/api/v1/applications/confirm",
         "/api/v1/applications/analysis/run",
-        "/api/v1/resumes/create",
+        "/api/v1/resumes/runs",
     }
 
     @app.middleware("http")
     async def require_json_media_type(request: Request, call_next):
-        if request.method == "POST" and request.url.path in json_body_routes:
+        resume_artifact_action = (
+            request.url.path.startswith("/api/v1/resumes/artifact-sets/")
+            and request.url.path.endswith(("/reconcile", "/compensate"))
+        )
+        if request.method == "POST" and (
+            request.url.path in json_body_routes or resume_artifact_action
+        ):
             media_type = request.headers.get("content-type", "").split(";", 1)[0].lower()
             if media_type != "application/json":
                 return _error_response(
@@ -579,6 +639,13 @@ def create_app(
                     "Content-Type must be application/json.",
                 )
         return await call_next(request)
+
+    @app.middleware("http")
+    async def prevent_resume_resource_caching(request: Request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith("/api/v1/resumes/"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
 
     capture_body_routes = {
         "/api/v1/applications/prepare",
@@ -642,6 +709,35 @@ def create_app(
             503,
             "analysis_authorization_blocked",
             "Analysis spend enforcement is unavailable.",
+        )
+
+    @app.exception_handler(ActiveResumeRunError)
+    async def active_resume_run_handler(_request: Request, exc: ActiveResumeRunError):
+        return _error_response(
+            409,
+            "resume_run_active",
+            "A Resume Run is already active.",
+            active_run_id=exc.active_run_id,
+        )
+
+    @app.exception_handler(ResumeRunIdempotencyConflictError)
+    async def resume_idempotency_handler(
+        _request: Request, _exc: ResumeRunIdempotencyConflictError
+    ):
+        return _error_response(
+            409,
+            "idempotency_conflict",
+            "The Idempotency-Key already identifies a different Resume Run request.",
+        )
+
+    @app.exception_handler(ResumeRunStartBlocked)
+    async def resume_start_blocked_handler(
+        _request: Request, _exc: ResumeRunStartBlocked
+    ):
+        return _error_response(
+            503,
+            "resume_authorization_blocked",
+            "Resume Run prerequisites are not ready.",
         )
 
     @app.exception_handler(AnalysisRunStartBlocked)
@@ -1003,36 +1099,197 @@ def create_app(
             lambda message: _blocked_queue(limit, message),
         )
 
-    @app.post("/api/v1/resumes/create", operation_id="createResume", response_model=CreateResumeResponse, responses=_api_error_responses(400, 409, 415, 500))
-    async def create_resume(request: CreateResumeRequest):
-        if not capabilities.resume_workspace_configured:
-            return _blocked_resume_creation(
-                "Resume and Notes database configuration is incomplete."
-            )
-        if not capabilities.resume_builder_available:
-            return _blocked_resume_creation(
-                "Real Resume Creation is not enabled in this build."
-            )
-        if not settings.user_name_configured:
-            return _blocked_resume_creation("USER_NAME is not configured.")
-        return await _block_provider_error(
-            resumes.create(request.application_id), _blocked_resume_creation
+    @app.post(
+        "/api/v1/resumes/runs",
+        operation_id="startResumeRun",
+        response_model=ResumeRunResponse,
+        status_code=202,
+        responses=_api_error_responses(400, 409, 415, 500, 503),
+    )
+    async def start_resume_run(
+        request: StartResumeRunRequest,
+        idempotency_key: str = Header(
+            alias="Idempotency-Key",
+            min_length=1,
+            max_length=255,
+            pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$",
+        ),
+    ):
+        snapshot = await resume_run_service.start(
+            target=request.target, idempotency_key=idempotency_key
         )
+        resume_worker.wake()
+        return {"ok": True, "run": snapshot, "validationFailures": [], "errors": []}
 
     @app.get(
-        "/api/v1/resumes/{resumeId}/pdf",
-        operation_id="downloadResumePdf",
+        "/api/v1/resumes/runs/active",
+        operation_id="getActiveResumeRun",
+        response_model=ResumeRunLookupResponse,
+        responses=_api_error_responses(500, 503),
+    )
+    async def get_active_resume_run():
+        return {
+            "ok": True,
+            "run": resume_run_service.active(),
+            "validationFailures": [],
+            "errors": [],
+        }
+
+    @app.get(
+        "/api/v1/resumes/runs/latest",
+        operation_id="getLatestResumeRun",
+        response_model=ResumeRunLookupResponse,
+        responses=_api_error_responses(500, 503),
+    )
+    async def get_latest_resume_run():
+        return {
+            "ok": True,
+            "run": resume_run_service.latest(),
+            "validationFailures": [],
+            "errors": [],
+        }
+
+    @app.get(
+        "/api/v1/resumes/runs/{runId}",
+        operation_id="getResumeRun",
+        response_model=ResumeRunResponse,
+        responses=_api_error_responses(404, 500, 503),
+    )
+    async def get_resume_run(run_id: str = ApiPath(alias="runId")):
+        snapshot = resume_run_service.get(run_id)
+        if snapshot is None:
+            raise HTTPException(
+                404, detail={"code": "not_found", "message": "Resume Run was not found."}
+            )
+        return {"ok": True, "run": snapshot, "validationFailures": [], "errors": []}
+
+    @app.post(
+        "/api/v1/resumes/runs/{runId}/cancel",
+        operation_id="cancelResumeRun",
+        response_model=ResumeRunResponse,
+        responses=_api_error_responses(404, 500, 503),
+    )
+    async def cancel_resume_run(run_id: str = ApiPath(alias="runId")):
+        snapshot = resume_run_service.cancel(run_id)
+        if snapshot is None:
+            raise HTTPException(
+                404, detail={"code": "not_found", "message": "Resume Run was not found."}
+            )
+        resume_worker.wake()
+        return {"ok": True, "run": snapshot, "validationFailures": [], "errors": []}
+
+    @app.get(
+        "/api/v1/resumes/artifact-quarantines",
+        operation_id="listResumeArtifactQuarantines",
+        response_model=ResumeArtifactQuarantineListResponse,
+        responses=_api_error_responses(400, 500, 503),
+    )
+    async def list_resume_artifact_quarantines(
+        limit: int = Query(default=20, ge=1, le=50),
+        cursor: int = Query(default=0, ge=0),
+    ):
+        items, total = resume_run_service.quarantines(limit=limit, offset=cursor)
+        next_cursor = cursor + len(items)
+        has_more = next_cursor < total
+        return {
+            "ok": True,
+            "items": items,
+            "pagination": {
+                "limit": limit,
+                "nextCursor": str(next_cursor) if has_more else None,
+                "hasMore": has_more,
+            },
+            "validationFailures": [],
+            "errors": [],
+        }
+
+    @app.get(
+        "/api/v1/resumes/artifact-sets/{artifactSetId}",
+        operation_id="getResumeArtifactSet",
+        response_model=ResumeArtifactSetResponse,
+        responses=_api_error_responses(404, 500, 503),
+    )
+    async def get_resume_artifact_set(
+        artifact_set_id: str = ApiPath(alias="artifactSetId"),
+    ):
+        snapshot = resume_run_service.artifact_set(artifact_set_id)
+        if snapshot is None:
+            raise HTTPException(
+                404, detail={"code": "not_found", "message": "Resume Artifact Set was not found."}
+            )
+        return {"ok": True, "artifactSet": snapshot, "validationFailures": [], "errors": []}
+
+    async def request_artifact_action(
+        artifact_set_id: str,
+        request: ResumeArtifactActionRequest,
+        key: str,
+        kind: str,
+    ):
+        try:
+            snapshot = resume_run_service.request_artifact_action(
+                artifact_set_id=artifact_set_id,
+                kind=kind,
+                expected_revision=request.expected_revision,
+                idempotency_key=key,
+            )
+        except ResumeArtifactStateChanged:
+            raise HTTPException(409, detail={"code": "resume_artifact_state_changed", "message": "The Resume Artifact Set changed."})
+        except ResumeArtifactActionUnavailable:
+            raise HTTPException(409, detail={"code": "resume_artifact_action_unavailable", "message": "The requested Resume Artifact action is not available."})
+        if snapshot is None:
+            raise HTTPException(
+                404, detail={"code": "not_found", "message": "Resume Artifact Set was not found."}
+            )
+        resume_worker.wake()
+        return {"ok": True, "artifactSet": snapshot, "validationFailures": [], "errors": []}
+
+    @app.post(
+        "/api/v1/resumes/artifact-sets/{artifactSetId}/reconcile",
+        operation_id="reconcileResumeArtifactSet",
+        response_model=ResumeArtifactSetResponse,
+        status_code=202,
+        responses=_api_error_responses(400, 404, 409, 415, 500, 503),
+    )
+    async def reconcile_resume_artifact_set(
+        request: ResumeArtifactActionRequest,
+        artifact_set_id: str = ApiPath(alias="artifactSetId"),
+        idempotency_key: str = Header(alias="Idempotency-Key"),
+    ):
+        return await request_artifact_action(artifact_set_id, request, idempotency_key, "reconcile")
+
+    @app.post(
+        "/api/v1/resumes/artifact-sets/{artifactSetId}/compensate",
+        operation_id="compensateResumeArtifactSet",
+        response_model=ResumeArtifactSetResponse,
+        status_code=202,
+        responses=_api_error_responses(400, 404, 409, 415, 500, 503),
+    )
+    async def compensate_resume_artifact_set(
+        request: ResumeArtifactActionRequest,
+        artifact_set_id: str = ApiPath(alias="artifactSetId"),
+        idempotency_key: str = Header(alias="Idempotency-Key"),
+    ):
+        return await request_artifact_action(artifact_set_id, request, idempotency_key, "compensate")
+
+    @app.get(
+        "/api/v1/resumes/artifact-sets/{artifactSetId}/pdf",
+        operation_id="downloadResumeArtifactSetPdf",
         response_class=FileResponse,
         responses={
             200: {"content": {"application/pdf": {"schema": {"type": "string", "format": "binary"}}}},
             **_api_error_responses(404, 500),
         },
     )
-    async def download_resume_pdf(resume_id: str = ApiPath(alias="resumeId")):
-        path = resumes.pdf_path(resume_id)
-        if path is None:
-            raise HTTPException(status_code=404, detail={"code": "pdf_not_found", "message": "Resume PDF was not found."})
-        return FileResponse(path, media_type="application/pdf", filename=path.name)
+    async def download_resume_artifact_set_pdf(
+        artifact_set_id: str = ApiPath(alias="artifactSetId"),
+    ):
+        verified = resume_run_service.verified_pdf(artifact_set_id)
+        if verified is None:
+            raise HTTPException(
+                404, detail={"code": "pdf_not_found", "message": "Resume PDF was not found."}
+            )
+        path, filename = verified
+        return FileResponse(path, media_type="application/pdf", filename=filename)
 
     web_dist = dashboard_dist or Path(__file__).resolve().parents[2] / "web" / "dist"
     dashboard_index = web_dist / "index.html"

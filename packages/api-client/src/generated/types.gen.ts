@@ -225,7 +225,7 @@ export type ApiErrorDetail = {
     /**
      * Code
      */
-    code: 'invalid_request' | 'invalid_cursor' | 'invalid_capture_token' | 'not_found' | 'pdf_not_found' | 'method_not_allowed' | 'conflict' | 'analysis_run_active' | 'idempotency_conflict' | 'analysis_authorization_blocked' | 'payload_too_large' | 'unsupported_media_type' | 'internal_error';
+    code: 'invalid_request' | 'invalid_cursor' | 'invalid_capture_token' | 'not_found' | 'pdf_not_found' | 'method_not_allowed' | 'conflict' | 'analysis_run_active' | 'resume_run_active' | 'idempotency_conflict' | 'analysis_authorization_blocked' | 'resume_authorization_blocked' | 'resume_artifact_state_changed' | 'resume_artifact_action_active' | 'resume_artifact_action_unavailable' | 'payload_too_large' | 'unsupported_media_type' | 'internal_error';
     /**
      * Message
      */
@@ -677,20 +677,6 @@ export type CapturedApplication = {
 };
 
 /**
- * CleanupSummary
- */
-export type CleanupSummary = {
-    /**
-     * Errors
-     */
-    errors: Array<string>;
-    /**
-     * Status
-     */
-    status: 'not_required' | 'completed' | 'incomplete';
-};
-
-/**
  * ConfigurationValidationFailure
  */
 export type ConfigurationValidationFailure = {
@@ -751,29 +737,6 @@ export type ConfirmedApplicationDraft = {
      */
     role: string;
 };
-
-/**
- * CreateResumeRequest
- */
-export type CreateResumeRequest = {
-    /**
-     * Applicationid
-     */
-    applicationId: string;
-};
-
-/**
- * CreateResumeResponse
- */
-export type CreateResumeResponse = ({
-    result: 'created';
-} & ResumeCreatedResponse) | ({
-    result: 'already_created';
-} & ResumeAlreadyCreatedResponse) | ({
-    result: 'blocked';
-} & ResumeCreationBlockedResponse) | ({
-    result: 'failed';
-} & ResumeCreationFailedResponse);
 
 /**
  * GetApplicationAnalysisQueueResponse
@@ -952,20 +915,6 @@ export type Pagination = {
 };
 
 /**
- * PdfArtifactSummary
- */
-export type PdfArtifactSummary = {
-    /**
-     * Downloadurl
-     */
-    downloadUrl: string;
-    /**
-     * Filename
-     */
-    filename: string;
-};
-
-/**
  * PrepareApplicationRequest
  */
 export type PrepareApplicationRequest = {
@@ -1061,25 +1010,64 @@ export type RequestValidationFailure = {
 };
 
 /**
- * ResumeAlreadyCreatedResponse
+ * ResumeArtifactActionRequest
  */
-export type ResumeAlreadyCreatedResponse = {
-    application: ResumeApplicationSummary;
+export type ResumeArtifactActionRequest = {
+    /**
+     * Expectedrevision
+     */
+    expectedRevision: number;
+};
+
+/**
+ * ResumeArtifactActiveAction
+ */
+export type ResumeArtifactActiveAction = {
+    /**
+     * Acceptedat
+     */
+    acceptedAt: string;
+    /**
+     * Kind
+     */
+    kind: 'reconcile' | 'compensate';
+};
+
+/**
+ * ResumeArtifactQuarantine
+ */
+export type ResumeArtifactQuarantine = {
+    /**
+     * Enteredat
+     */
+    enteredAt: string;
+    /**
+     * Lastassessedat
+     */
+    lastAssessedAt: string;
+    /**
+     * Reasoncode
+     */
+    reasonCode: string;
+};
+
+/**
+ * ResumeArtifactQuarantineListResponse
+ */
+export type ResumeArtifactQuarantineListResponse = {
     /**
      * Errors
      */
     errors: Array<string>;
-    note: ResumeArtifactSummary | null;
+    /**
+     * Items
+     */
+    items: Array<ResumeArtifactSetSnapshot>;
     /**
      * Ok
      */
     ok: true;
-    pdf: PdfArtifactSummary | null;
-    /**
-     * Result
-     */
-    result: 'already_created';
-    resume: ResumeArtifactSummary;
+    pagination: ResumeArtifactQuarantinePagination;
     /**
      * Validationfailures
      */
@@ -1087,47 +1075,103 @@ export type ResumeAlreadyCreatedResponse = {
 };
 
 /**
- * ResumeApplicationSummary
+ * ResumeArtifactQuarantinePagination
  */
-export type ResumeApplicationSummary = {
+export type ResumeArtifactQuarantinePagination = {
     /**
-     * Companyname
+     * Hasmore
      */
-    companyName: string;
+    hasMore: boolean;
     /**
-     * Id
+     * Limit
      */
-    id: string;
+    limit: number;
     /**
-     * Role
+     * Nextcursor
      */
-    role: string;
-    /**
-     * Title
-     */
-    title: string;
+    nextCursor: string | null;
 };
 
 /**
- * ResumeArtifactSummary
+ * ResumeArtifactSetResponse
  */
-export type ResumeArtifactSummary = {
+export type ResumeArtifactSetResponse = {
+    artifactSet: ResumeArtifactSetSnapshot;
     /**
-     * Companyname
+     * Errors
      */
-    companyName: string;
+    errors: Array<string>;
+    /**
+     * Ok
+     */
+    ok: true;
+    /**
+     * Validationfailures
+     */
+    validationFailures: Array<RequestValidationFailure | ConfigurationValidationFailure | WorkspaceSchemaValidationFailure>;
+};
+
+/**
+ * ResumeArtifactSetSnapshot
+ */
+export type ResumeArtifactSetSnapshot = {
+    activeAction: ResumeArtifactActiveAction | null;
+    /**
+     * Applicationid
+     */
+    applicationId: string;
+    /**
+     * Applicationlabel
+     */
+    applicationLabel: string;
+    /**
+     * Artifactsetid
+     */
+    artifactSetId: string;
+    /**
+     * Availableactions
+     */
+    availableActions: Array<'reconcile' | 'compensate'>;
+    /**
+     * Candidateordinal
+     */
+    candidateOrdinal: number;
+    completion: ResumeCompletionSummary | null;
+    /**
+     * Createdat
+     */
+    createdAt: string;
+    /**
+     * Disposition
+     */
+    disposition: 'recoverable' | 'compensation_required' | 'sealed' | 'compensated';
+    /**
+     * Pendingboundary
+     */
+    pendingBoundary: string | null;
+    quarantine: ResumeArtifactQuarantine | null;
+    /**
+     * Revision
+     */
+    revision: number;
+    /**
+     * Runid
+     */
+    runId: string;
+    /**
+     * Updatedat
+     */
+    updatedAt: string;
+};
+
+/**
+ * ResumeCompletionLink
+ */
+export type ResumeCompletionLink = {
     /**
      * Id
      */
     id: string;
-    /**
-     * Role
-     */
-    role: string;
-    /**
-     * Title
-     */
-    title: string;
     /**
      * Url
      */
@@ -1135,56 +1179,30 @@ export type ResumeArtifactSummary = {
 };
 
 /**
- * ResumeCreatedResponse
+ * ResumeCompletionPdf
  */
-export type ResumeCreatedResponse = {
-    application: ResumeApplicationSummary;
+export type ResumeCompletionPdf = {
     /**
-     * Errors
+     * Downloadurl
      */
-    errors: Array<string>;
-    note: ResumeArtifactSummary;
+    downloadUrl: string;
     /**
-     * Ok
+     * Filename
      */
-    ok: true;
-    pdf: PdfArtifactSummary;
-    /**
-     * Result
-     */
-    result: 'created';
-    resume: ResumeArtifactSummary;
-    /**
-     * Validationfailures
-     */
-    validationFailures: Array<RequestValidationFailure | ConfigurationValidationFailure | WorkspaceSchemaValidationFailure>;
+    filename: string;
 };
 
 /**
- * ResumeCreationBlockedResponse
+ * ResumeCompletionSummary
  */
-export type ResumeCreationBlockedResponse = {
-    cleanup: CleanupSummary;
+export type ResumeCompletionSummary = {
+    note: ResumeCompletionLink;
+    pdf: ResumeCompletionPdf;
+    resume: ResumeCompletionLink;
     /**
-     * Errors
+     * Sealedat
      */
-    errors: Array<string>;
-    /**
-     * Ok
-     */
-    ok: false;
-    /**
-     * Result
-     */
-    result: 'blocked';
-    /**
-     * Status
-     */
-    status: 'blocked';
-    /**
-     * Validationfailures
-     */
-    validationFailures: Array<RequestValidationFailure | ConfigurationValidationFailure | WorkspaceSchemaValidationFailure>;
+    sealedAt: string;
 };
 
 /**
@@ -1211,33 +1229,6 @@ export type ResumeCreationChecks = {
      * Pdfexport
      */
     pdfExport: 'ready' | 'blocked' | 'not_checked';
-};
-
-/**
- * ResumeCreationFailedResponse
- */
-export type ResumeCreationFailedResponse = {
-    cleanup: CleanupSummary;
-    /**
-     * Errors
-     */
-    errors: Array<string>;
-    /**
-     * Ok
-     */
-    ok: false;
-    /**
-     * Result
-     */
-    result: 'failed';
-    /**
-     * Status
-     */
-    status: 'failed';
-    /**
-     * Validationfailures
-     */
-    validationFailures: Array<RequestValidationFailure | ConfigurationValidationFailure | WorkspaceSchemaValidationFailure>;
 };
 
 /**
@@ -1368,6 +1359,203 @@ export type ResumeQueueItem = {
 };
 
 /**
+ * ResumeRunCandidate
+ */
+export type ResumeRunCandidate = {
+    /**
+     * Applicationid
+     */
+    applicationId: string;
+    /**
+     * Applicationlabel
+     */
+    applicationLabel: string;
+    /**
+     * Artifactsetid
+     */
+    artifactSetId: string | null;
+    completion: ResumeCompletionSummary | null;
+    /**
+     * Consideredat
+     */
+    consideredAt: string | null;
+    /**
+     * Evaluationconsumed
+     */
+    evaluationConsumed: boolean;
+    /**
+     * Ordinal
+     */
+    ordinal: number;
+    /**
+     * Reasoncode
+     */
+    reasonCode: string | null;
+    /**
+     * Stage
+     */
+    stage: 'admission' | 'requirements' | 'draft' | 'artifact_recovery' | 'completion_gate' | 'compensation' | null;
+    /**
+     * State
+     */
+    state: 'pending' | 'evaluating' | 'recovering' | 'compensating' | 'completed' | 'skipped' | 'failed' | 'cancelled';
+    /**
+     * Terminalat
+     */
+    terminalAt: string | null;
+    /**
+     * Updatedat
+     */
+    updatedAt: string;
+};
+
+/**
+ * ResumeRunLookupResponse
+ */
+export type ResumeRunLookupResponse = {
+    /**
+     * Errors
+     */
+    errors: Array<string>;
+    /**
+     * Ok
+     */
+    ok: true;
+    run: ResumeRunSnapshot | null;
+    /**
+     * Validationfailures
+     */
+    validationFailures: Array<RequestValidationFailure | ConfigurationValidationFailure | WorkspaceSchemaValidationFailure>;
+};
+
+/**
+ * ResumeRunProgress
+ */
+export type ResumeRunProgress = {
+    /**
+     * Candidatesconsidered
+     */
+    candidatesConsidered: number;
+    /**
+     * Completions
+     */
+    completions: number;
+    /**
+     * Evaluationsconsumed
+     */
+    evaluationsConsumed: number;
+};
+
+/**
+ * ResumeRunResponse
+ */
+export type ResumeRunResponse = {
+    /**
+     * Errors
+     */
+    errors: Array<string>;
+    /**
+     * Ok
+     */
+    ok: true;
+    run: ResumeRunSnapshot;
+    /**
+     * Validationfailures
+     */
+    validationFailures: Array<RequestValidationFailure | ConfigurationValidationFailure | WorkspaceSchemaValidationFailure>;
+};
+
+/**
+ * ResumeRunSnapshot
+ */
+export type ResumeRunSnapshot = {
+    /**
+     * Attemptbudget
+     */
+    attemptBudget: number;
+    /**
+     * Candidates
+     */
+    candidates: Array<ResumeRunCandidate>;
+    /**
+     * Createdat
+     */
+    createdAt: string;
+    /**
+     * Finishedat
+     */
+    finishedAt: string | null;
+    /**
+     * Lifecycle
+     */
+    lifecycle: 'queued' | 'running' | 'cancelling' | 'finished';
+    /**
+     * Outcome
+     */
+    outcome: 'target_met' | 'spend_limited' | 'attempt_budget_exhausted' | 'queue_exhausted' | 'cancelled' | 'authorization_blocked' | 'failed' | null;
+    progress: ResumeRunProgress;
+    /**
+     * Reasoncode
+     */
+    reasonCode: string | null;
+    /**
+     * Revision
+     */
+    revision: number;
+    /**
+     * Runid
+     */
+    runId: string;
+    spend: ResumeSpendSnapshot;
+    /**
+     * Startedat
+     */
+    startedAt: string | null;
+    /**
+     * Stoppingdecidedat
+     */
+    stoppingDecidedAt: string | null;
+    /**
+     * Target
+     */
+    target: number;
+    /**
+     * Updatedat
+     */
+    updatedAt: string;
+};
+
+/**
+ * ResumeSpendSnapshot
+ */
+export type ResumeSpendSnapshot = {
+    /**
+     * Activereservationmicros
+     */
+    activeReservationMicros: number;
+    /**
+     * Ceilingmicros
+     */
+    ceilingMicros: number;
+    /**
+     * Committedmicros
+     */
+    committedMicros: number;
+    /**
+     * Indeterminatereservationmicros
+     */
+    indeterminateReservationMicros: number;
+    /**
+     * Remainingauthorizedmicros
+     */
+    remainingAuthorizedMicros: number;
+    /**
+     * Verifiedcostmicros
+     */
+    verifiedCostMicros: number;
+};
+
+/**
  * RunApplicationAnalysisRequest
  */
 export type RunApplicationAnalysisRequest = {
@@ -1375,6 +1563,16 @@ export type RunApplicationAnalysisRequest = {
      * Target
      */
     target?: number;
+};
+
+/**
+ * StartResumeRunRequest
+ */
+export type StartResumeRunRequest = {
+    /**
+     * Target
+     */
+    target: number;
 };
 
 /**
@@ -1884,18 +2082,113 @@ export type GetOperatorSettingsResponses = {
 
 export type GetOperatorSettingsResponse = GetOperatorSettingsResponses[keyof GetOperatorSettingsResponses];
 
-export type CreateResumeData = {
-    body: CreateResumeRequest;
+export type ListResumeArtifactQuarantinesData = {
+    body?: never;
     path?: never;
-    query?: never;
-    url: '/api/v1/resumes/create';
+    query?: {
+        /**
+         * Limit
+         */
+        limit?: number;
+        /**
+         * Cursor
+         */
+        cursor?: number;
+    };
+    url: '/api/v1/resumes/artifact-quarantines';
 };
 
-export type CreateResumeErrors = {
+export type ListResumeArtifactQuarantinesErrors = {
     /**
      * Technical error
      */
     400: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    503: ApiErrorResponse;
+};
+
+export type ListResumeArtifactQuarantinesError = ListResumeArtifactQuarantinesErrors[keyof ListResumeArtifactQuarantinesErrors];
+
+export type ListResumeArtifactQuarantinesResponses = {
+    /**
+     * Successful Response
+     */
+    200: ResumeArtifactQuarantineListResponse;
+};
+
+export type ListResumeArtifactQuarantinesResponse = ListResumeArtifactQuarantinesResponses[keyof ListResumeArtifactQuarantinesResponses];
+
+export type GetResumeArtifactSetData = {
+    body?: never;
+    path: {
+        /**
+         * Artifactsetid
+         */
+        artifactSetId: string;
+    };
+    query?: never;
+    url: '/api/v1/resumes/artifact-sets/{artifactSetId}';
+};
+
+export type GetResumeArtifactSetErrors = {
+    /**
+     * Technical error
+     */
+    404: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    503: ApiErrorResponse;
+};
+
+export type GetResumeArtifactSetError = GetResumeArtifactSetErrors[keyof GetResumeArtifactSetErrors];
+
+export type GetResumeArtifactSetResponses = {
+    /**
+     * Successful Response
+     */
+    200: ResumeArtifactSetResponse;
+};
+
+export type GetResumeArtifactSetResponse = GetResumeArtifactSetResponses[keyof GetResumeArtifactSetResponses];
+
+export type CompensateResumeArtifactSetData = {
+    body: ResumeArtifactActionRequest;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path: {
+        /**
+         * Artifactsetid
+         */
+        artifactSetId: string;
+    };
+    query?: never;
+    url: '/api/v1/resumes/artifact-sets/{artifactSetId}/compensate';
+};
+
+export type CompensateResumeArtifactSetErrors = {
+    /**
+     * Technical error
+     */
+    400: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    404: ApiErrorResponse;
     /**
      * Technical error
      */
@@ -1908,18 +2201,112 @@ export type CreateResumeErrors = {
      * Technical error
      */
     500: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    503: ApiErrorResponse;
 };
 
-export type CreateResumeError = CreateResumeErrors[keyof CreateResumeErrors];
+export type CompensateResumeArtifactSetError = CompensateResumeArtifactSetErrors[keyof CompensateResumeArtifactSetErrors];
 
-export type CreateResumeResponses = {
+export type CompensateResumeArtifactSetResponses = {
     /**
      * Successful Response
      */
-    200: CreateResumeResponse;
+    202: ResumeArtifactSetResponse;
 };
 
-export type CreateResumeResponse2 = CreateResumeResponses[keyof CreateResumeResponses];
+export type CompensateResumeArtifactSetResponse = CompensateResumeArtifactSetResponses[keyof CompensateResumeArtifactSetResponses];
+
+export type DownloadResumeArtifactSetPdfData = {
+    body?: never;
+    path: {
+        /**
+         * Artifactsetid
+         */
+        artifactSetId: string;
+    };
+    query?: never;
+    url: '/api/v1/resumes/artifact-sets/{artifactSetId}/pdf';
+};
+
+export type DownloadResumeArtifactSetPdfErrors = {
+    /**
+     * Technical error
+     */
+    404: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    500: ApiErrorResponse;
+};
+
+export type DownloadResumeArtifactSetPdfError = DownloadResumeArtifactSetPdfErrors[keyof DownloadResumeArtifactSetPdfErrors];
+
+export type DownloadResumeArtifactSetPdfResponses = {
+    /**
+     * Successful Response
+     */
+    200: Blob | File;
+};
+
+export type DownloadResumeArtifactSetPdfResponse = DownloadResumeArtifactSetPdfResponses[keyof DownloadResumeArtifactSetPdfResponses];
+
+export type ReconcileResumeArtifactSetData = {
+    body: ResumeArtifactActionRequest;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path: {
+        /**
+         * Artifactsetid
+         */
+        artifactSetId: string;
+    };
+    query?: never;
+    url: '/api/v1/resumes/artifact-sets/{artifactSetId}/reconcile';
+};
+
+export type ReconcileResumeArtifactSetErrors = {
+    /**
+     * Technical error
+     */
+    400: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    404: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    409: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    415: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    503: ApiErrorResponse;
+};
+
+export type ReconcileResumeArtifactSetError = ReconcileResumeArtifactSetErrors[keyof ReconcileResumeArtifactSetErrors];
+
+export type ReconcileResumeArtifactSetResponses = {
+    /**
+     * Successful Response
+     */
+    202: ResumeArtifactSetResponse;
+};
+
+export type ReconcileResumeArtifactSetResponse = ReconcileResumeArtifactSetResponses[keyof ReconcileResumeArtifactSetResponses];
 
 export type GetResumeCreationQueueData = {
     body?: never;
@@ -1959,19 +2346,124 @@ export type GetResumeCreationQueueResponses = {
 
 export type GetResumeCreationQueueResponse2 = GetResumeCreationQueueResponses[keyof GetResumeCreationQueueResponses];
 
-export type DownloadResumePdfData = {
+export type StartResumeRunData = {
+    body: StartResumeRunRequest;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/resumes/runs';
+};
+
+export type StartResumeRunErrors = {
+    /**
+     * Technical error
+     */
+    400: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    409: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    415: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    503: ApiErrorResponse;
+};
+
+export type StartResumeRunError = StartResumeRunErrors[keyof StartResumeRunErrors];
+
+export type StartResumeRunResponses = {
+    /**
+     * Successful Response
+     */
+    202: ResumeRunResponse;
+};
+
+export type StartResumeRunResponse = StartResumeRunResponses[keyof StartResumeRunResponses];
+
+export type GetActiveResumeRunData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/resumes/runs/active';
+};
+
+export type GetActiveResumeRunErrors = {
+    /**
+     * Technical error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    503: ApiErrorResponse;
+};
+
+export type GetActiveResumeRunError = GetActiveResumeRunErrors[keyof GetActiveResumeRunErrors];
+
+export type GetActiveResumeRunResponses = {
+    /**
+     * Successful Response
+     */
+    200: ResumeRunLookupResponse;
+};
+
+export type GetActiveResumeRunResponse = GetActiveResumeRunResponses[keyof GetActiveResumeRunResponses];
+
+export type GetLatestResumeRunData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/resumes/runs/latest';
+};
+
+export type GetLatestResumeRunErrors = {
+    /**
+     * Technical error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    503: ApiErrorResponse;
+};
+
+export type GetLatestResumeRunError = GetLatestResumeRunErrors[keyof GetLatestResumeRunErrors];
+
+export type GetLatestResumeRunResponses = {
+    /**
+     * Successful Response
+     */
+    200: ResumeRunLookupResponse;
+};
+
+export type GetLatestResumeRunResponse = GetLatestResumeRunResponses[keyof GetLatestResumeRunResponses];
+
+export type GetResumeRunData = {
     body?: never;
     path: {
         /**
-         * Resumeid
+         * Runid
          */
-        resumeId: string;
+        runId: string;
     };
     query?: never;
-    url: '/api/v1/resumes/{resumeId}/pdf';
+    url: '/api/v1/resumes/runs/{runId}';
 };
 
-export type DownloadResumePdfErrors = {
+export type GetResumeRunErrors = {
     /**
      * Technical error
      */
@@ -1980,15 +2472,57 @@ export type DownloadResumePdfErrors = {
      * Technical error
      */
     500: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    503: ApiErrorResponse;
 };
 
-export type DownloadResumePdfError = DownloadResumePdfErrors[keyof DownloadResumePdfErrors];
+export type GetResumeRunError = GetResumeRunErrors[keyof GetResumeRunErrors];
 
-export type DownloadResumePdfResponses = {
+export type GetResumeRunResponses = {
     /**
      * Successful Response
      */
-    200: Blob | File;
+    200: ResumeRunResponse;
 };
 
-export type DownloadResumePdfResponse = DownloadResumePdfResponses[keyof DownloadResumePdfResponses];
+export type GetResumeRunResponse = GetResumeRunResponses[keyof GetResumeRunResponses];
+
+export type CancelResumeRunData = {
+    body?: never;
+    path: {
+        /**
+         * Runid
+         */
+        runId: string;
+    };
+    query?: never;
+    url: '/api/v1/resumes/runs/{runId}/cancel';
+};
+
+export type CancelResumeRunErrors = {
+    /**
+     * Technical error
+     */
+    404: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    500: ApiErrorResponse;
+    /**
+     * Technical error
+     */
+    503: ApiErrorResponse;
+};
+
+export type CancelResumeRunError = CancelResumeRunErrors[keyof CancelResumeRunErrors];
+
+export type CancelResumeRunResponses = {
+    /**
+     * Successful Response
+     */
+    200: ResumeRunResponse;
+};
+
+export type CancelResumeRunResponse = CancelResumeRunResponses[keyof CancelResumeRunResponses];

@@ -29,20 +29,20 @@ FIXTURE_REGRESSIONS = {
     "CAPTURE-001": ("test_public_contract", "test_capture_is_review_first_protected_and_idempotent"),
     "CAPTURE-002": ("test_public_contract", "test_capture_contract_is_named_reviewable_and_safe"),
     "CAPTURE-003": ("test_notion_workspace", "test_notion_capture_write_conformance"),
-    "ANALYSIS-001": ("test_public_contract", "test_public_seam_serializes_partial_analysis_and_failed_resume_outcomes"),
+    "ANALYSIS-001": ("test_resume_runs", "test_resume_run_public_seam_is_durable_and_legacy_writer_is_removed"),
     "ANALYSIS-002": ("test_deepseek_analysis", "test_graph_repairs_persisted_analysis_without_calling_deepseek"),
     "ANALYSIS-003": ("test_deepseek_analysis", "test_graph_preserves_body_first_partial_state_when_property_commit_fails"),
-    "ANALYSIS-004": ("test_public_contract", "test_analysis_and_resume_workflows_move_items_between_eligible_queues"),
+    "ANALYSIS-004": ("test_resume_runs", "test_resume_run_public_seam_is_durable_and_legacy_writer_is_removed"),
     "ANALYSIS-ADD-001": ("test_public_contract", "test_analysis_recomputes_a_missing_legacy_match_score_deterministically"),
     "RESUME-001": ("test_deepseek_resume", "test_resume_builder_blocks_when_required_job_evidence_has_no_resume_support"),
-    "RESUME-002": ("test_public_contract", "test_existing_resume_is_returned_before_schema_or_eligibility_checks"),
+    "RESUME-002": ("test_resume_runs", "test_resume_run_public_seam_is_durable_and_legacy_writer_is_removed"),
     "RESUME-003": ("test_deepseek_resume", "test_resume_graph_repairs_once_then_completes_roles_from_same_role_evidence"),
     "RESUME-004": ("test_deepseek_resume", "test_resume_graph_removes_cross_role_claims_and_preserves_every_role"),
-    "ARTIFACT-001": ("test_public_contract", "test_analysis_and_resume_workflows_move_items_between_eligible_queues"),
+    "ARTIFACT-001": ("test_resume_runs", "test_resume_run_public_seam_is_durable_and_legacy_writer_is_removed"),
     "CLEANUP-001": ("test_notion_workspace", "test_artifact_committer_clears_a_relation_when_final_attach_response_fails"),
     "NOTION-001": ("test_notion_workspace", "test_target_notion_compatibility_fixture"),
     "PRIVACY-001": ("test_public_contract", "test_health_and_operator_settings_are_safe_and_ready"),
-    "PRIVACY-ADD-001": ("test_public_contract", "test_completed_workflow_logs_only_safe_metadata"),
+    "PRIVACY-ADD-001": ("test_resume_runs", "test_resume_run_public_seam_is_durable_and_legacy_writer_is_removed"),
 }
 
 # The parity fixtures above protect the pre-durable product contract. These
@@ -230,10 +230,12 @@ async def _observe_cleanup(fixture: dict, tmp_path: Path) -> dict:
                 )
 
         class FailurePdfs(LocalPdfArtifacts):
-            def publish(self, resume_id, company_name, staged):
+            def publish(self, resume_id, company_name, staged, *, role_name=None):
                 if name == "pdfFailure":
                     raise RuntimeError("injected PDF failure")
-                return super().publish(resume_id, company_name, staged)
+                return super().publish(
+                    resume_id, company_name, staged, role_name=role_name
+                )
 
         workspace = FailureWorkspace(tmp_path / f"{name}-state.json")
         pdfs = FailurePdfs(

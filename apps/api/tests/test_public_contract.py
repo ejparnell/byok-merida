@@ -1281,6 +1281,34 @@ def test_unexpected_failures_are_sanitized_and_correlated(tmp_path, caplog):
     assert "private provider response" not in caplog.text
 
 
+def test_resume_artifact_quarantine_worklist_uses_its_contract_page_sizes(tmp_path):
+    with make_client(tmp_path) as client:
+        default_page = client.get("/api/v1/resumes/artifact-quarantines")
+        maximum_page = client.get(
+            "/api/v1/resumes/artifact-quarantines", params={"limit": 50}
+        )
+        oversized_page = client.get(
+            "/api/v1/resumes/artifact-quarantines", params={"limit": 51}
+        )
+
+    assert default_page.status_code == 200
+    assert default_page.json()["pagination"] == {
+        "limit": 20,
+        "nextCursor": None,
+        "hasMore": False,
+    }
+    assert maximum_page.status_code == 200
+    assert maximum_page.json()["pagination"]["limit"] == 50
+    assert oversized_page.status_code == 400
+    assert oversized_page.json()["validationFailures"] == [
+        {
+            "kind": "request",
+            "field": "query.limit",
+            "message": "Input should be less than or equal to 50",
+        }
+    ]
+
+
 def test_completed_workflow_logs_only_safe_metadata(tmp_path, caplog):
     private_values = (
         "Own Python platform services",
@@ -1371,11 +1399,15 @@ def test_openapi_locks_the_public_route_inventory_and_named_responses(tmp_path):
             "GetResumeCreationQueueResponse",
             "200",
         ),
-        ("post", "/api/v1/resumes/create"): (
-            "createResume",
-            "CreateResumeResponse",
-            "200",
-        ),
+        ("post", "/api/v1/resumes/runs"): ("startResumeRun", "ResumeRunResponse", "202"),
+        ("get", "/api/v1/resumes/runs/active"): ("getActiveResumeRun", "ResumeRunLookupResponse", "200"),
+        ("get", "/api/v1/resumes/runs/latest"): ("getLatestResumeRun", "ResumeRunLookupResponse", "200"),
+        ("get", "/api/v1/resumes/runs/{runId}"): ("getResumeRun", "ResumeRunResponse", "200"),
+        ("post", "/api/v1/resumes/runs/{runId}/cancel"): ("cancelResumeRun", "ResumeRunResponse", "200"),
+        ("get", "/api/v1/resumes/artifact-quarantines"): ("listResumeArtifactQuarantines", "ResumeArtifactQuarantineListResponse", "200"),
+        ("get", "/api/v1/resumes/artifact-sets/{artifactSetId}"): ("getResumeArtifactSet", "ResumeArtifactSetResponse", "200"),
+        ("post", "/api/v1/resumes/artifact-sets/{artifactSetId}/reconcile"): ("reconcileResumeArtifactSet", "ResumeArtifactSetResponse", "202"),
+        ("post", "/api/v1/resumes/artifact-sets/{artifactSetId}/compensate"): ("compensateResumeArtifactSet", "ResumeArtifactSetResponse", "202"),
     }
 
     with make_client(tmp_path) as client:
@@ -1390,7 +1422,7 @@ def test_openapi_locks_the_public_route_inventory_and_named_responses(tmp_path):
     }
     assert api_operations == {
         *expected,
-        ("get", "/api/v1/resumes/{resumeId}/pdf"),
+        ("get", "/api/v1/resumes/artifact-sets/{artifactSetId}/pdf"),
     }
     for (method, path), (
         operation_id,
@@ -1407,8 +1439,8 @@ def test_openapi_locks_the_public_route_inventory_and_named_responses(tmp_path):
         }
         assert "422" not in operation["responses"]
 
-    pdf = schema["paths"]["/api/v1/resumes/{resumeId}/pdf"]["get"]
-    assert pdf["operationId"] == "downloadResumePdf"
+    pdf = schema["paths"]["/api/v1/resumes/artifact-sets/{artifactSetId}/pdf"]["get"]
+    assert pdf["operationId"] == "downloadResumeArtifactSetPdf"
     assert "application/pdf" in pdf["responses"]["200"]["content"]
 
     prepare_responses = schema["paths"]["/api/v1/applications/prepare"]["post"][
@@ -1433,7 +1465,7 @@ def test_openapi_locks_the_public_route_inventory_and_named_responses(tmp_path):
         "PrepareApplicationRequest",
         "ConfirmApplicationRequest",
         "RunApplicationAnalysisRequest",
-        "CreateResumeRequest",
+        "StartResumeRunRequest",
     } <= component_names
     assert not {
         "PrepareCaptureRequest",
@@ -1471,9 +1503,14 @@ def test_openapi_locks_the_public_route_inventory_and_named_responses(tmp_path):
         "pdf_not_found",
         "method_not_allowed",
         "conflict",
-        "analysis_run_active",
-        "idempotency_conflict",
-        "analysis_authorization_blocked",
+            "analysis_run_active",
+            "resume_run_active",
+            "idempotency_conflict",
+            "analysis_authorization_blocked",
+            "resume_authorization_blocked",
+            "resume_artifact_state_changed",
+            "resume_artifact_action_active",
+            "resume_artifact_action_unavailable",
         "payload_too_large",
         "unsupported_media_type",
         "internal_error",

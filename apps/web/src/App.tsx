@@ -1,10 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { cx, Spinner, StatusBadge, StatusDot } from '@merida/ui'
-import type {
-  AnalysisRunSnapshot,
-  CreateResumeResponse,
-} from '@merida/api-client'
+import type { AnalysisRunSnapshot } from '@merida/api-client'
 
 import {
   createDashboardSession,
@@ -18,6 +15,7 @@ import {
   DEFAULT_ANALYSIS_TARGET,
   presentAnalysisRun,
 } from './features/dashboard/analysisRunPresentation.ts'
+import { formatUsdMicros } from './features/dashboard/spendPresentation.ts'
 import { createDashboardClient } from './shared/api/dashboardClient.ts'
 
 function Brand() {
@@ -143,8 +141,8 @@ function ErrorCallout({ errors }: { errors?: string[] }) {
   if (!errors?.length) return null
   return (
     <div className="error-callout" role="alert">
-      {errors.map((error: string) => (
-        <p key={error}>{error}</p>
+      {errors.map((error: string, index: number) => (
+        <p key={`${index}-${error}`}>{error}</p>
       ))}
     </div>
   )
@@ -399,51 +397,6 @@ function AnalysisSection({
   )
 }
 
-function ResultLinks({ result }: { result: CreateResumeResponse | null }) {
-  if (!result) return null
-  if (!result.ok)
-    return (
-      <>
-        <ErrorCallout errors={result.errors} />
-        <ErrorCallout
-          errors={result.validationFailures?.map((failure) => failure.message)}
-        />
-        {result.cleanup && (
-          <div className="cleanup-status">
-            <span>Cleanup</span>
-            {Object.entries(result.cleanup).map(([key, value]) => (
-              <small key={key}>
-                {key}: {String(value)}
-              </small>
-            ))}
-          </div>
-        )}
-      </>
-    )
-  return (
-    <div className="output-links">
-      <span>
-        {result.result === 'already_created'
-          ? 'Existing outputs'
-          : 'Created outputs'}
-      </span>
-      <a href={result.resume?.url} target="_blank" rel="noreferrer">
-        Resume <ArrowIcon />
-      </a>
-      {result.note?.url && (
-        <a href={result.note.url} target="_blank" rel="noreferrer">
-          Fit analysis <ArrowIcon />
-        </a>
-      )}
-      {result.pdf?.downloadUrl && (
-        <a href={result.pdf.downloadUrl} target="_blank" rel="noreferrer">
-          PDF <ArrowIcon />
-        </a>
-      )}
-    </div>
-  )
-}
-
 function ResumeSection({
   state,
   session,
@@ -453,6 +406,8 @@ function ResumeSection({
 }) {
   const queue = state.resumeQueue
   const ready = state.health?.checks?.resumes === 'ready'
+  const [target, setTarget] = useState(5)
+  const run = state.resumeRun
   return (
     <Section
       eyebrow="02 · Tailor"
@@ -462,36 +417,46 @@ function ResumeSection({
     >
       <div className="section-description">
         <p>
-          Create one evidence-backed Job-Specific Resume at a time. Outputs
-          remain visible after the queue refreshes.
+          The server selects up to twice the target from this Match
+          Score-ordered preview. Accepted work continues after navigation or
+          reload.
         </p>
+      </div>
+      <div className="batch-controls">
+        <label>
+          Resume Batch Target
+          <input
+            type="number"
+            min={1}
+            max={10}
+            value={target}
+            onChange={(event) => setTarget(Number(event.target.value))}
+          />
+        </label>
+        <button
+          type="button"
+          disabled={
+            !ready ||
+            state.resumeStarting ||
+            Boolean(run && run.lifecycle !== 'finished')
+          }
+          onClick={() => session.startResumeRun(target)}
+        >
+          {state.resumeStarting ? <Spinner /> : 'Start Resume Run'}
+        </button>
       </div>
       <div className="queue-table resume-table">
         <div className="queue-head">
           <span>Eligible Application</span>
           <span>Match</span>
-          <span>Action</span>
+          <span>Selection</span>
         </div>
         {queue?.items?.map((item) => {
-          const active = state.activeResumeId === item.applicationId
           return (
             <div className="queue-row" key={item.applicationId}>
               <QueueIdentity item={item} />
               <strong className="score">{item.matchScore}%</strong>
-              <button
-                className="row-button"
-                type="button"
-                disabled={!ready || Boolean(state.activeResumeId)}
-                onClick={() => session.createResume(item.applicationId)}
-              >
-                {active ? (
-                  <>
-                    <Spinner /> Creating
-                  </>
-                ) : (
-                  'Create resume'
-                )}
-              </button>
+              <span>Server ordered</span>
             </div>
           )
         })}
@@ -500,7 +465,7 @@ function ResumeSection({
       <QueuePagination
         pagination={queue?.pagination}
         currentCursor={state.resumeCursor}
-        disabled={Boolean(state.activeResumeId)}
+        disabled={state.loading}
         onFirst={() => {
           session.setCursors(state.analysisCursor, null)
           session.load()
@@ -513,9 +478,86 @@ function ResumeSection({
           session.load()
         }}
       />
-      {Object.entries(state.resumeResults).map(([applicationId, result]) => (
-        <ResultLinks key={applicationId} result={result} />
-      ))}
+      {run && (
+        <div className="run-panel">
+          <h3>Resume Run · {run.lifecycle}</h3>
+          <p>
+            {run.progress.completions} completions ·{' '}
+            {run.progress.candidatesConsidered} considered ·{' '}
+            {run.progress.evaluationsConsumed}/{run.attemptBudget} evaluations
+          </p>
+          <strong>
+            Committed Spend {formatUsdMicros(run.spend.committedMicros)} /{' '}
+            {formatUsdMicros(run.spend.ceilingMicros)}
+          </strong>
+          <details>
+            <summary>Spend details</summary>
+            <p>
+              Verified provider cost:{' '}
+              {formatUsdMicros(run.spend.verifiedCostMicros)}
+            </p>
+            <p>
+              Active reservations:{' '}
+              {formatUsdMicros(run.spend.activeReservationMicros)}
+            </p>
+            <p>
+              Indeterminate reservations:{' '}
+              {formatUsdMicros(run.spend.indeterminateReservationMicros)}
+            </p>
+            <p>
+              Remaining authorization:{' '}
+              {formatUsdMicros(run.spend.remainingAuthorizedMicros)}
+            </p>
+          </details>
+          {run.lifecycle !== 'finished' && (
+            <button type="button" onClick={() => session.cancelResumeRun()}>
+              Stop future scheduling
+            </button>
+          )}
+          {run.candidates.map((candidate) => (
+            <div key={candidate.applicationId} className="queue-row">
+              <strong>{candidate.applicationLabel}</strong>
+              <span>
+                {candidate.state}
+                {candidate.stage ? ` · ${candidate.stage}` : ''}
+              </span>
+              {candidate.completion && (
+                <span className="output-links">
+                  <a href={candidate.completion.resume.url}>Resume</a>
+                  <a href={candidate.completion.note.url}>Fit analysis</a>
+                  <a href={candidate.completion.pdf.downloadUrl}>PDF</a>
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {state.resumeQuarantines.length > 0 && (
+        <div className="run-panel">
+          <h3>Resume Artifact Quarantines</h3>
+          {state.resumeQuarantines.map((artifact) => (
+            <div className="queue-row" key={artifact.artifactSetId}>
+              <strong>{artifact.applicationLabel}</strong>
+              <span>{artifact.quarantine?.reasonCode}</span>
+              <span>
+                {artifact.availableActions.map((action) => (
+                  <button
+                    type="button"
+                    key={action}
+                    onClick={() =>
+                      session.actOnResumeArtifact(artifact, action)
+                    }
+                  >
+                    {action === 'reconcile' ? 'Resume recovery' : 'Compensate'}
+                  </button>
+                ))}
+                {artifact.activeAction &&
+                  ` ${artifact.activeAction.kind} pending`}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
       <ErrorCallout errors={queue?.errors} />
       <ErrorCallout
         errors={queue?.validationFailures?.map((failure) => failure.message)}

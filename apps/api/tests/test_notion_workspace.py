@@ -81,6 +81,7 @@ def relational_schemas() -> tuple[dict, dict, dict]:
         "data_sources": [{"id": "resumes-source"}],
         "properties": {
             "Name": {"type": "title", "title": {}},
+            "Merida Artifact ID": {"type": "rich_text", "rich_text": {}},
             "Job Posting": {
                 "type": "relation",
                 "relation": {
@@ -101,6 +102,7 @@ def relational_schemas() -> tuple[dict, dict, dict]:
         "id": "notes-db",
         "properties": {
             "Name": {"type": "title", "title": {}},
+            "Merida Artifact ID": {"type": "rich_text", "rich_text": {}},
             "Job Posting": {
                 "type": "relation",
                 "relation": {

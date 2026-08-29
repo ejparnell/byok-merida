@@ -46,6 +46,7 @@ class ResumeArtifactCommitter:
         bundle: ResumeArtifactBundle,
         *,
         run_id: str | None = None,
+        artifact_set_id: str | None = None,
         staged_pdf: Path | None = None,
     ) -> ArtifactCommitResult:
         resume: ResumeRecord | None = None
@@ -77,10 +78,15 @@ class ResumeArtifactCommitter:
             resume = await self._store.create_resume_draft(
                 application.title,
                 bundle.resume,
+                artifact_set_id=artifact_set_id,
                 on_created=resume_created,
             )
             pdf_path = self._pdfs.publish(
-                resume.id, application.company_name, staged
+                resume.id,
+                application.company_name,
+                staged,
+                role_name=application.role,
+                artifact_set_id=artifact_set_id,
             )
             self._advance(run_id, phase="pdf_published", pdf_id=resume.id)
             def note_created(created: NoteRecord) -> None:
@@ -94,6 +100,7 @@ class ResumeArtifactCommitter:
                 application_id=application.id,
                 resume_id=resume.id,
                 document=bundle.note,
+                artifact_set_id=artifact_set_id,
                 on_created=note_created,
             )
             attachment_attempted = True

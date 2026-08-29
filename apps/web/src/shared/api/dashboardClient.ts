@@ -1,26 +1,35 @@
 import {
   cancelApplicationAnalysisRun,
+  cancelResumeRun as cancelResumeRunRequest,
   createClient,
-  createResume,
   getActiveApplicationAnalysisRun,
+  getActiveResumeRun as getActiveResumeRunRequest,
+  getLatestResumeRun as getLatestResumeRunRequest,
   getApplicationAnalysisQueue,
   getApplicationAnalysisRun,
   getHealth,
   getOperatorSettings,
   getResumeCreationQueue,
+  getResumeRun as getResumeRunRequest,
   invokeApiData,
   runApplicationAnalysis,
+  startResumeRun as startResumeRunRequest,
+  listResumeArtifactQuarantines,
+  reconcileResumeArtifactSet,
+  compensateResumeArtifactSet,
 } from '@merida/api-client'
 import type {
   ActiveAnalysisRunResponse,
   AnalysisRunResponse,
   ApiErrorDetail,
-  CreateResumeResponse,
   GetApplicationAnalysisQueueResponse,
   GetResumeCreationQueueResponse,
   HealthResponse,
   OperatorSettingsResponse,
   RunApplicationAnalysisResponse,
+  ResumeArtifactQuarantineListResponse,
+  ResumeRunLookupResponse,
+  ResumeRunResponse,
 } from '@merida/api-client'
 
 export type DashboardSnapshot = {
@@ -43,7 +52,21 @@ export interface DashboardClient {
   getActiveAnalysisRun(): Promise<ActiveAnalysisRunResponse>
   getAnalysisRun(runId: string): Promise<AnalysisRunResponse>
   cancelAnalysisRun(runId: string): Promise<AnalysisRunResponse>
-  createResume(applicationId: string): Promise<CreateResumeResponse>
+  startResumeRun(
+    target: number,
+    idempotencyKey: string,
+  ): Promise<ResumeRunResponse>
+  getActiveResumeRun(): Promise<ResumeRunLookupResponse>
+  getLatestResumeRun(): Promise<ResumeRunLookupResponse>
+  getResumeRun(runId: string): Promise<ResumeRunResponse>
+  cancelResumeRun(runId: string): Promise<ResumeRunResponse>
+  listResumeArtifactQuarantines(): Promise<ResumeArtifactQuarantineListResponse>
+  actOnResumeArtifact(
+    artifactSetId: string,
+    kind: 'reconcile' | 'compensate',
+    revision: number,
+    idempotencyKey: string,
+  ): Promise<import('@merida/api-client').ResumeArtifactSetResponse>
 }
 
 export type DashboardApiError = Error & {
@@ -210,11 +233,70 @@ export function createDashboardClient(
         }),
       )
     },
-    createResume(applicationId: string) {
-      return invokeApiData(
-        createResume<true>({
+    startResumeRun(target: number, idempotencyKey: string) {
+      return invokeDashboardData(
+        startResumeRunRequest<true>({
           client: generatedClient,
-          body: { applicationId },
+          body: { target },
+          headers: { 'Idempotency-Key': idempotencyKey },
+          throwOnError: true,
+        }),
+      )
+    },
+    getActiveResumeRun() {
+      return invokeDashboardData(
+        getActiveResumeRunRequest<true>({
+          client: generatedClient,
+          throwOnError: true,
+        }),
+      )
+    },
+    getLatestResumeRun() {
+      return invokeDashboardData(
+        getLatestResumeRunRequest<true>({
+          client: generatedClient,
+          throwOnError: true,
+        }),
+      )
+    },
+    getResumeRun(runId: string) {
+      return invokeDashboardData(
+        getResumeRunRequest<true>({
+          client: generatedClient,
+          path: { runId },
+          throwOnError: true,
+        }),
+      )
+    },
+    cancelResumeRun(runId: string) {
+      return invokeDashboardData(
+        cancelResumeRunRequest<true>({
+          client: generatedClient,
+          path: { runId },
+          throwOnError: true,
+        }),
+      )
+    },
+    listResumeArtifactQuarantines() {
+      return invokeDashboardData(
+        listResumeArtifactQuarantines<true>({
+          client: generatedClient,
+          query: { limit: 20, cursor: 0 },
+          throwOnError: true,
+        }),
+      )
+    },
+    actOnResumeArtifact(artifactSetId, kind, revision, idempotencyKey) {
+      const request =
+        kind === 'reconcile'
+          ? reconcileResumeArtifactSet
+          : compensateResumeArtifactSet
+      return invokeDashboardData(
+        request<true>({
+          client: generatedClient,
+          path: { artifactSetId },
+          body: { expectedRevision: revision },
+          headers: { 'Idempotency-Key': idempotencyKey },
           throwOnError: true,
         }),
       )

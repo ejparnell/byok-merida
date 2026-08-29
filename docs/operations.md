@@ -58,6 +58,8 @@ The gate regenerates OpenAPI and the TypeScript client, checks freshness, typech
 
 The content-free effect journal defaults to `app-data/recovery/effects.json`. Mutations block when the journal cannot be read safely or an Application has an unresolved operation.
 
+Legacy effect-journal commands apply only to pre-cutover records. Durable Resume Runs expose retained Artifact Set quarantine and evidence-gated reconciliation/compensation resources; acknowledgement is never mutation authority.
+
 Inspect unresolved entries:
 
 ```sh

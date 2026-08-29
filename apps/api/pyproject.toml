@@ -13,6 +13,7 @@ dependencies = [
   "langgraph==1.2.8",
   "pydantic==2.13.4",
   "pydantic-settings==2.14.2",
+  "cryptography==45.0.7",
   "tiktoken==0.13.0",
   "uvicorn[standard]==0.51.0",
 ]

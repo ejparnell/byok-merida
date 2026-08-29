@@ -410,12 +410,18 @@ class NotionWorkspace:
             _validate_properties(
                 "resumes",
                 resumes,
-                {"Name": "title", "Job Posting": "relation", "Notes": "relation"},
+                {
+                    "Name": "title", "Job Posting": "relation", "Notes": "relation",
+                    "Merida Artifact ID": "rich_text",
+                },
             ),
             _validate_properties(
                 "notes",
                 notes,
-                {"Name": "title", "Job Posting": "relation", "Resume": "relation"},
+                {
+                    "Name": "title", "Job Posting": "relation", "Resume": "relation",
+                    "Merida Artifact ID": "rich_text",
+                },
             ),
         ]
         relation_results = [
@@ -617,7 +623,8 @@ class NotionWorkspace:
         return ResumeDocument(record=record, blocks=blocks)
 
     async def create_resume_draft(
-        self, name: str, document: tuple[DocumentBlock, ...], *, on_created=None
+        self, name: str, document: tuple[DocumentBlock, ...], *, artifact_set_id=None,
+        on_created=None
     ) -> ResumeRecord:
         def page_created(page: dict) -> None:
             if on_created:
@@ -625,7 +632,11 @@ class NotionWorkspace:
 
         page = await self._create_page_with_document(
             self._resume_database_id,
-            {"Name": {"title": _rich_text(name)}},
+            {
+                "Name": {"title": _rich_text(name)},
+                **({"Merida Artifact ID": {"rich_text": _rich_text(artifact_set_id)}}
+                   if artifact_set_id else {}),
+            },
             document,
             on_created=page_created,
         )
@@ -638,6 +649,7 @@ class NotionWorkspace:
         application_id: str,
         resume_id: str,
         document: tuple[DocumentBlock, ...],
+        artifact_set_id=None,
         on_created=None,
     ) -> NoteRecord:
         def page_created(page: dict) -> None:
@@ -650,6 +662,8 @@ class NotionWorkspace:
                 "Name": {"title": _rich_text(name)},
                 "Job Posting": {"relation": [{"id": application_id}]},
                 "Resume": {"relation": [{"id": resume_id}]},
+                **({"Merida Artifact ID": {"rich_text": _rich_text(artifact_set_id)}}
+                   if artifact_set_id else {}),
             },
             document,
             on_created=page_created,
@@ -719,21 +733,21 @@ class NotionWorkspace:
         on_created=None,
     ) -> dict:
         blocks = [_document_block(item) for item in document]
+        if len(blocks) > 100:
+            raise WorkspaceDataError(
+                "Resume artifacts exceed the single-request document envelope."
+            )
         page = await self._transport.request(
             "POST",
             "/pages",
             {
                 "parent": {"database_id": database_id},
                 "properties": properties,
-                "children": blocks[:80],
+                "children": blocks,
             },
         )
         if on_created:
             on_created(page)
-        for batch in _chunks(blocks[80:], 90):
-            await self._transport.request(
-                "PATCH", f"/blocks/{page['id']}/children", {"children": batch}
-            )
         return page
 
     async def _query_all(self, database_id: str, query: dict) -> list[dict]:

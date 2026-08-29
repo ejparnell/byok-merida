@@ -4,6 +4,7 @@ import textwrap
 import uuid
 
 from ..features.resumes.workspace import DocumentBlock
+from ..features.resumes.pdf_filename import resume_pdf_filename
 
 
 def _escape_pdf_text(value: str) -> str:
@@ -118,23 +119,33 @@ class LocalPdfArtifacts:
         write_resume_pdf(staged, document)
         return staged
 
-    def publish(self, resume_id: str, company_name: str, staged: Path) -> Path:
-        path = self._export_path / self._filename(company_name)
+    def publish(
+        self,
+        resume_id: str,
+        company_name: str,
+        staged: Path,
+        *,
+        role_name: str | None = None,
+        artifact_set_id: str | None = None,
+    ) -> Path:
+        path = self._export_path / self._filename(company_name, role_name)
         path.parent.mkdir(parents=True, exist_ok=True)
         previous_index = self._load_index()
         existing_owners = {
             key for key, value in previous_index.items() if value == path.name
         }
-        if path.exists() and resume_id not in existing_owners:
+        owner_id = artifact_set_id or resume_id
+        if path.exists() and not ({resume_id, owner_id} & existing_owners):
             raise FileExistsError(
                 f"A resume PDF already exists at {path.name}."
             )
         index = {
             key: value
             for key, value in previous_index.items()
-            if value != path.name or key == resume_id
+            if value != path.name or key in {resume_id, owner_id}
         }
         index[resume_id] = path.name
+        index[owner_id] = path.name
         self._save_index(index)
         try:
             staged.replace(path)
@@ -173,7 +184,9 @@ class LocalPdfArtifacts:
         ).strip("-")
         return self._export_path / f"{safe_id or 'resume'}.pdf"
 
-    def _filename(self, company_name: str) -> str:
+    def _filename(self, company_name: str, role_name: str | None = None) -> str:
+        if role_name is not None:
+            return resume_pdf_filename(company_name, role_name, self._user_name)
         company = _filename_component(company_name) or "Company"
         user = _filename_component(self._user_name)
         if not user:
